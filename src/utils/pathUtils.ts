@@ -128,6 +128,18 @@ export function toVaultPath(oneDrivePath: string, remoteRoot: string): string {
 }
 
 /**
+ * Strip Microsoft Graph API prefixes from a path.
+ * Handles /drive/root:, /drive/special/approot:, and /drives/{driveId}/root: prefixes.
+ */
+export function stripGraphPrefix(path: string): string {
+	let result = path;
+	result = result.replace(/^\/drives\/[^/]+\/root:/, '');
+	result = result.replace(/^\/drive\/root:/, '');
+	result = result.replace(/^\/drive\/special\/approot:/, '');
+	return result;
+}
+
+/**
  * Check if path is within root directory
  */
 export function isPathWithinRoot(path: string, root: string): boolean {

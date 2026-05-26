@@ -19,7 +19,7 @@ import {
 	LocalChangeType,
 } from '../types';
 import { logger } from '../utils/logger';
-import { normalizePath, toOneDrivePath, toVaultPath, getParentPath } from '../utils/pathUtils';
+import { normalizePath, toOneDrivePath, toVaultPath, getParentPath, stripGraphPrefix } from '../utils/pathUtils';
 
 /**
  * Main sync engine
@@ -486,9 +486,7 @@ export class SyncEngine {
 		}
 
 		// Strip OneDrive API prefixes
-		fullPath = fullPath.replace(/^\/drive\/root:/, '');
-		fullPath = fullPath.replace(/^\/drive\/special\/approot:/, '');
-		fullPath = fullPath.replace(/^\/drives\/[^/]+\/root:/, '');
+		fullPath = stripGraphPrefix(fullPath);
 
 		return toVaultPath(fullPath, this.remoteRootOnDrive);
 	}
