@@ -232,6 +232,7 @@ export class SyncEngine {
 					operations.push({
 						path: resolution.newPath || change.path,
 						direction: resolution.direction,
+						localState: knownState,
 						remoteState: this.itemToFileState(remoteItem),
 					});
 				} else {
