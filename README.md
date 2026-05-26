@@ -8,6 +8,8 @@
 
 Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobile-friendly, battery-efficient.
 
+📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Development](docs/DEVELOPMENT.md)
+
 ## ✨ Features
 
 - **Zero-Configuration** — No Azure AD app registration. Just click connect and authenticate.
@@ -77,5 +79,3 @@ This plugin is designed with mobile as a **primary target**:
 - **Event-Driven Sync** — only syncs when files change (battery-efficient)
 - **iOS**: Use Safari to complete authentication
 - **Android**: Use Chrome or your default browser
-
-📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Development](docs/DEVELOPMENT.md)
