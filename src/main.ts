@@ -204,9 +204,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 			// For shared drives, upload paths are relative to the shared folder (no prefix needed).
 			// For non-shared, prepend the remote path.
 			const remoteRoot = isShared ? '' : (this.settings.remotePath || ONEDRIVE_PATHS.APP_FOLDER);
-			// For path stripping of delta responses, use the folder name on the remote drive
+			// For path stripping of delta responses, use the actual path on the remote drive
 			const remoteRootOnDrive = isShared
-				? `/${this.settings.remoteRootName}`
+				? (this.settings.remoteRootPath || `/${this.settings.remoteRootName}`)
 				: undefined;
 
 			this.syncEngine = new SyncEngine(
@@ -336,6 +336,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.settings.remoteDriveId = undefined;
 		this.settings.remoteItemId = undefined;
 		this.settings.remoteRootName = undefined;
+		this.settings.remoteRootPath = undefined;
 
 		// Clear components
 		this.authProvider = undefined;
@@ -479,10 +480,25 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.settings.remoteDriveId = selection.driveId;
 			this.settings.remoteItemId = selection.itemId;
 			this.settings.remoteRootName = selection.name;
+
+			// Resolve the actual path on the remote drive for delta path stripping
+			if (this.oneDriveClient) {
+				try {
+					const resolvedPath = await this.oneDriveClient.resolveSharedFolderPath(
+						selection.driveId, selection.itemId
+					);
+					this.settings.remoteRootPath = resolvedPath;
+					logger.info(`Resolved shared folder path on remote drive: ${resolvedPath}`);
+				} catch (error) {
+					logger.warn('Could not resolve shared folder path, using name fallback:', error);
+					this.settings.remoteRootPath = `/${selection.name}`;
+				}
+			}
 		} else {
 			this.settings.remoteDriveId = undefined;
 			this.settings.remoteItemId = undefined;
 			this.settings.remoteRootName = undefined;
+			this.settings.remoteRootPath = undefined;
 		}
 
 		// Clear stale sync state when the target folder changes

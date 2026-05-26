@@ -104,6 +104,35 @@ export class OneDriveClient {
 	}
 
 	/**
+	 * Resolve the actual path of a shared folder on its home drive.
+	 * Call after selecting a shared folder to get its full path for delta path stripping.
+	 */
+	async resolveSharedFolderPath(driveId: string, itemId: string): Promise<string> {
+		logger.debug('Resolving shared folder path:', { driveId, itemId });
+
+		try {
+			const response = await retryWithBackoff(() =>
+				this.client.api(`/drives/${driveId}/items/${itemId}`).get()
+			);
+
+			const item = response as OneDriveItem;
+			// Build the full path from parentReference.path + name
+			// parentReference.path is like "/drive/root:" or "/drive/root:/Documents/ObsidianVaults"
+			let parentPath = item.parentReference?.path || '';
+			parentPath = parentPath.replace(/^\/drive\/root:/, '');
+
+			const fullPath = parentPath ? `${parentPath}/${item.name}` : `/${item.name}`;
+			logger.info(`Resolved shared folder path: ${fullPath}`);
+			return fullPath;
+		} catch (error) {
+			logger.error('Failed to resolve shared folder path:', error);
+			throw new OneDriveError(
+				`Failed to resolve shared folder: ${error instanceof Error ? error.message : 'Unknown error'}`
+			);
+		}
+	}
+
+	/**
 	 * @deprecated Use buildEndpoint() instead. Kept for backward compat during migration.
 	 */
 	getDriveEndpoint(path: string): string {
