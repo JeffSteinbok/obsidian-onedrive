@@ -4,29 +4,29 @@
  */
 
 import { Plugin, Notice } from 'obsidian';
-import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode } from './src/types';
-import { DEFAULT_ONEDRIVE_CLIENT_ID, ONEDRIVE_PATHS } from './src/constants';
-import { logger } from './src/utils/logger';
+import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode } from './types';
+import { DEFAULT_ONEDRIVE_CLIENT_ID, ONEDRIVE_PATHS } from './constants';
+import { logger } from './utils/logger';
 
 // Auth
-import { TokenStorage } from './src/auth/tokenStorage';
-import { DeviceCodeFlowClient } from './src/auth/deviceCodeFlow';
-import { OneDriveAuthProvider } from './src/auth/authProvider';
+import { TokenStorage } from './auth/tokenStorage';
+import { DeviceCodeFlowClient } from './auth/deviceCodeFlow';
+import { OneDriveAuthProvider } from './auth/authProvider';
 
 // API
-import { OneDriveClient } from './src/api/oneDriveClient';
-import { FileOperations } from './src/api/fileOperations';
+import { OneDriveClient } from './api/oneDriveClient';
+import { FileOperations } from './api/fileOperations';
 
 // Sync
-import { SyncEngine } from './src/sync/syncEngine';
-import { SyncStateManager } from './src/sync/syncState';
-import { ConflictResolver } from './src/sync/conflictResolver';
-import { EventManager } from './src/sync/eventManager';
+import { SyncEngine } from './sync/syncEngine';
+import { SyncStateManager } from './sync/syncState';
+import { ConflictResolver } from './sync/conflictResolver';
+import { EventManager } from './sync/eventManager';
 
 // UI
-import { OneDriveSettingTab } from './src/ui/settings';
-import { StatusBarManager, SyncStatus } from './src/ui/statusBar';
-import { DeviceCodeModal } from './src/ui/authModal';
+import { OneDriveSettingTab } from './ui/settings';
+import { StatusBarManager, SyncStatus } from './ui/statusBar';
+import { DeviceCodeModal } from './ui/authModal';
 
 /**
  * Main plugin class

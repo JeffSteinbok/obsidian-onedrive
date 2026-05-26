@@ -1,15 +1,23 @@
-name: Release
+name: Release Automation
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,11 +28,55 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx vitest run
-      - uses: softprops/action-gh-release@v2
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
         with:
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+      - name: Bump version
+        id: bump
+        run: |
+          BUMP_TYPE="${{ github.event.inputs.bump_type }}"
+          echo "Bump type: $BUMP_TYPE"
+          npm version "$BUMP_TYPE" --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "New version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Commit and tag
+        run: |
+          git add package.json manifest.json versions.json
+          git commit -m "Bump version to v${{ steps.bump.outputs.version }}"
+          git tag "v${{ steps.bump.outputs.version }}"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin --tags
+
+      - name: Build
+        run: npm run build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.bump.outputs.version }}
+          name: v${{ steps.bump.outputs.version }}
+          draft: true
+          generate_release_notes: true
           files: |
             main.js
             manifest.json
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
