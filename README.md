@@ -79,3 +79,4 @@ This plugin is designed with mobile as a **primary target**:
 - **Event-Driven Sync** — only syncs when files change (battery-efficient)
 - **iOS**: Use Safari to complete authentication
 - **Android**: Use Chrome or your default browser
+
