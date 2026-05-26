@@ -4,6 +4,7 @@
  */
 
 import { vi, beforeEach } from 'vitest';
+import { TFile } from 'obsidian';
 
 // Mock Obsidian API
 export const mockApp = {
@@ -15,11 +16,17 @@ export const mockApp = {
 			remove: vi.fn(),
 			exists: vi.fn(),
 			stat: vi.fn(),
+			writeBinary: vi.fn().mockResolvedValue(undefined),
+			mkdir: vi.fn().mockResolvedValue(undefined),
+			getBasePath: vi.fn().mockReturnValue('/mock/vault'),
 		},
-		on: vi.fn(),
+		on: vi.fn().mockReturnValue({ id: 'mock-event-ref' }),
 		off: vi.fn(),
+		offref: vi.fn(),
 		getAbstractFileByPath: vi.fn(),
 		getFiles: vi.fn(),
+		readBinary: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
+		delete: vi.fn().mockResolvedValue(undefined),
 	},
 	workspace: {
 		on: vi.fn(),
@@ -54,6 +61,21 @@ export class Notice {
 		public message: string,
 		public timeout?: number
 	) {}
+	setMessage(message: string) { this.message = message; }
+	hide() {}
+}
+
+/**
+ * Helper to create a mock TFile instance that passes instanceof checks
+ */
+export function makeTFile(path: string, size: number = 0, mtime: number = Date.now()): TFile {
+	const file = new TFile();
+	file.path = path;
+	file.stat = { mtime, size, ctime: mtime };
+	file.name = path.split('/').pop() || path;
+	file.basename = file.name.replace(/\.[^.]+$/, '');
+	file.extension = file.name.includes('.') ? file.name.split('.').pop() || '' : '';
+	return file;
 }
 
 // Global mocks
