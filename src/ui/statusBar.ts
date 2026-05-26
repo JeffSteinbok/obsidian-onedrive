@@ -1,0 +1,159 @@
+/**
+ * Status bar indicator for sync status
+ */
+
+import { setIcon } from 'obsidian';
+import { logger } from '../utils/logger';
+
+export enum SyncStatus {
+	IDLE = 'idle',
+	SYNCING = 'syncing',
+	ERROR = 'error',
+	DISCONNECTED = 'disconnected',
+}
+
+/**
+ * Status bar manager
+ */
+export class StatusBarManager {
+	private statusBarItem: HTMLElement;
+	private currentStatus: SyncStatus = SyncStatus.DISCONNECTED;
+	private lastSyncTime?: number;
+
+	constructor(statusBarItem: HTMLElement, private onSyncClick?: () => void) {
+		this.statusBarItem = statusBarItem;
+		this.statusBarItem.addClass('onedrive-status-bar');
+		this.statusBarItem.style.cursor = 'pointer';
+		this.statusBarItem.addEventListener('click', () => {
+			if (this.onSyncClick && this.currentStatus !== SyncStatus.SYNCING) {
+				this.onSyncClick();
+			}
+		});
+		this.updateDisplay();
+	}
+
+	/**
+	 * Set sync status
+	 */
+	setStatus(status: SyncStatus): void {
+		this.currentStatus = status;
+		this.updateDisplay();
+		logger.debug('Status bar updated:', status);
+	}
+
+	/**
+	 * Update last sync time
+	 */
+	setLastSyncTime(timestamp: number): void {
+		this.lastSyncTime = timestamp;
+		this.updateDisplay();
+	}
+
+	/**
+	 * Update status bar display
+	 */
+	private updateDisplay(): void {
+		// Clear previous content
+		this.statusBarItem.empty();
+
+		// Create icon element
+		const iconEl = this.statusBarItem.createSpan({ cls: 'onedrive-status-icon' });
+
+		// Create text element
+		const textEl = this.statusBarItem.createSpan({ cls: 'onedrive-status-text' });
+
+		// Set icon and text based on status
+		switch (this.currentStatus) {
+			case SyncStatus.IDLE:
+				setIcon(iconEl, 'cloud');
+				textEl.setText(this.getLastSyncText());
+				this.statusBarItem.removeClass('is-syncing', 'has-error');
+				break;
+
+			case SyncStatus.SYNCING:
+				setIcon(iconEl, 'cloud');
+				textEl.setText('Syncing...');
+				this.statusBarItem.addClass('is-syncing');
+				this.statusBarItem.removeClass('has-error');
+				this.addLoadingAnimation(iconEl);
+				break;
+
+			case SyncStatus.ERROR:
+				setIcon(iconEl, 'cloud-off');
+				textEl.setText('Sync error');
+				this.statusBarItem.addClass('has-error');
+				this.statusBarItem.removeClass('is-syncing');
+				break;
+
+			case SyncStatus.DISCONNECTED:
+				setIcon(iconEl, 'cloud-off');
+				textEl.setText('Not connected');
+				this.statusBarItem.removeClass('is-syncing', 'has-error');
+				break;
+		}
+
+		// Add tooltip
+		this.statusBarItem.setAttribute('aria-label', this.getTooltip());
+	}
+
+	/**
+	 * Get last sync time text
+	 */
+	private getLastSyncText(): string {
+		if (!this.lastSyncTime) {
+			return 'Not synced yet';
+		}
+
+		const now = Date.now();
+		const diff = now - this.lastSyncTime;
+
+		if (diff < 60000) {
+			// Less than 1 minute
+			return 'Synced just now';
+		} else if (diff < 3600000) {
+			// Less than 1 hour
+			const minutes = Math.floor(diff / 60000);
+			return `Synced ${minutes}m ago`;
+		} else if (diff < 86400000) {
+			// Less than 1 day
+			const hours = Math.floor(diff / 3600000);
+			return `Synced ${hours}h ago`;
+		} else {
+			// More than 1 day
+			const days = Math.floor(diff / 86400000);
+			return `Synced ${days}d ago`;
+		}
+	}
+
+	/**
+	 * Get tooltip text
+	 */
+	private getTooltip(): string {
+		switch (this.currentStatus) {
+			case SyncStatus.IDLE:
+				if (this.lastSyncTime) {
+					return `OneDrive: Last synced at ${new Date(this.lastSyncTime).toLocaleTimeString()}`;
+				}
+				return 'OneDrive: Ready to sync';
+
+			case SyncStatus.SYNCING:
+				return 'OneDrive: Syncing files...';
+
+			case SyncStatus.ERROR:
+				return 'OneDrive: Sync error occurred. Check console for details.';
+
+			case SyncStatus.DISCONNECTED:
+				return 'OneDrive: Not connected. Connect in settings.';
+
+			default:
+				return 'OneDrive';
+		}
+	}
+
+	/**
+	 * Add loading animation to icon
+	 */
+	private addLoadingAnimation(iconEl: HTMLElement): void {
+		iconEl.addClass('is-rotating');
+	}
+}

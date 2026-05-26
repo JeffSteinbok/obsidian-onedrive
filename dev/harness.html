@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>OneDrive Sync – Settings Harness</title>
+<style>
+  :root {
+    --background-primary: #ffffff;
+    --background-primary-alt: #f5f6f8;
+    --background-secondary: #f2f3f5;
+    --background-secondary-alt: #e3e5e8;
+    --background-modifier-border: #ddd;
+    --background-modifier-error: #e74c3c;
+    --background-modifier-form-field: #fff;
+    --text-normal: #2e3338;
+    --text-muted: #888;
+    --text-faint: #999;
+    --text-error: #e74c3c;
+    --text-accent: #705dcf;
+    --interactive-normal: #f2f3f5;
+    --interactive-hover: #e9e9e9;
+    --interactive-accent: #7b6cd9;
+    --interactive-accent-hover: #6c5dbe;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    color: var(--text-normal);
+    background: var(--background-primary);
+  }
+
+  body { margin: 0; padding: 24px 20px; display: flex; justify-content: center; }
+
+  #settings-root {
+    max-width: 700px;
+    width: 100%;
+  }
+
+  h2 { font-size: 1.4em; margin: 0 0 2px 0; font-weight: 700; }
+  h3 {
+    font-size: 0.95em;
+    font-weight: 600;
+    margin: 24px 0 4px 0;
+    padding-top: 16px;
+    border-top: none;
+    text-transform: none;
+  }
+
+  .setting-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 16px;
+    margin: 4px 0;
+    border: none;
+    border-radius: 12px;
+    background: var(--background-secondary);
+    gap: 16px;
+  }
+
+  .setting-item-info { flex: 1; min-width: 0; }
+
+  .setting-item-name {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 2px;
+    color: var(--text-normal);
+  }
+
+  .setting-item-description {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .setting-item-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  button {
+    padding: 6px 18px;
+    border: none;
+    border-radius: 6px;
+    background: var(--interactive-normal);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-normal);
+  }
+  button:hover { background: var(--interactive-hover); }
+  button.mod-cta {
+    background: var(--interactive-accent);
+    color: white;
+  }
+  button.mod-cta:hover { background: var(--interactive-accent-hover); }
+  button.mod-warning {
+    background: var(--background-modifier-error);
+    color: white;
+  }
+
+  .extra-setting-button {
+    padding: 4px 8px;
+    font-size: 16px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  select.dropdown {
+    padding: 7px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--background-modifier-form-field);
+    color: var(--text-normal);
+  }
+
+  input[type="text"] {
+    padding: 7px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    font-size: 13px;
+    min-width: 200px;
+    background: var(--background-modifier-form-field);
+    color: var(--text-normal);
+  }
+
+  input[type="range"] {
+    width: 140px;
+    accent-color: var(--interactive-accent);
+  }
+
+  .checkbox-container {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    background: var(--background-secondary-alt);
+    border-radius: 11px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .checkbox-container.is-enabled {
+    background: var(--interactive-accent);
+  }
+  .checkbox-container input {
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    cursor: pointer;
+    margin: 0;
+  }
+  .checkbox-container::after {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: white;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.15s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  }
+  .checkbox-container.is-enabled::after {
+    transform: translateX(18px);
+  }
+
+  a { color: var(--text-accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: var(--background-secondary);
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  p.setting-item-description {
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 0 4px;
+  }
+</style>
+</head>
+<body>
+  <div id="settings-root"></div>
+  <script src="harness.js"></script>
+</body>
+</html>

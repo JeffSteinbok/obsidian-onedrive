@@ -1,0 +1,16 @@
+# Build outputs
+main.js
+*.js.map
+
+# Dependencies
+node_modules/
+
+# Coverage
+coverage/
+
+# Config files
+*.config.mjs
+*.config.js
+
+# Version bump script
+version-bump.mjs

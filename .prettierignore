@@ -1,0 +1,12 @@
+# Build outputs
+main.js
+*.js.map
+
+# Dependencies
+node_modules/
+
+# Coverage
+coverage/
+
+# Obsidian data
+data.json

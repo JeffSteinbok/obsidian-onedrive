@@ -1,0 +1,124 @@
+/**
+ * High-level file operations for OneDrive
+ */
+
+import { OneDriveClient } from './oneDriveClient';
+import { ChunkUploader } from './chunkUpload';
+import { OneDriveItem } from '../types';
+import { logger } from '../utils/logger';
+import { getParentPath } from '../utils/pathUtils';
+
+/**
+ * File operations manager
+ */
+export class FileOperations {
+	private chunkUploader: ChunkUploader;
+
+	constructor(private client: OneDriveClient) {
+		this.chunkUploader = new ChunkUploader(client);
+	}
+
+	/**
+	 * Upload a file to OneDrive
+	 */
+	async uploadFile(
+		remotePath: string,
+		content: ArrayBuffer,
+		onProgress?: (uploaded: number, total: number) => void
+	): Promise<OneDriveItem> {
+		logger.debug('Uploading file:', remotePath);
+
+		// Ensure parent folder exists
+		await this.ensureParentFolder(remotePath);
+
+		// Upload file
+		return this.chunkUploader.uploadFile(remotePath, content, onProgress);
+	}
+
+	/**
+	 * Download a file from OneDrive
+	 */
+	async downloadFile(itemId: string): Promise<ArrayBuffer> {
+		logger.debug('Downloading file:', itemId);
+		return this.client.downloadFile(itemId);
+	}
+
+	/**
+	 * Download file by path
+	 */
+	async downloadFileByPath(remotePath: string): Promise<ArrayBuffer> {
+		logger.debug('Downloading file by path:', remotePath);
+		const item = await this.client.getItemByPath(remotePath);
+		return this.downloadFile(item.id);
+	}
+
+	/**
+	 * Delete a file from OneDrive
+	 */
+	async deleteFile(itemId: string): Promise<void> {
+		logger.debug('Deleting file:', itemId);
+		await this.client.deleteItem(itemId);
+	}
+
+	/**
+	 * Delete file by path
+	 */
+	async deleteFileByPath(remotePath: string): Promise<void> {
+		logger.debug('Deleting file by path:', remotePath);
+		const item = await this.client.getItemByPath(remotePath);
+		await this.deleteFile(item.id);
+	}
+
+	/**
+	 * List all files recursively
+	 */
+	async listAllFiles(folderPath: string = ''): Promise<OneDriveItem[]> {
+		logger.debug('Listing all files in:', folderPath);
+		const allItems = await this.client.listAllItems(folderPath);
+
+		// Filter to only files (exclude folders)
+		return allItems.filter((item) => !!item.file);
+	}
+
+	/**
+	 * Check if file exists
+	 */
+	async fileExists(remotePath: string): Promise<boolean> {
+		return this.client.itemExists(remotePath);
+	}
+
+	/**
+	 * Ensure parent folder exists (create if needed)
+	 */
+	private async ensureParentFolder(remotePath: string): Promise<void> {
+		const parentPath = getParentPath(remotePath);
+
+		if (!parentPath) {
+			// File is in root, no need to create folders
+			return;
+		}
+
+		// Split path into segments and create each folder
+		const segments = parentPath.split('/').filter((s) => s.length > 0);
+		let currentPath = '';
+
+		for (const segment of segments) {
+			const nextPath = currentPath ? `${currentPath}/${segment}` : segment;
+
+			// Check if folder exists, create if not
+			const exists = await this.client.itemExists(nextPath);
+			if (!exists) {
+				await this.client.createFolder(currentPath, segment);
+			}
+
+			currentPath = nextPath;
+		}
+	}
+
+	/**
+	 * Get file metadata
+	 */
+	async getFileMetadata(remotePath: string): Promise<OneDriveItem> {
+		return this.client.getItemByPath(remotePath);
+	}
+}

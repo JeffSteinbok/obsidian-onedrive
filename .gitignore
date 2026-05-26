@@ -1,0 +1,47 @@
+# Logs
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules/
+
+# Build output
+main.js
+*.js.map
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Obsidian
+data.json
+
+# Temp files
+*.tmp
+
+# Environment
+.env
+.env.local
+
+# Lock files (keep package-lock.json for consistency)
+# yarn.lock
+# pnpm-lock.yaml
+
+# Dev harness
+dev/harness.js
+
+# Generated docs
+BUILD_STATUS.md
+OPTION_B_COMPLETE.md
+READY_TO_TEST.md
+INSTALL_TO_REAL_VAULT.md
+IMPLEMENTATION_SUMMARY.md
+SETUP_GUIDE.md
+*.zip

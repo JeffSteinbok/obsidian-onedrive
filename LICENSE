@@ -1,0 +1,49 @@
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   Copyright 2026 Jeff Steinbok
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+================================================================================
+
+NOTICE
+
+This project includes code patterns and implementation approaches from the
+following open-source projects:
+
+1. remotely-save
+   Copyright (c) 2021-present fyears
+   Licensed under the Apache License, Version 2.0
+   https://github.com/remotely-save/remotely-save
+
+   Specific patterns referenced:
+   - OneDrive OAuth authentication and token exchange
+   - Chunked upload implementation for large files
+   - Token storage obfuscation approach
+   - PKCE code generation patterns
+
+2. Home Assistant OneDrive Integration
+   Copyright (c) Home Assistant
+   Licensed under the Apache License, Version 2.0
+   https://github.com/home-assistant/core/tree/dev/homeassistant/components/onedrive
+
+   Specific patterns referenced:
+   - Error decorator pattern for sync errors
+   - Dynamic chunk sizing calculation
+   - Coordinator pattern for sync orchestration
+
+We are grateful to these projects for their excellent open-source work.
+
+================================================================================

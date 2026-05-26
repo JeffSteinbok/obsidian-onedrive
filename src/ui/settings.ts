@@ -1,0 +1,306 @@
+/**
+ * Settings tab for the OneDrive plugin
+ */
+
+import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { PluginSettings, ConflictResolutionStrategy, OneDriveAccessMode } from '../types';
+import { DEFAULT_ONEDRIVE_CLIENT_ID } from '../constants';
+
+// Forward declaration for the plugin type
+interface OneDrivePlugin {
+	settings: PluginSettings;
+	manifest: { version: string };
+	saveSettings(): Promise<void>;
+	authenticate(): Promise<void>;
+	disconnect(): void;
+	triggerManualSync(): Promise<void>;
+}
+
+/**
+ * Settings tab UI
+ */
+export class OneDriveSettingTab extends PluginSettingTab {
+	plugin: OneDrivePlugin;
+
+	constructor(app: App, plugin: OneDrivePlugin) {
+		super(app, plugin as never);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const { containerEl } = this;
+		containerEl.empty();
+
+		const heading = containerEl.createEl('h2', { text: 'OneDrive Sync Settings' });
+		const authorEl = heading.createEl('div');
+		authorEl.style.fontSize = '14px';
+		authorEl.style.fontWeight = 'normal';
+		authorEl.style.color = 'var(--text-muted)';
+		authorEl.style.marginTop = '4px';
+		authorEl.style.marginBottom = '8px';
+		const version = (this.plugin as any).manifest?.version || '';
+		const versionStr = version ? ` — v${version}` : '';
+		authorEl.innerHTML = `by <strong>Jeff Steinbok</strong>${versionStr} — <a href="https://github.com/jeffsteinbok/obsidian-onedrive" target="_blank">GitHub</a>`;
+
+		// Authentication section
+		this.displayAuthSection(containerEl);
+
+		// Access mode section
+		this.displayAccessModeSection(containerEl);
+
+		// Sync configuration section
+		this.displaySyncSection(containerEl);
+
+		// Advanced section
+		this.displayAdvancedSection(containerEl);
+	}
+
+	/**
+	 * Display authentication section
+	 */
+	private displayAuthSection(containerEl: HTMLElement): void {
+		containerEl.createEl('h3', { text: 'Authentication' });
+
+		// Connection status
+		const statusSetting = new Setting(containerEl).setName('Connection status');
+
+		if (this.plugin.settings.connectedUser) {
+			statusSetting.setDesc(
+				`Connected as: ${this.plugin.settings.connectedUser.displayName} (${this.plugin.settings.connectedUser.userPrincipalName})`
+			);
+
+			// Disconnect button
+			statusSetting.addButton((button) =>
+				button
+					.setButtonText('Disconnect')
+					.setWarning()
+					.onClick(async () => {
+						this.plugin.disconnect();
+						new Notice('Disconnected from OneDrive');
+						this.display(); // Refresh settings
+					})
+			);
+
+			// Manual sync button
+			statusSetting.addButton((button) =>
+				button
+					.setButtonText('Sync Now')
+					.setCta()
+					.onClick(async () => {
+						await this.plugin.triggerManualSync();
+					})
+			);
+		} else {
+			statusSetting.setDesc('Not connected');
+
+			// Connect button
+			statusSetting.addButton((button) =>
+				button
+					.setButtonText('Connect to OneDrive')
+					.setCta()
+					.onClick(async () => {
+						try {
+							await this.plugin.authenticate();
+							new Notice('Successfully connected to OneDrive');
+							this.display(); // Refresh settings
+						} catch (error) {
+							new Notice(
+								`Failed to connect: ${error instanceof Error ? error.message : 'Unknown error'}`
+							);
+						}
+					})
+			);
+		}
+	}
+
+	/**
+	 * Display access mode section
+	 */
+	private displayAccessModeSection(containerEl: HTMLElement): void {
+		containerEl.createEl('h3', { text: 'Access Mode' });
+
+		// Warning text right below heading
+		if (this.plugin.settings.connectedUser) {
+			const warningEl = containerEl.createEl('p');
+			warningEl.style.color = 'var(--text-error)';
+			warningEl.style.fontSize = '12px';
+			warningEl.style.fontStyle = 'italic';
+			warningEl.style.margin = '0 0 8px 0';
+			warningEl.textContent = 'Changing access mode requires disconnecting and reconnecting.';
+		}
+
+		// Access mode selector — combined with sync folder path in one group
+		const accessGroup = containerEl.createDiv();
+
+		new Setting(accessGroup)
+			.setName('OneDrive access mode')
+			.setDesc('Choose between secure app folder or full OneDrive access')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption(OneDriveAccessMode.APP_FOLDER, 'App Folder (Recommended)')
+					.addOption(OneDriveAccessMode.FULL_ACCESS, 'Full Access (Advanced)')
+					.setValue(this.plugin.settings.accessMode)
+					.onChange(async (value) => {
+						this.plugin.settings.accessMode = value as OneDriveAccessMode;
+						await this.plugin.saveSettings();
+						this.display(); // Refresh to show/hide options
+					})
+			);
+
+		if (this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS) {
+			new Setting(accessGroup)
+				.setName('Sync folder path')
+				.setDesc('OneDrive folder where your vault will be synced')
+				.addText((text) => {
+					text
+						.setPlaceholder('/Documents/MyVault')
+						.setValue(this.plugin.settings.remotePath || '/Documents/ObsidianVault')
+						.onChange(async (value) => {
+							this.plugin.settings.remotePath = value;
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.style.width = '300px';
+				});
+
+			const descEl = containerEl.createEl('p', { cls: 'setting-item-description' });
+			descEl.style.margin = '0 0 12px 0';
+			descEl.innerHTML = `Sync to any folder, share with others. Requires more permissions.`;
+		} else {
+			const descEl = containerEl.createEl('p', { cls: 'setting-item-description' });
+			descEl.style.margin = '0 0 12px 0';
+			descEl.innerHTML = `Secure isolated folder at <code>/Apps/ObsidianOneDrive/</code>. No configuration needed, but can't sync to existing folders.`;
+		}
+	}
+
+	/**
+	 * Display sync configuration section
+	 */
+	private displaySyncSection(containerEl: HTMLElement): void {
+		containerEl.createEl('h3', { text: 'Sync Configuration' });
+
+		// Sync interval
+		new Setting(containerEl)
+			.setName('Automatic sync interval')
+			.setDesc('Set to 0 for manual sync only (recommended for battery life)')
+			.addSlider((slider) =>
+				slider
+					.setLimits(0, 60, 5)
+					.setValue(this.plugin.settings.syncInterval)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.syncInterval = value;
+						await this.plugin.saveSettings();
+					})
+			)
+			.addExtraButton((button) =>
+				button
+					.setIcon('reset')
+					.setTooltip('Reset to default')
+					.onClick(async () => {
+						this.plugin.settings.syncInterval = 0;
+						await this.plugin.saveSettings();
+						this.display();
+					})
+			);
+
+		// Startup sync delay
+		new Setting(containerEl)
+			.setName('Startup sync delay')
+			.setDesc('Delay before first sync after Obsidian starts (0 = disabled)')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('0', 'Disabled')
+					.addOption('1', '1 second')
+					.addOption('10', '10 seconds (recommended)')
+					.addOption('30', '30 seconds')
+					.setValue(String(this.plugin.settings.startupSyncDelay))
+					.onChange(async (value) => {
+						this.plugin.settings.startupSyncDelay = parseInt(value);
+						await this.plugin.saveSettings();
+					})
+			);
+
+		// Conflict resolution strategy
+		new Setting(containerEl)
+			.setName('Conflict resolution')
+			.setDesc('How to handle files modified both locally and remotely')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption(ConflictResolutionStrategy.LAST_WRITE_WINS, 'Last write wins')
+					.addOption(ConflictResolutionStrategy.CREATE_DUPLICATE, 'Create duplicate')
+					.addOption(ConflictResolutionStrategy.MANUAL, 'Manual (ask each time)')
+					.setValue(this.plugin.settings.conflictResolution)
+					.onChange(async (value) => {
+						this.plugin.settings.conflictResolution = value as ConflictResolutionStrategy;
+						await this.plugin.saveSettings();
+					})
+			);
+	}
+
+	/**
+	 * Display advanced section
+	 */
+	private displayAdvancedSection(containerEl: HTMLElement): void {
+		containerEl.createEl('h3', { text: 'Advanced' });
+
+		// Debug logging
+		new Setting(containerEl)
+			.setName('Enable debug logging')
+			.setDesc('Log detailed information to the console (for troubleshooting)')
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.enableDebugLogging).onChange(async (value) => {
+					this.plugin.settings.enableDebugLogging = value;
+					await this.plugin.saveSettings();
+					new Notice(`Debug logging ${value ? 'enabled' : 'disabled'}`);
+				})
+			);
+
+		// Show remote path as read-only text in App Folder mode
+		if (this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
+			new Setting(containerEl)
+				.setName('Remote path')
+				.setDesc(`Files sync to: /Apps/ObsidianOneDrive`);
+		}
+
+		// Custom client ID toggle
+		new Setting(containerEl)
+			.setName('Use custom client ID')
+			.setDesc('Use your own Azure AD app registration (requires setup)')
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.useCustomClientId).onChange(async (value) => {
+					this.plugin.settings.useCustomClientId = value;
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+
+		if (this.plugin.settings.useCustomClientId) {
+			new Setting(containerEl)
+				.setName('Custom client ID')
+				.setDesc('Your Azure AD Application (client) ID')
+				.addText((text) =>
+					text
+						.setPlaceholder(DEFAULT_ONEDRIVE_CLIENT_ID)
+						.setValue(this.plugin.settings.customClientId || '')
+						.onChange(async (value) => {
+							this.plugin.settings.customClientId = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			const helpDiv = containerEl.createDiv({ cls: 'setting-item-description' });
+			helpDiv.innerHTML = `
+				<p><strong>How to get a custom client ID:</strong></p>
+				<ol>
+					<li>Go to <a href="https://portal.azure.com">Azure Portal</a> → Microsoft Entra ID → App registrations</li>
+					<li>Click "New registration"</li>
+					<li>Name: "Obsidian OneDrive Sync"</li>
+					<li>Supported account types: "Personal Microsoft accounts only"</li>
+					<li>Redirect URI: Leave blank (not needed for device code flow)</li>
+					<li>After registration, copy the Application (client) ID</li>
+					<li>Under Authentication → Enable "Allow public client flows"</li>
+				</ol>
+			`;
+		}
+	}
+}
