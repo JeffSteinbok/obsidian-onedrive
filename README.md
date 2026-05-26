@@ -35,3 +35,56 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 2. Enter the displayed code at [microsoft.com/devicelogin](https://microsoft.com/devicelogin)
 3. Sign in and grant permissions
 4. Done — your vault syncs automatically!
+
+## 🎯 Access Modes
+
+| | App Folder (Default) | Full Access |
+|---|---|---|
+| **Permissions** | Minimal — isolated app folder | Full OneDrive access |
+| **Location** | `/Apps/ObsidianOneDrive/` | Anywhere you choose |
+| **Sharing** | No | Yes — share via OneDrive |
+| **Browseable** | Not easily | Yes — visible in OneDrive web/app |
+| **Best for** | Personal vaults, privacy-focused | Shared/family vaults |
+
+To switch modes: Settings → OneDrive Sync → Access Mode, then disconnect and reconnect.
+
+## 👥 Sharing Your Vault (Full Access Mode)
+
+1. Enable **Full Access** mode and set your sync folder path (e.g., `/Documents/MyVault`)
+2. In OneDrive web/app, share that folder with others ("Can edit")
+3. **They don't need the plugin!** They just use OneDrive's native sync:
+   - **Desktop**: Accept the share → OneDrive syncs locally → open folder as vault in Obsidian
+   - **Mobile**: Accept the share → "Make available offline" in OneDrive app → open as vault
+
+**Tip**: Use "Create duplicate" conflict resolution to avoid overwriting each other's changes.
+
+## 🔐 Security & Privacy
+
+### Permissions
+
+**App Folder Mode** (default): `User.Read`, `Files.ReadWrite.AppFolder`, `offline_access`
+
+**Full Access Mode**: `User.Read`, `Files.ReadWrite.All`, `offline_access`
+
+### Token Storage
+
+Tokens are obfuscated before saving to `data.json` and automatically refreshed before expiry.
+
+## 📱 Mobile Support
+
+This plugin is designed with mobile as a **primary target**:
+
+- **Device Code Flow** — no custom URL schemes or redirects needed
+- **Event-Driven Sync** — only syncs when files change (battery-efficient)
+- **iOS**: Use Safari to complete authentication
+- **Android**: Use Chrome or your default browser
+
+## ⚙️ Configuration
+
+| Setting | Description |
+|---|---|
+| **Sync Interval** | Set to 0 for manual-only sync (recommended for battery) |
+| **Startup Sync Delay** | Delay before first sync after launch (0 = disabled, 10s recommended) |
+| **Conflict Resolution** | Last write wins (default), create duplicate, or manual |
+| **Custom Client ID** | Optional — bring your own Azure AD app |
+| **Debug Logging** | Enable for troubleshooting |
