@@ -36,11 +36,22 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 3. Sign in and grant permissions
 4. Done — your vault syncs automatically!
 
-## 🎯 Access Modes
+### Configuration
+
+| Setting | Description |
+|---|---|
+| **Sync Interval** | Set to 0 for manual-only sync (recommended for battery) |
+| **Startup Sync Delay** | Delay before first sync after launch (0 = disabled, 10s recommended) |
+| **Conflict Resolution** | Last write wins (default), create duplicate, or manual |
+| **Custom Client ID** | Optional — bring your own Azure AD app |
+| **Debug Logging** | Enable for troubleshooting |
+
+## 🔒 Access Modes
 
 | | App Folder (Default) | Full Access |
 |---|---|---|
 | **Permissions** | Minimal — isolated app folder | Full OneDrive access |
+| **Scopes** | `User.Read`, `Files.ReadWrite.AppFolder`, `offline_access` | `User.Read`, `Files.ReadWrite.All`, `offline_access` |
 | **Location** | `/Apps/ObsidianOneDrive/` | Anywhere you choose |
 | **Sharing** | No | Yes — share via OneDrive |
 | **Browseable** | Not easily | Yes — visible in OneDrive web/app |
@@ -58,18 +69,6 @@ To switch modes: Settings → OneDrive Sync → Access Mode, then disconnect and
 
 **Tip**: Use "Create duplicate" conflict resolution to avoid overwriting each other's changes.
 
-## 🔐 Security & Privacy
-
-### Permissions
-
-**App Folder Mode** (default): `User.Read`, `Files.ReadWrite.AppFolder`, `offline_access`
-
-**Full Access Mode**: `User.Read`, `Files.ReadWrite.All`, `offline_access`
-
-### Token Storage
-
-Tokens are obfuscated before saving to `data.json` and automatically refreshed before expiry.
-
 ## 📱 Mobile Support
 
 This plugin is designed with mobile as a **primary target**:
@@ -79,12 +78,4 @@ This plugin is designed with mobile as a **primary target**:
 - **iOS**: Use Safari to complete authentication
 - **Android**: Use Chrome or your default browser
 
-## ⚙️ Configuration
-
-| Setting | Description |
-|---|---|
-| **Sync Interval** | Set to 0 for manual-only sync (recommended for battery) |
-| **Startup Sync Delay** | Delay before first sync after launch (0 = disabled, 10s recommended) |
-| **Conflict Resolution** | Last write wins (default), create duplicate, or manual |
-| **Custom Client ID** | Optional — bring your own Azure AD app |
-| **Debug Logging** | Enable for troubleshooting |
+📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Development](docs/DEVELOPMENT.md)
