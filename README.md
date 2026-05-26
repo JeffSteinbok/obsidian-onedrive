@@ -1,7 +1,7 @@
 # Obsidian OneDrive Sync
 
 [![CI](https://github.com/jeffsteinbok/obsidian-onedrive/actions/workflows/ci.yml/badge.svg)](https://github.com/jeffsteinbok/obsidian-onedrive/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-Plugin-purple)](https://obsidian.md)
 
 Sync your Obsidian vault with **OneDrive Personal/Consumer** accounts using a mobile-friendly, zero-configuration approach.
