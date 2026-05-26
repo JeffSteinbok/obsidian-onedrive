@@ -21,15 +21,16 @@ Sync your Obsidian vault with **OneDrive Personal/Consumer** accounts using a mo
 
 ### Installation
 
-#### From Obsidian Community Plugins (Recommended)
+#### Via BRAT (Recommended for Beta Testing)
 
-1. Open Obsidian Settings → Community Plugins
-2. Click "Browse" and search for "OneDrive Sync"
-3. Click "Install" and then "Enable"
+1. Install the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) from Obsidian Community Plugins
+2. Open BRAT settings → **Add Beta Plugin**
+3. Enter: `JeffSteinbok/obsidian-onedrive`
+4. Click **Add Plugin** — BRAT will install and keep it updated automatically
 
 #### Manual Installation
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/yourusername/obsidian-onedrive/releases)
+1. Download `main.js` and `manifest.json` from the [latest release](https://github.com/JeffSteinbok/obsidian-onedrive/releases)
 2. Create a folder called `obsidian-onedrive` in your vault's `.obsidian/plugins/` directory
 3. Place the downloaded files in that folder
 4. Reload Obsidian
