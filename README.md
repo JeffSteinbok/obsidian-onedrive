@@ -4,6 +4,8 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-Plugin-purple)](https://obsidian.md)
 
+![Social Preview](socialPreview.png)
+
 Sync your Obsidian vault with **OneDrive Personal/Consumer** accounts using a mobile-friendly, zero-configuration approach.
 
 ## ✨ Features
