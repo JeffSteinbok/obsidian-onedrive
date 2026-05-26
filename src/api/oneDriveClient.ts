@@ -178,22 +178,39 @@ export class OneDriveClient {
 	}
 
 	/**
-	 * List folders at a specific path on the user's own drive.
-	 * Always uses /me/drive — ignores shared-folder configuration.
-	 * Used by the folder picker to browse the user's OneDrive.
+	 * List folders at a specific path for the folder picker.
+	 * For the user's own drive, uses /me/drive paths.
+	 * For shared folders, uses /drives/{driveId}/items/{itemId} paths.
 	 */
-	async listFoldersForPicker(folderPath: string = ''): Promise<OneDriveItem[]> {
-		logger.debug('Listing folders for picker:', folderPath);
+	async listFoldersForPicker(
+		folderPath: string = '',
+		sharedDriveId?: string,
+		sharedItemId?: string,
+		relativePathInShared?: string
+	): Promise<OneDriveItem[]> {
+		logger.debug('Listing folders for picker:', { folderPath, sharedDriveId, relativePathInShared });
 
 		try {
 			let apiPath: string;
-			const cleanPath = folderPath.replace(/^\/+|\/+$/g, '');
 
-			if (!cleanPath) {
-				apiPath = '/me/drive/root/children';
+			if (sharedDriveId && sharedItemId) {
+				// Inside a shared folder — use the remote drive
+				const cleanRelative = (relativePathInShared || '').replace(/^\/+|\/+$/g, '');
+				if (!cleanRelative) {
+					apiPath = `/drives/${sharedDriveId}/items/${sharedItemId}/children`;
+				} else {
+					const encoded = encodePathForGraph(cleanRelative);
+					apiPath = `/drives/${sharedDriveId}/items/${sharedItemId}:/${encoded}:/children`;
+				}
 			} else {
-				const encoded = encodePathForGraph(cleanPath);
-				apiPath = `/me/drive/root:/${encoded}:/children`;
+				// User's own drive
+				const cleanPath = folderPath.replace(/^\/+|\/+$/g, '');
+				if (!cleanPath) {
+					apiPath = '/me/drive/root/children';
+				} else {
+					const encoded = encodePathForGraph(cleanPath);
+					apiPath = `/me/drive/root:/${encoded}:/children`;
+				}
 			}
 
 			const response = await retryWithBackoff(() => this.client.api(apiPath).get());

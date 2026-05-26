@@ -135,15 +135,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Add settings tab
 		this.addSettingTab(new OneDriveSettingTab(this.app, this));
 
-		// Start event listeners immediately — create events for known files
-		// are filtered deterministically via sync state, no timing needed
-		if (this.tokenStorage.hasTokens() && this.eventManager) {
+		// Start event listeners and periodic sync only if sync target is configured
+		if (this.tokenStorage.hasTokens() && this.eventManager && this.isSyncConfigured()) {
 			this.eventManager.startListening();
 			this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
 		}
 
-		// Perform startup sync if configured
-		if (this.tokenStorage.hasTokens() && this.settings.startupSyncDelay > 0) {
+		// Perform startup sync if configured and sync target is set
+		if (this.tokenStorage.hasTokens() && this.settings.startupSyncDelay > 0 && this.isSyncConfigured()) {
 			setTimeout(async () => {
 				await this.triggerManualSync();
 			}, this.settings.startupSyncDelay * 1000);
@@ -356,11 +355,26 @@ export default class OneDriveSyncPlugin extends Plugin {
 	}
 
 	/**
+	 * Check if sync target is fully configured
+	 */
+	private isSyncConfigured(): boolean {
+		if (this.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
+			return true; // App folder always has a fixed path
+		}
+		return !!this.settings.remotePath; // Full access needs a folder selected
+	}
+
+	/**
 	 * Trigger manual sync
 	 */
 	async triggerManualSync(): Promise<void> {
 		if (!this.tokenStorage.hasTokens()) {
 			new Notice('Not connected to OneDrive. Please connect in settings.');
+			return;
+		}
+
+		if (!this.isSyncConfigured()) {
+			new Notice('Please select a sync folder in settings first.');
 			return;
 		}
 
@@ -435,13 +449,18 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 	/**
 	 * List folders at a path for the folder picker.
-	 * Always lists from the user's own OneDrive root (not scoped to shared drive).
+	 * Supports both the user's own drive and shared folder navigation.
 	 */
-	async listFoldersForPicker(path: string): Promise<OneDriveItem[]> {
+	async listFoldersForPicker(
+		path: string,
+		sharedDriveId?: string,
+		sharedItemId?: string,
+		relativePathInShared?: string
+	): Promise<OneDriveItem[]> {
 		if (!this.oneDriveClient) {
 			throw new Error('Not connected to OneDrive');
 		}
-		return this.oneDriveClient.listFoldersForPicker(path);
+		return this.oneDriveClient.listFoldersForPicker(path, sharedDriveId, sharedItemId, relativePathInShared);
 	}
 
 	/**

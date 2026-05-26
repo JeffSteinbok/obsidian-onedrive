@@ -13,7 +13,12 @@ export interface FolderSelection {
 	itemId?: string;
 }
 
-type FolderListFn = (path: string) => Promise<OneDriveItem[]>;
+type FolderListFn = (
+	path: string,
+	sharedDriveId?: string,
+	sharedItemId?: string,
+	relativePathInShared?: string
+) => Promise<OneDriveItem[]>;
 
 /**
  * Modal that lets the user browse OneDrive folders and select one
@@ -25,7 +30,7 @@ export class FolderBrowserModal extends Modal {
 	private contentEl_body: HTMLElement;
 	private loading = false;
 
-	// Track the shared folder info if the user navigated into one at the top level
+	// Track the shared folder info if the user navigated into one
 	private sharedDriveId?: string;
 	private sharedItemId?: string;
 	private sharedAtDepth?: number; // depth at which the shared folder was entered
@@ -66,6 +71,15 @@ export class FolderBrowserModal extends Modal {
 
 	private get currentPathStr(): string {
 		return this.currentPath.length > 0 ? this.currentPath.join('/') : '';
+	}
+
+	/**
+	 * Get the relative path within the shared folder (segments after sharedAtDepth + 1)
+	 */
+	private get relativePathInShared(): string {
+		if (this.sharedAtDepth === undefined) return '';
+		const segments = this.currentPath.slice(this.sharedAtDepth + 1);
+		return segments.join('/');
 	}
 
 	private async loadFolder() {
@@ -127,7 +141,7 @@ export class FolderBrowserModal extends Modal {
 						const isShared = !!(this.sharedDriveId && this.sharedItemId);
 						this.onSelect({
 							path: `/${this.currentPath.join('/')}`,
-							name: this.currentPath[this.currentPath.length - 1],
+							name: this.currentPath[this.sharedAtDepth ?? this.currentPath.length - 1],
 							isShared,
 							driveId: this.sharedDriveId,
 							itemId: this.sharedItemId,
@@ -143,7 +157,20 @@ export class FolderBrowserModal extends Modal {
 		loadingEl.style.fontStyle = 'italic';
 
 		try {
-			const folders = await this.listFolders(this.currentPathStr);
+			let folders: OneDriveItem[];
+
+			if (this.sharedDriveId && this.sharedItemId) {
+				// Inside a shared folder — use remote drive API
+				folders = await this.listFolders(
+					this.currentPathStr,
+					this.sharedDriveId,
+					this.sharedItemId,
+					this.relativePathInShared
+				);
+			} else {
+				// User's own drive
+				folders = await this.listFolders(this.currentPathStr);
+			}
 
 			loadingEl.remove();
 
@@ -182,7 +209,7 @@ export class FolderBrowserModal extends Modal {
 				meta.textContent = parts.join(' · ');
 
 				row.onclick = () => {
-					// If this is a shared/remote item at this level, capture its drive info
+					// If this is a shared/remote item, capture its drive info
 					if (isShared && folder.remoteItem) {
 						this.sharedDriveId = folder.remoteItem.parentReference.driveId;
 						this.sharedItemId = folder.remoteItem.id;

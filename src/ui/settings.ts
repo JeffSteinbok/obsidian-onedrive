@@ -15,7 +15,12 @@ interface OneDrivePlugin {
 	authenticate(): Promise<void>;
 	disconnect(): void;
 	triggerManualSync(): Promise<void>;
-	listFoldersForPicker(path: string): Promise<OneDriveItem[]>;
+	listFoldersForPicker(
+		path: string,
+		sharedDriveId?: string,
+		sharedItemId?: string,
+		relativePathInShared?: string
+	): Promise<OneDriveItem[]>;
 	onRemoteFolderChanged(selection: FolderSelection): Promise<void>;
 }
 
@@ -83,16 +88,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						this.display(); // Refresh settings
 					})
 			);
-
-			// Manual sync button
-			statusSetting.addButton((button) =>
-				button
-					.setButtonText('Sync Now')
-					.setCta()
-					.onClick(async () => {
-						await this.plugin.triggerManualSync();
-					})
-			);
 		} else {
 			statusSetting.setDesc('Not connected');
 
@@ -152,6 +147,12 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					})
 			);
 
+		// Determine if sync is ready (folder selected or app-folder mode)
+		const isSyncReady = isConnected && (
+			this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER ||
+			!!this.plugin.settings.remotePath
+		);
+
 		if (this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS) {
 			if (isConnected) {
 				// Show folder picker (browse button + current selection)
@@ -161,14 +162,15 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					? `${currentPath} (shared folder)`
 					: currentPath;
 
-				new Setting(accessGroup)
+				const folderSetting = new Setting(accessGroup)
 					.setName('Sync folder')
 					.setDesc(desc)
 					.addButton((btn) =>
 						btn.setButtonText('Browse...').onClick(() => {
 							const modal = new FolderBrowserModal(
 								this.app,
-								(path: string) => this.plugin.listFoldersForPicker(path),
+								(path, sharedDriveId?, sharedItemId?, relPath?) =>
+									this.plugin.listFoldersForPicker(path, sharedDriveId, sharedItemId, relPath),
 								async (selection: FolderSelection) => {
 									await this.plugin.onRemoteFolderChanged(selection);
 									this.display(); // Refresh to show new selection
@@ -178,6 +180,15 @@ export class OneDriveSettingTab extends PluginSettingTab {
 							modal.open();
 						})
 					);
+
+				// Sync Now button — only when a folder is selected
+				if (this.plugin.settings.remotePath) {
+					folderSetting.addButton((btn) =>
+						btn.setButtonText('Sync Now').setCta().onClick(async () => {
+							await this.plugin.triggerManualSync();
+						})
+					);
+				}
 			} else {
 				// Not connected — just show a note
 				const noteEl = accessGroup.createEl('p', { cls: 'setting-item-description' });
@@ -192,6 +203,16 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			const descEl = containerEl.createEl('p', { cls: 'setting-item-description' });
 			descEl.style.margin = '0 0 12px 0';
 			descEl.innerHTML = `Secure isolated folder at <code>/Apps/ObsidianOneDrive/</code>. No configuration needed, but can't sync to existing folders.`;
+
+			// Sync Now for app-folder mode
+			if (isConnected) {
+				new Setting(accessGroup)
+					.addButton((btn) =>
+						btn.setButtonText('Sync Now').setCta().onClick(async () => {
+							await this.plugin.triggerManualSync();
+						})
+					);
+			}
 		}
 	}
 
