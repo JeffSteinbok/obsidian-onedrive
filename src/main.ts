@@ -108,8 +108,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.addCommand({
 			id: 'disconnect-onedrive',
 			name: 'Disconnect from OneDrive',
-			callback: () => {
-				this.disconnect();
+			callback: async () => {
+				await this.disconnect();
 			},
 		});
 
@@ -283,7 +283,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	/**
 	 * Disconnect from OneDrive
 	 */
-	disconnect(): void {
+	async disconnect(): Promise<void> {
 		logger.info('Disconnecting from OneDrive');
 
 		// Stop event manager
@@ -305,7 +305,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.eventManager = undefined;
 
 		// Save settings
-		this.saveSettings();
+		await this.saveSettings();
 
 		// Update status bar
 		this.updateStatusBar();
