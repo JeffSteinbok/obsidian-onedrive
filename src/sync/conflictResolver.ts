@@ -37,7 +37,7 @@ export class ConflictResolver {
 				return this.resolveCreateDuplicate(conflictInfo);
 
 			case ConflictResolutionStrategy.MANUAL:
-				return { direction: SyncDirection.SKIP };
+				return { direction: SyncDirection.CONFLICT };
 
 			default:
 				logger.warn('Unknown conflict resolution strategy, using last-write-wins');

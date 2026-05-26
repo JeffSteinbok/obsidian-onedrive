@@ -150,6 +150,33 @@ export interface ConflictInfo {
 }
 
 // ============================================================================
+// Conflict Queue Types
+// ============================================================================
+
+export enum ConflictResolution {
+	ACCEPT_CURRENT = 'accept-current',
+	ACCEPT_INCOMING = 'accept-incoming',
+	ACCEPT_BOTH = 'accept-both',
+}
+
+export interface ConflictEntry {
+	id: string;
+	path: string;
+	localModifiedTime: number;
+	remoteModifiedTime: number;
+	localSize: number;
+	remoteSize: number;
+	remoteOneDriveId: string;
+	remoteHash: string;
+	createdAt: number;
+	isTextFile: boolean;
+}
+
+export interface PersistedConflictQueue {
+	entries: ConflictEntry[];
+}
+
+// ============================================================================
 // Plugin Settings Types
 // ============================================================================
 
@@ -173,6 +200,7 @@ export interface PluginSettings {
 	conflictResolution: ConflictResolutionStrategy;
 	startupSyncDelay: number; // Seconds (0 = disabled, 1, 10, 30)
 	syncState?: { lastSyncTime: number; fileStates: Array<[string, FileState]>; deltaLink?: string };
+	conflictQueue?: PersistedConflictQueue;
 
 	// Advanced
 	remotePath?: string; // Custom path (only used with Full Access mode)
@@ -198,6 +226,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	conflictResolution: ConflictResolutionStrategy.LAST_WRITE_WINS,
 	startupSyncDelay: 10, // 10 seconds default
 	syncState: undefined,
+	conflictQueue: undefined,
 
 	// Advanced
 	remotePath: undefined, // Only used with Full Access mode

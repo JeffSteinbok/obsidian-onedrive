@@ -19,6 +19,7 @@ export class StatusBarManager {
 	private statusBarItem: HTMLElement;
 	private currentStatus: SyncStatus = SyncStatus.DISCONNECTED;
 	private lastSyncTime?: number;
+	private conflictCount = 0;
 
 	constructor(statusBarItem: HTMLElement, private onSyncClick?: () => void) {
 		this.statusBarItem = statusBarItem;
@@ -50,6 +51,14 @@ export class StatusBarManager {
 	}
 
 	/**
+	 * Set the number of pending conflicts
+	 */
+	setConflictCount(count: number): void {
+		this.conflictCount = count;
+		this.updateDisplay();
+	}
+
+	/**
 	 * Update status bar display
 	 */
 	private updateDisplay(): void {
@@ -66,7 +75,11 @@ export class StatusBarManager {
 		switch (this.currentStatus) {
 			case SyncStatus.IDLE:
 				setIcon(iconEl, 'cloud');
-				textEl.setText(this.getLastSyncText());
+				if (this.conflictCount > 0) {
+					textEl.setText(`${this.getLastSyncText()} ⚠ ${this.conflictCount} conflict${this.conflictCount === 1 ? '' : 's'}`);
+				} else {
+					textEl.setText(this.getLastSyncText());
+				}
 				this.statusBarItem.removeClass('is-syncing', 'has-error');
 				break;
 
