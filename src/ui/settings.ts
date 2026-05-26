@@ -174,8 +174,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 								async (selection: FolderSelection) => {
 									await this.plugin.onRemoteFolderChanged(selection);
 									this.display(); // Refresh to show new selection
-								},
-								this.plugin.settings.remotePath || undefined
+								}
 							);
 							modal.open();
 						})

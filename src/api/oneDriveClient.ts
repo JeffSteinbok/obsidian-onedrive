@@ -117,8 +117,10 @@ export class OneDriveClient {
 
 			const item = response as OneDriveItem;
 			// Build the full path from parentReference.path + name
-			// parentReference.path is like "/drive/root:" or "/drive/root:/Documents/ObsidianVaults"
+			// parentReference.path may be "/drive/root:" or "/drives/{id}/root:/some/path"
 			let parentPath = item.parentReference?.path || '';
+			// Strip all known Graph API prefixes
+			parentPath = parentPath.replace(/^\/drives\/[^/]+\/root:/, '');
 			parentPath = parentPath.replace(/^\/drive\/root:/, '');
 
 			const fullPath = parentPath ? `${parentPath}/${item.name}` : `/${item.name}`;

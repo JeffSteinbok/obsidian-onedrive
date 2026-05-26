@@ -108,6 +108,10 @@ export class SyncEngine {
 			// 4. Execute operations
 			let completed = 0;
 			const downloadedPaths: string[] = [];
+			// Single persistent notice for progress — updates in place
+			const progressNotice = operations.length >= 5
+				? new Notice(`Syncing: 0/${operations.length} files...`, 0)
+				: null;
 			for (const operation of operations) {
 				await this.executeOperation(operation);
 				completed++;
@@ -116,10 +120,12 @@ export class SyncEngine {
 					downloadedPaths.push(operation.path);
 				}
 
-				if (operations.length > 5) {
-					new Notice(`Syncing: ${completed}/${operations.length} files`, 2000);
+				if (progressNotice) {
+					progressNotice.setMessage(`Syncing: ${completed}/${operations.length} files...`);
 				}
 			}
+			// Dismiss progress notice
+			progressNotice?.hide();
 
 			// Clear any dirty-file entries for paths we just downloaded,
 			// so they don't boomerang back as uploads on the next cycle
@@ -131,8 +137,8 @@ export class SyncEngine {
 			this.stateManager.setDeltaLink(deltaResponse.deltaLink);
 			this.stateManager.setLastSyncTime(Date.now());
 
-				// Clear dirty files only after successful sync
-				this.eventManager.clearDirtyFiles();
+			// Clear dirty files only after successful sync
+			this.eventManager.clearDirtyFiles();
 
 			logger.info('Sync completed successfully');
 			new Notice(`OneDrive sync: ${completed} file${completed === 1 ? '' : 's'} synced`);
@@ -469,9 +475,15 @@ export class SyncEngine {
 	 * Convert remote OneDrive path to vault path
 	 */
 	private remotePathToVaultPath(item: OneDriveItem): string {
-		let fullPath = item.parentReference?.path
-			? `${item.parentReference.path}/${item.name}`
-			: item.name;
+		let fullPath: string;
+		if (item.parentReference?.path && item.name) {
+			fullPath = `${item.parentReference.path}/${item.name}`;
+		} else if (item.name) {
+			fullPath = item.name;
+		} else {
+			// Deleted or root items may lack name/path
+			return '';
+		}
 
 		// Strip OneDrive API prefixes
 		fullPath = fullPath.replace(/^\/drive\/root:/, '');
