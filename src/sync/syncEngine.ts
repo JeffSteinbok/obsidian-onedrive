@@ -109,6 +109,9 @@ export class SyncEngine {
 			this.stateManager.setDeltaLink(deltaResponse.deltaLink);
 			this.stateManager.setLastSyncTime(Date.now());
 
+				// Clear dirty files only after successful sync
+				this.eventManager.clearDirtyFiles();
+
 			logger.info('Sync completed successfully');
 			new Notice(`OneDrive sync: ${completed} file${completed === 1 ? '' : 's'} synced`);
 		} catch (error) {
@@ -156,6 +159,24 @@ export class SyncEngine {
 				}
 				continue;
 			}
+
+				if (change.type === LocalChangeType.RENAME && change.oldPath) {
+					// Rename: upload to new path and delete old path from remote
+					const oldState = this.stateManager.getFileState(change.oldPath);
+					if (oldState?.oneDriveId) {
+						operations.push({
+							path: change.oldPath,
+							direction: SyncDirection.UPLOAD, // "upload" the deletion of old path
+							localState: undefined,
+							remoteState: oldState,
+						});
+					}
+					// Upload the file at its new path
+					operations.push({ path: change.path, direction: SyncDirection.UPLOAD });
+					this.stateManager.removeFileState(change.oldPath);
+					remoteByPath.delete(change.path);
+					continue;
+				}
 
 			if (remoteItem && remoteItem.deleted) {
 				// Local change + remote delete = conflict, re-upload local
@@ -218,15 +239,24 @@ export class SyncEngine {
 
 			if (!item.file) continue; // Skip non-file items
 
-			// On first sync, check if file already exists locally with same content
+			// On first sync, check if file already exists locally
 			if (isFirstSync) {
 				const file = this.app.vault.getAbstractFileByPath(vaultPath);
-				if (file instanceof TFile && file.stat.size === (item.size || 0)) {
-					// Same size — store state and skip (good enough for first sync)
-					this.stateManager.setFileState(vaultPath, this.itemToFileState(item));
-					continue;
+					if (file instanceof TFile) {
+						if (file.stat.size === (item.size || 0)) {
+							// Same size — likely identical, store state and skip
+							this.stateManager.setFileState(vaultPath, this.itemToFileState(item));
+							continue;
+						}
+						// File exists but different size — download remote version
+						operations.push({
+							path: vaultPath,
+							direction: SyncDirection.DOWNLOAD,
+							remoteState: this.itemToFileState(item),
+						});
+						continue;
+					}
 				}
-			}
 
 			// Check if remote actually changed vs our stored state
 			const knownState = this.stateManager.getFileState(vaultPath);
@@ -345,19 +375,24 @@ export class SyncEngine {
 
 		await this.ensureVaultFolders(operation.path);
 
-		// Mark as our own write so event manager ignores the resulting vault events
-		this.eventManager.markOwnWrites([operation.path]);
-
 		// Use adapter API — works for all files including .obsidian/
 		const adapter = this.app.vault.adapter;
 		try {
+			// Mark as our own write so event manager ignores the resulting vault events
+			this.eventManager.markOwnWrites([operation.path]);
 			await adapter.writeBinary(operation.path, content);
 		} catch {
 			const parentPath = getParentPath(operation.path);
 			if (parentPath) {
 				await adapter.mkdir(parentPath);
 			}
-			await adapter.writeBinary(operation.path, content);
+			try {
+				await adapter.writeBinary(operation.path, content);
+			} catch (retryError) {
+				// Write failed — remove from ownWritePaths so future edits aren't suppressed
+				this.eventManager.removeOwnWrite(operation.path);
+				throw retryError;
+			}
 		}
 
 		// Get the mtime Obsidian assigned to the file
@@ -383,7 +418,12 @@ export class SyncEngine {
 		const file = this.app.vault.getAbstractFileByPath(filePath);
 		if (file) {
 			this.eventManager.markOwnWrites([filePath]);
-			await this.app.vault.delete(file);
+			try {
+				await this.app.vault.delete(file);
+			} catch (error) {
+				this.eventManager.removeOwnWrite(filePath);
+				throw error;
+			}
 			logger.debug(`Deleted local file ${filePath}`);
 		}
 		this.stateManager.removeFileState(filePath);

@@ -52,12 +52,25 @@ this.ownWritePaths.add(path);
 }
 
 /**
- * Get and clear dirty files since last sync
+ * Remove a path from own-write suppression (e.g., if write failed)
+ */
+removeOwnWrite(path: string): void {
+this.ownWritePaths.delete(path);
+}
+
+/**
+ * Get dirty files without clearing them.
+ * Call clearDirtyFiles() after successful sync.
  */
 getDirtyFiles(): LocalChange[] {
-const changes = Array.from(this.dirtyFiles.values());
+return Array.from(this.dirtyFiles.values());
+}
+
+/**
+ * Clear all dirty files (call after successful sync)
+ */
+clearDirtyFiles(): void {
 this.dirtyFiles.clear();
-return changes;
 }
 
 /**
