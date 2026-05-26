@@ -57,6 +57,17 @@ export interface OneDriveItem {
 	parentReference?: {
 		id: string;
 		path: string;
+		driveId?: string;
+	};
+	remoteItem?: {
+		id: string;
+		name: string;
+		folder?: { childCount: number };
+		parentReference: {
+			driveId: string;
+			id?: string;
+			path?: string;
+		};
 	};
 }
 
@@ -165,6 +176,9 @@ export interface PluginSettings {
 
 	// Advanced
 	remotePath?: string; // Custom path (only used with Full Access mode)
+	remoteDriveId?: string; // Drive ID for shared/mounted folders
+	remoteItemId?: string; // Item ID of the root folder on the remote drive
+	remoteRootName?: string; // Name of the root folder on the remote drive
 	enableDebugLogging: boolean;
 }
 

@@ -86,6 +86,18 @@ export function sanitizeFileName(name: string): string {
 }
 
 /**
+ * Encode a file path for use in Microsoft Graph API URLs.
+ * Encodes each segment individually so slashes are preserved.
+ */
+export function encodePathForGraph(path: string): string {
+	return path
+		.split('/')
+		.filter((s) => s.length > 0)
+		.map((segment) => encodeURIComponent(segment))
+		.join('/');
+}
+
+/**
  * Convert vault path to OneDrive path
  */
 export function toOneDrivePath(vaultPath: string, remoteRoot: string): string {

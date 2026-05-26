@@ -56,9 +56,8 @@ export class ChunkUploader {
 		logger.debug('Using simple upload for small file');
 
 		try {
-			const encodedPath = encodeURIComponent(filePath);
 			const graphClient = this.client.getClient();
-			const apiPath = this.client.getDriveEndpoint(`${encodedPath}:/content`);
+			const apiPath = this.client.buildEndpoint(filePath, 'content');
 
 			const response = await retryWithBackoff(() =>
 				graphClient.api(apiPath).putStream(content)
@@ -123,9 +122,8 @@ export class ChunkUploader {
 		logger.debug('Creating upload session for:', filePath);
 
 		try {
-			const encodedPath = encodeURIComponent(filePath);
 			const graphClient = this.client.getClient();
-			const apiPath = this.client.getDriveEndpoint(`${encodedPath}:/createUploadSession`);
+			const apiPath = this.client.buildEndpoint(filePath, 'createUploadSession');
 
 			const response = await retryWithBackoff(() =>
 				graphClient.api(apiPath).post({

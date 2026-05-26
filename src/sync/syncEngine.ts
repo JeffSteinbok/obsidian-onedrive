@@ -25,6 +25,9 @@ import { normalizePath, toOneDrivePath, toVaultPath, getParentPath } from '../ut
  * Main sync engine
  */
 export class SyncEngine {
+	private isSharedDrive: boolean;
+	private remoteRootOnDrive: string;
+
 	constructor(
 		private app: App,
 		private fileOps: FileOperations,
@@ -32,8 +35,14 @@ export class SyncEngine {
 		private stateManager: SyncStateManager,
 		private conflictResolver: ConflictResolver,
 		private eventManager: EventManager,
-		private remoteRoot: string = ''
-	) {}
+		private remoteRoot: string = '',
+		remoteRootOnDrive?: string
+	) {
+		this.isSharedDrive = oneDriveClient.isSharedDrive();
+		// For shared drives, delta items have paths relative to the remote drive root,
+		// so we need the folder name on that drive for path stripping
+		this.remoteRootOnDrive = remoteRootOnDrive || remoteRoot;
+	}
 
 	/**
 	 * Perform a sync using delta API + local dirty files
@@ -44,11 +53,15 @@ export class SyncEngine {
 		try {
 			// 1. Get local changes from event manager
 			const localChanges = this.eventManager.getDirtyFiles();
-			logger.debug(`Local changes: ${localChanges.length}`);
+			logger.info(`Local changes: ${localChanges.length} dirty files`);
+			for (const change of localChanges) {
+				logger.info(`  Local: ${change.type} ${change.path}${change.oldPath ? ` (from ${change.oldPath})` : ''}`);
+			}
 
 			// 2. Get remote changes via delta API
 			const deltaLink = this.stateManager.getDeltaLink();
 			const isFirstSync = this.stateManager.isFirstSync();
+			logger.info(`Delta query: isFirstSync=${isFirstSync}, hasDeltaLink=${!!deltaLink}`);
 			const deltaResponse = await this.oneDriveClient.getDelta(deltaLink, this.remoteRoot);
 
 			// Log all raw delta items for debugging
@@ -65,18 +78,27 @@ export class SyncEngine {
 				return !vaultPath.startsWith('.obsidian/');
 			});
 
-			logger.debug(`Delta returned ${deltaResponse.items.length} total items, ${remoteChanges.length} file changes`);
+			logger.info(`Delta returned ${deltaResponse.items.length} total items, ${remoteChanges.length} file changes`);
 			for (const item of remoteChanges) {
 				const vaultPath = this.remotePathToVaultPath(item);
-				logger.debug(`  Remote item: ${vaultPath} deleted=${!!item.deleted} hash=${item.file?.hashes?.quickXorHash || 'none'} id=${item.id}`);
+				logger.info(`  Remote: ${item.deleted ? 'DELETE' : 'CHANGED'} ${vaultPath} (id=${item.id})`);
 			}
 
 			// 3. Plan operations
 			const operations = this.planOperations(localChanges, remoteChanges, isFirstSync);
 
 			logger.info(`Sync plan: ${operations.length} operations`);
+			for (const op of operations) {
+				logger.info(`  Op: ${op.direction} ${op.path}`);
+			}
 
 			if (operations.length === 0) {
+				if (isFirstSync && localChanges.length === 0 && remoteChanges.length === 0) {
+					logger.info('First sync with no local dirty files and empty remote — nothing to do. Edit or create files, then sync again.');
+					new Notice('OneDrive sync: No files to sync. Edit or create files first.');
+				} else {
+					new Notice('OneDrive sync: Everything up to date');
+				}
 				// Store delta link and update sync time even with no changes
 				this.stateManager.setDeltaLink(deltaResponse.deltaLink);
 				this.stateManager.setLastSyncTime(Date.now());
@@ -115,8 +137,9 @@ export class SyncEngine {
 			logger.info('Sync completed successfully');
 			new Notice(`OneDrive sync: ${completed} file${completed === 1 ? '' : 's'} synced`);
 		} catch (error) {
-			logger.error('Sync failed:', error);
-			new Notice('OneDrive sync failed. Check console for details.');
+			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+			logger.error(`Sync failed: ${errorMsg}`, error);
+			new Notice(`OneDrive sync failed: ${errorMsg}`);
 			throw error;
 		}
 	}
@@ -430,9 +453,15 @@ export class SyncEngine {
 	}
 
 	/**
-	 * Convert vault path to remote OneDrive path
+	 * Convert vault path to remote OneDrive path.
+	 * For shared drives, paths are relative to the shared folder (no prefix).
+	 * For non-shared full-access, paths include the remote root.
 	 */
 	private vaultPathToRemotePath(vaultPath: string): string {
+		if (this.isSharedDrive) {
+			// Paths are relative to the shared folder — buildEndpoint handles the base
+			return normalizePath(vaultPath);
+		}
 		return toOneDrivePath(vaultPath, this.remoteRoot);
 	}
 
@@ -444,10 +473,11 @@ export class SyncEngine {
 			? `${item.parentReference.path}/${item.name}`
 			: item.name;
 
-		// Strip OneDrive API prefix if present
+		// Strip OneDrive API prefixes
 		fullPath = fullPath.replace(/^\/drive\/root:/, '');
 		fullPath = fullPath.replace(/^\/drive\/special\/approot:/, '');
+		fullPath = fullPath.replace(/^\/drives\/[^/]+\/root:/, '');
 
-		return toVaultPath(fullPath, this.remoteRoot);
+		return toVaultPath(fullPath, this.remoteRootOnDrive);
 	}
 }

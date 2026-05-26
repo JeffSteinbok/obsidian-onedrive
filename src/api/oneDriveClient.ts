@@ -7,6 +7,7 @@ import { OneDriveAuthProvider } from '../auth/authProvider';
 import { OneDriveItem, OneDriveUser, OneDriveError, OneDriveAccessMode, DeltaResponse } from '../types';
 import { logger } from '../utils/logger';
 import { retryWithBackoff } from '../utils/retry';
+import { encodePathForGraph } from '../utils/pathUtils';
 
 /**
  * OneDrive client for interacting with Microsoft Graph API
@@ -15,6 +16,11 @@ export class OneDriveClient {
 	private client: Client;
 	private authProvider: OneDriveAuthProvider;
 	private accessMode: OneDriveAccessMode;
+
+	// Shared/mounted folder support
+	private remoteDriveId?: string;
+	private remoteItemId?: string;
+	private remoteRootName?: string;
 
 	constructor(authProvider: OneDriveAuthProvider, accessMode: OneDriveAccessMode = OneDriveAccessMode.APP_FOLDER) {
 		this.authProvider = authProvider;
@@ -26,7 +32,79 @@ export class OneDriveClient {
 	}
 
 	/**
-	 * Get the correct drive endpoint based on access mode
+	 * Configure the client for a shared/mounted folder on a different drive
+	 */
+	setRemoteDrive(driveId: string, itemId: string, rootName: string): void {
+		this.remoteDriveId = driveId;
+		this.remoteItemId = itemId;
+		this.remoteRootName = rootName;
+		logger.info(`Configured shared drive: driveId=${driveId}, itemId=${itemId}, rootName=${rootName}`);
+	}
+
+	/**
+	 * Check if operating on a shared/remote drive
+	 */
+	isSharedDrive(): boolean {
+		return !!(this.remoteDriveId && this.remoteItemId);
+	}
+
+	/**
+	 * Build a Graph API endpoint for a given remote path and optional suffix.
+	 * Handles app-folder, full-access, and shared-folder modes.
+	 *
+	 * @param rawPath - Unencoded path relative to the sync root (e.g. "subfolder/file.md").
+	 *                  May be empty for root operations.
+	 * @param suffix  - Optional Graph operation suffix (e.g. "content", "children", "createUploadSession", "delta")
+	 */
+	buildEndpoint(rawPath: string, suffix?: string): string {
+		// Normalize: strip leading/trailing slashes
+		const cleanPath = rawPath.replace(/^\/+|\/+$/g, '');
+		const encodedPath = cleanPath ? encodePathForGraph(cleanPath) : '';
+
+		if (this.isSharedDrive()) {
+			const base = `/drives/${this.remoteDriveId}/items/${this.remoteItemId}`;
+			if (!encodedPath) {
+				// Root of shared folder
+				return suffix ? `${base}/${suffix}` : base;
+			}
+			// Nested path within shared folder
+			return suffix
+				? `${base}:/${encodedPath}:/${suffix}`
+				: `${base}:/${encodedPath}`;
+		}
+
+		if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
+			const base = '/me/drive/special/approot';
+			if (!encodedPath) {
+				return suffix ? `${base}/${suffix}` : base;
+			}
+			return suffix
+				? `${base}:/${encodedPath}:/${suffix}`
+				: `${base}:/${encodedPath}`;
+		}
+
+		// Full access mode (non-shared)
+		const base = '/me/drive/root';
+		if (!encodedPath) {
+			return suffix ? `${base}/${suffix}` : base;
+		}
+		return suffix
+			? `${base}:/${encodedPath}:/${suffix}`
+			: `${base}:/${encodedPath}`;
+	}
+
+	/**
+	 * Build an endpoint for an item by ID, using the correct drive.
+	 */
+	getItemEndpoint(itemId: string): string {
+		if (this.remoteDriveId) {
+			return `/drives/${this.remoteDriveId}/items/${itemId}`;
+		}
+		return `/me/drive/items/${itemId}`;
+	}
+
+	/**
+	 * @deprecated Use buildEndpoint() instead. Kept for backward compat during migration.
 	 */
 	getDriveEndpoint(path: string): string {
 		if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
@@ -60,14 +138,13 @@ export class OneDriveClient {
 	}
 
 	/**
-	 * Get item by path
+	 * Get item by path (relative to sync root)
 	 */
 	async getItemByPath(path: string): Promise<OneDriveItem> {
 		logger.debug('Getting item by path:', path);
 
 		try {
-			const encodedPath = encodeURIComponent(path);
-			const endpoint = this.getDriveEndpoint(encodedPath);
+			const endpoint = this.buildEndpoint(path);
 			const response = await retryWithBackoff(() =>
 				this.client.api(endpoint).get()
 			);
@@ -82,25 +159,13 @@ export class OneDriveClient {
 	}
 
 	/**
-	 * List items in a folder
+	 * List items in a folder (path relative to sync root)
 	 */
 	async listFolder(folderPath: string = ''): Promise<OneDriveItem[]> {
 		logger.debug('Listing folder:', folderPath);
 
 		try {
-			let apiPath: string;
-			if (folderPath === '' || folderPath === '/') {
-				// List root
-				if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
-					apiPath = '/me/drive/special/approot/children';
-				} else {
-					apiPath = '/me/drive/root/children';
-				}
-			} else {
-				const encodedPath = encodeURIComponent(folderPath);
-				apiPath = `${this.getDriveEndpoint(encodedPath)}:/children`;
-			}
-
+			const apiPath = this.buildEndpoint(folderPath, 'children');
 			const response = await retryWithBackoff(() => this.client.api(apiPath).get());
 
 			return response.value as OneDriveItem[];
@@ -108,6 +173,38 @@ export class OneDriveClient {
 			logger.error(`Failed to list folder ${folderPath}:`, error);
 			throw new OneDriveError(
 				`Failed to list folder: ${error instanceof Error ? error.message : 'Unknown error'}`
+			);
+		}
+	}
+
+	/**
+	 * List folders at a specific path on the user's own drive.
+	 * Always uses /me/drive — ignores shared-folder configuration.
+	 * Used by the folder picker to browse the user's OneDrive.
+	 */
+	async listFoldersForPicker(folderPath: string = ''): Promise<OneDriveItem[]> {
+		logger.debug('Listing folders for picker:', folderPath);
+
+		try {
+			let apiPath: string;
+			const cleanPath = folderPath.replace(/^\/+|\/+$/g, '');
+
+			if (!cleanPath) {
+				apiPath = '/me/drive/root/children';
+			} else {
+				const encoded = encodePathForGraph(cleanPath);
+				apiPath = `/me/drive/root:/${encoded}:/children`;
+			}
+
+			const response = await retryWithBackoff(() => this.client.api(apiPath).get());
+			const items = response.value as OneDriveItem[];
+
+			// Return only folders (including shared/mounted shortcuts)
+			return items.filter((item) => item.folder || item.remoteItem?.folder);
+		} catch (error) {
+			logger.error(`Failed to list folders for picker at ${folderPath}:`, error);
+			throw new OneDriveError(
+				`Failed to list folders: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
 		}
 	}
@@ -142,17 +239,7 @@ export class OneDriveClient {
 		logger.debug('Creating folder:', folderPath, folderName);
 
 		try {
-			let apiPath: string;
-			if (folderPath === '' || folderPath === '/') {
-				if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
-					apiPath = '/me/drive/special/approot/children';
-				} else {
-					apiPath = '/me/drive/root/children';
-				}
-			} else {
-				const encodedPath = encodeURIComponent(folderPath);
-				apiPath = `${this.getDriveEndpoint(encodedPath)}:/children`;
-			}
+			const apiPath = this.buildEndpoint(folderPath, 'children');
 
 			const response = await retryWithBackoff(() =>
 				this.client.api(apiPath).post({
@@ -184,7 +271,7 @@ export class OneDriveClient {
 		logger.debug('Deleting item:', itemId);
 
 		try {
-			await retryWithBackoff(() => this.client.api(`/me/drive/items/${itemId}`).delete());
+			await retryWithBackoff(() => this.client.api(this.getItemEndpoint(itemId)).delete());
 			logger.debug('Item deleted successfully');
 		} catch (error) {
 			logger.error(`Failed to delete item ${itemId}:`, error);
@@ -203,7 +290,7 @@ export class OneDriveClient {
 		try {
 			// Get file metadata first to get download URL
 			const item: OneDriveItem = await retryWithBackoff(() =>
-				this.client.api(`/me/drive/items/${itemId}`).get()
+				this.client.api(this.getItemEndpoint(itemId)).get()
 			);
 
 			if (!item['@microsoft.graph.downloadUrl']) {
@@ -257,17 +344,17 @@ export class OneDriveClient {
 			if (deltaLink) {
 				// Use stored delta link for incremental changes
 				nextUrl = deltaLink;
+			} else if (this.isSharedDrive()) {
+				// Shared folder — delta scoped to the remote item
+				nextUrl = `/drives/${this.remoteDriveId}/items/${this.remoteItemId}/delta`;
+			} else if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
+				nextUrl = '/me/drive/special/approot/delta';
+			} else if (remotePath) {
+				const cleanPath = remotePath.replace(/^\//, '');
+				const encoded = encodePathForGraph(cleanPath);
+				nextUrl = `/me/drive/root:/${encoded}:/delta`;
 			} else {
-				// Initial sync — scope to the correct folder
-				if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
-					nextUrl = '/me/drive/special/approot/delta';
-				} else if (remotePath) {
-					// Scope delta to just the sync folder, not entire OneDrive
-					const encodedPath = remotePath.replace(/^\//, '');
-					nextUrl = `/me/drive/root:/${encodedPath}:/delta`;
-				} else {
-					nextUrl = '/me/drive/root/delta';
-				}
+				nextUrl = '/me/drive/root/delta';
 			}
 
 			// Page through all results
@@ -297,7 +384,7 @@ export class OneDriveClient {
 			if (deltaLink && error instanceof Error &&
 				(error.message.includes('resyncRequired') || error.message.includes('invalidToken'))) {
 				logger.warn('Delta token expired, performing full resync');
-				return this.getDelta(); // Retry without token
+				return this.getDelta(undefined, remotePath); // Retry without token
 			}
 
 			logger.error('Failed to get delta:', error);

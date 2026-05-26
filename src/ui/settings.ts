@@ -3,8 +3,9 @@
  */
 
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
-import { PluginSettings, ConflictResolutionStrategy, OneDriveAccessMode } from '../types';
+import { PluginSettings, ConflictResolutionStrategy, OneDriveAccessMode, OneDriveItem } from '../types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID } from '../constants';
+import { FolderBrowserModal, FolderSelection } from './folderBrowserModal';
 
 // Forward declaration for the plugin type
 interface OneDrivePlugin {
@@ -14,6 +15,8 @@ interface OneDrivePlugin {
 	authenticate(): Promise<void>;
 	disconnect(): void;
 	triggerManualSync(): Promise<void>;
+	listFoldersForPicker(path: string): Promise<OneDriveItem[]>;
+	onRemoteFolderChanged(selection: FolderSelection): Promise<void>;
 }
 
 /**
@@ -119,8 +122,10 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	private displayAccessModeSection(containerEl: HTMLElement): void {
 		containerEl.createEl('h3', { text: 'Access Mode' });
 
+		const isConnected = !!this.plugin.settings.connectedUser;
+
 		// Warning text right below heading
-		if (this.plugin.settings.connectedUser) {
+		if (isConnected) {
 			const warningEl = containerEl.createEl('p');
 			warningEl.style.color = 'var(--text-error)';
 			warningEl.style.fontSize = '12px';
@@ -129,7 +134,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			warningEl.textContent = 'Changing access mode requires disconnecting and reconnecting.';
 		}
 
-		// Access mode selector — combined with sync folder path in one group
+		// Access mode selector
 		const accessGroup = containerEl.createDiv();
 
 		new Setting(accessGroup)
@@ -148,19 +153,37 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			);
 
 		if (this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS) {
-			new Setting(accessGroup)
-				.setName('Sync folder path')
-				.setDesc('OneDrive folder where your vault will be synced')
-				.addText((text) => {
-					text
-						.setPlaceholder('/Documents/MyVault')
-						.setValue(this.plugin.settings.remotePath || '/Documents/ObsidianVault')
-						.onChange(async (value) => {
-							this.plugin.settings.remotePath = value;
-							await this.plugin.saveSettings();
-						});
-					text.inputEl.style.width = '300px';
-				});
+			if (isConnected) {
+				// Show folder picker (browse button + current selection)
+				const currentPath = this.plugin.settings.remotePath || '(not selected)';
+				const isShared = !!this.plugin.settings.remoteDriveId;
+				const desc = isShared
+					? `${currentPath} (shared folder)`
+					: currentPath;
+
+				new Setting(accessGroup)
+					.setName('Sync folder')
+					.setDesc(desc)
+					.addButton((btn) =>
+						btn.setButtonText('Browse...').onClick(() => {
+							const modal = new FolderBrowserModal(
+								this.app,
+								(path: string) => this.plugin.listFoldersForPicker(path),
+								async (selection: FolderSelection) => {
+									await this.plugin.onRemoteFolderChanged(selection);
+									this.display(); // Refresh to show new selection
+								},
+								this.plugin.settings.remotePath || undefined
+							);
+							modal.open();
+						})
+					);
+			} else {
+				// Not connected — just show a note
+				const noteEl = accessGroup.createEl('p', { cls: 'setting-item-description' });
+				noteEl.style.margin = '0 0 12px 0';
+				noteEl.textContent = 'Connect to OneDrive first, then select a sync folder.';
+			}
 
 			const descEl = containerEl.createEl('p', { cls: 'setting-item-description' });
 			descEl.style.margin = '0 0 12px 0';
