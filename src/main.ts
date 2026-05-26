@@ -4,7 +4,7 @@
  */
 
 import { Plugin, Notice } from 'obsidian';
-import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode } from './types';
+import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID, ONEDRIVE_PATHS } from './constants';
 import { logger } from './utils/logger';
 
@@ -27,6 +27,7 @@ import { EventManager } from './sync/eventManager';
 import { OneDriveSettingTab } from './ui/settings';
 import { StatusBarManager, SyncStatus } from './ui/statusBar';
 import { DeviceCodeModal } from './ui/authModal';
+import { FolderSelection } from './ui/folderBrowserModal';
 
 /**
  * Main plugin class
@@ -134,15 +135,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Add settings tab
 		this.addSettingTab(new OneDriveSettingTab(this.app, this));
 
-		// Start event listeners immediately — create events for known files
-		// are filtered deterministically via sync state, no timing needed
-		if (this.tokenStorage.hasTokens() && this.eventManager) {
+		// Start event listeners and periodic sync only if sync target is configured
+		if (this.tokenStorage.hasTokens() && this.eventManager && this.isSyncConfigured()) {
 			this.eventManager.startListening();
 			this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
 		}
 
-		// Perform startup sync if configured
-		if (this.tokenStorage.hasTokens() && this.settings.startupSyncDelay > 0) {
+		// Perform startup sync if configured and sync target is set
+		if (this.tokenStorage.hasTokens() && this.settings.startupSyncDelay > 0 && this.isSyncConfigured()) {
 			setTimeout(async () => {
 				await this.triggerManualSync();
 			}, this.settings.startupSyncDelay * 1000);
@@ -167,7 +167,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 * Initialize authenticated components (API clients, sync engine)
 	 */
 	private async initializeAuthenticatedComponents() {
-		logger.debug('Initializing authenticated components');
+		logger.info(`Initializing authenticated components (mode: ${this.settings.accessMode})`);
 
 		try {
 			// Initialize auth provider
@@ -185,13 +185,30 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.oneDriveClient = new OneDriveClient(this.authProvider, this.settings.accessMode);
 			this.fileOps = new FileOperations(this.oneDriveClient);
 
+			// Configure shared drive if previously selected
+			if (this.settings.remoteDriveId && this.settings.remoteItemId && this.settings.remoteRootName) {
+				this.oneDriveClient.setRemoteDrive(
+					this.settings.remoteDriveId,
+					this.settings.remoteItemId,
+					this.settings.remoteRootName
+				);
+			}
+
 			// Initialize event manager — listening starts after initial sync
 			this.eventManager = new EventManager(this.app, async () => {
 				await this.performSync();
 			}, this.syncStateManager);
 
 			// Initialize sync engine
-			const remoteRoot = this.settings.remotePath || ONEDRIVE_PATHS.APP_FOLDER;
+			const isShared = this.oneDriveClient.isSharedDrive();
+			// For shared drives, upload paths are relative to the shared folder (no prefix needed).
+			// For non-shared, prepend the remote path.
+			const remoteRoot = isShared ? '' : (this.settings.remotePath || ONEDRIVE_PATHS.APP_FOLDER);
+			// For path stripping of delta responses, use the actual path on the remote drive
+			const remoteRootOnDrive = isShared
+				? (this.settings.remoteRootPath || `/${this.settings.remoteRootName}`)
+				: undefined;
+
 			this.syncEngine = new SyncEngine(
 				this.app,
 				this.fileOps,
@@ -199,7 +216,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.syncStateManager,
 				this.conflictResolver,
 				this.eventManager,
-				remoteRoot
+				remoteRoot,
+				remoteRootOnDrive
 			);
 
 			// Get user info to display in settings
@@ -223,6 +241,16 @@ export default class OneDriveSyncPlugin extends Plugin {
 		logger.info('Starting authentication flow');
 
 		try {
+			// Cancel any in-progress polling from a previous auth attempt
+			this.deviceCodeClient.cancelPolling();
+
+			// Recreate the device code client so it uses the current access mode
+			const clientId = this.settings.useCustomClientId
+				? this.settings.customClientId || DEFAULT_ONEDRIVE_CLIENT_ID
+				: DEFAULT_ONEDRIVE_CLIENT_ID;
+			this.deviceCodeClient = new DeviceCodeFlowClient(clientId, this.settings.accessMode);
+			logger.info(`Authenticating with access mode: ${this.settings.accessMode}`);
+
 			let modalClosed = false;
 			let userCompleted = false;
 
@@ -266,6 +294,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 			// Initialize authenticated components
 			await this.initializeAuthenticatedComponents();
 
+			// Start event listeners and periodic sync (not started in onload when no tokens exist)
+			if (this.eventManager) {
+				this.eventManager.startListening();
+				this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
+			}
+
 			// Update status bar
 			this.updateStatusBar();
 
@@ -286,6 +320,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 	async disconnect(): Promise<void> {
 		logger.info('Disconnecting from OneDrive');
 
+		// Cancel any in-progress auth polling
+		this.deviceCodeClient.cancelPolling();
+
 		// Stop event manager
 		if (this.eventManager) {
 			this.eventManager.stopListening();
@@ -294,8 +331,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Clear tokens
 		this.tokenStorage.clearTokens();
 
-		// Clear user info
+		// Clear user info and shared drive settings
 		this.settings.connectedUser = undefined;
+		this.settings.remoteDriveId = undefined;
+		this.settings.remoteItemId = undefined;
+		this.settings.remoteRootName = undefined;
+		this.settings.remoteRootPath = undefined;
 
 		// Clear components
 		this.authProvider = undefined;
@@ -315,11 +356,26 @@ export default class OneDriveSyncPlugin extends Plugin {
 	}
 
 	/**
+	 * Check if sync target is fully configured
+	 */
+	private isSyncConfigured(): boolean {
+		if (this.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
+			return true; // App folder always has a fixed path
+		}
+		return !!this.settings.remotePath; // Full access needs a folder selected
+	}
+
+	/**
 	 * Trigger manual sync
 	 */
 	async triggerManualSync(): Promise<void> {
 		if (!this.tokenStorage.hasTokens()) {
 			new Notice('Not connected to OneDrive. Please connect in settings.');
+			return;
+		}
+
+		if (!this.isSyncConfigured()) {
+			new Notice('Please select a sync folder in settings first.');
 			return;
 		}
 
@@ -390,6 +446,80 @@ export default class OneDriveSyncPlugin extends Plugin {
 		} else {
 			this.statusBarManager.setStatus(SyncStatus.DISCONNECTED);
 		}
+	}
+
+	/**
+	 * List folders at a path for the folder picker.
+	 * Supports both the user's own drive and shared folder navigation.
+	 */
+	async listFoldersForPicker(
+		path: string,
+		sharedDriveId?: string,
+		sharedItemId?: string,
+		relativePathInShared?: string
+	): Promise<OneDriveItem[]> {
+		if (!this.oneDriveClient) {
+			throw new Error('Not connected to OneDrive');
+		}
+		return this.oneDriveClient.listFoldersForPicker(path, sharedDriveId, sharedItemId, relativePathInShared);
+	}
+
+	/**
+	 * Called when the user selects a new remote folder from the picker.
+	 * Stores settings, clears stale sync state, and reconfigures components.
+	 */
+	async onRemoteFolderChanged(selection: FolderSelection): Promise<void> {
+		logger.info('Remote folder changed:', selection);
+
+		const oldPath = this.settings.remotePath;
+		const oldDriveId = this.settings.remoteDriveId;
+
+		this.settings.remotePath = selection.path;
+
+		if (selection.isShared && selection.driveId && selection.itemId) {
+			this.settings.remoteDriveId = selection.driveId;
+			this.settings.remoteItemId = selection.itemId;
+			this.settings.remoteRootName = selection.name;
+
+			// Resolve the actual path on the remote drive for delta path stripping
+			if (this.oneDriveClient) {
+				try {
+					const resolvedPath = await this.oneDriveClient.resolveSharedFolderPath(
+						selection.driveId, selection.itemId
+					);
+					this.settings.remoteRootPath = resolvedPath;
+					logger.info(`Resolved shared folder path on remote drive: ${resolvedPath}`);
+				} catch (error) {
+					logger.warn('Could not resolve shared folder path, using name fallback:', error);
+					this.settings.remoteRootPath = `/${selection.name}`;
+				}
+			}
+		} else {
+			this.settings.remoteDriveId = undefined;
+			this.settings.remoteItemId = undefined;
+			this.settings.remoteRootName = undefined;
+			this.settings.remoteRootPath = undefined;
+		}
+
+		// Clear stale sync state when the target folder changes
+		if (oldPath !== selection.path || oldDriveId !== this.settings.remoteDriveId) {
+			this.syncStateManager.clearState();
+			logger.info('Cleared sync state due to remote folder change');
+		}
+
+		await this.saveSettings();
+
+		// Reinitialize components with the new folder config
+		if (this.tokenStorage.hasTokens()) {
+			await this.initializeAuthenticatedComponents();
+
+			if (this.eventManager) {
+				this.eventManager.startListening();
+				this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
+			}
+		}
+
+		new Notice(`Sync folder set to: ${selection.path}${selection.isShared ? ' (shared)' : ''}`);
 	}
 
 	/**

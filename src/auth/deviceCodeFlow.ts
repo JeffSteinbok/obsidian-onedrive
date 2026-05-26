@@ -22,10 +22,19 @@ import { parseHttpError } from '../utils/errors';
 import { sleep } from '../utils/retry';
 
 export class DeviceCodeFlowClient {
+	private cancelled = false;
+
 	constructor(
 		private clientId: string = DEFAULT_ONEDRIVE_CLIENT_ID,
 		private accessMode: OneDriveAccessMode = OneDriveAccessMode.APP_FOLDER
 	) {}
+
+	/**
+	 * Cancel any in-progress polling loop
+	 */
+	cancelPolling(): void {
+		this.cancelled = true;
+	}
 
 	/**
 	 * Request a device code from Microsoft
@@ -85,10 +94,16 @@ export class DeviceCodeFlowClient {
 	): Promise<TokenResponse> {
 		logger.debug('Starting token polling', { interval, expiresIn });
 
+		this.cancelled = false;
 		const startTime = Date.now();
 		const expiresAt = startTime + expiresIn * 1000;
 
 		while (Date.now() < expiresAt) {
+			if (this.cancelled) {
+				logger.info('Token polling cancelled');
+				throw new AuthenticationError('Authentication cancelled');
+			}
+
 			try {
 				const response = await requestUrl({
 					url: OAUTH_ENDPOINTS.TOKEN,
@@ -101,6 +116,7 @@ export class DeviceCodeFlowClient {
 						client_id: this.clientId,
 						device_code: deviceCode,
 					}).toString(),
+					throw: false,
 				});
 
 				if (response.status === 200) {
@@ -109,9 +125,9 @@ export class DeviceCodeFlowClient {
 					return data;
 				}
 
-				// Handle error responses
+				// Handle error responses (including 400s from Obsidian's requestUrl)
 				const errorData = response.json;
-				const errorCode = errorData.error;
+				const errorCode = errorData?.error;
 
 				if (errorCode === 'authorization_pending') {
 					// User hasn't completed auth yet, continue polling
@@ -127,7 +143,7 @@ export class DeviceCodeFlowClient {
 					throw new AuthenticationError('Device code expired. Please try again.');
 				} else {
 					throw new AuthenticationError(
-						`Authentication failed: ${errorData.error_description || errorCode}`
+						`Authentication failed: ${errorData?.error_description || errorCode || `HTTP ${response.status}`}`
 					);
 				}
 			} catch (error) {
@@ -137,7 +153,6 @@ export class DeviceCodeFlowClient {
 				// Network or temporary error - log but continue polling
 				logger.warn('Network error during token polling, will retry:', error);
 				if (onPending) onPending();
-				// Continue to next iteration instead of failing
 			}
 
 			// Wait before next poll
