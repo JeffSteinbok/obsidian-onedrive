@@ -10,6 +10,9 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 
 📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Development](docs/DEVELOPMENT.md)
 
+> [!IMPORTANT]
+> While I do work for Microsoft and on the OneDrive team, this plugin is in no way an official Microsoft plugin. Just a thing I needed.
+
 ## ✨ Features
 
 - **Zero-Configuration** — No Azure AD app registration. Just click connect and authenticate.
