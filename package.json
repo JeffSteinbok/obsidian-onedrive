@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-onedrive",
-	"version": "0.1.4",
+	"version": "0.3.0",
 	"description": "Sync your Obsidian vault with OneDrive Personal/Consumer",
 	"main": "main.js",
 	"scripts": {
@@ -27,12 +27,11 @@
 	"author": "",
 	"license": "Apache-2.0",
 	"devDependencies": {
-		"@types/diff": "^7.0.2",
 		"@types/node": "^20.10.0",
 		"@typescript-eslint/eslint-plugin": "^7.0.0",
 		"@typescript-eslint/parser": "^7.0.0",
-		"@vitest/coverage-v8": "^1.2.0",
 		"@vitest/ui": "^1.2.0",
+		"@vitest/coverage-v8": "^1.2.0",
 		"builtin-modules": "^3.3.0",
 		"esbuild": "^0.20.0",
 		"eslint": "^8.56.0",
@@ -45,8 +44,7 @@
 		"vitest": "^1.2.0"
 	},
 	"dependencies": {
-		"@azure/msal-node": "^2.6.0",
 		"@microsoft/microsoft-graph-client": "^3.0.7",
-		"diff": "^9.0.0"
+		"@azure/msal-node": "^2.6.0"
 	}
 }
