@@ -3,7 +3,7 @@
  * Syncs vault with OneDrive Personal/Consumer accounts using Device Code Flow
  */
 
-import { Plugin, Notice } from 'obsidian';
+import { Plugin, Notice, TFile } from 'obsidian';
 import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID, ONEDRIVE_PATHS } from './constants';
 import { logger } from './utils/logger';
@@ -133,6 +133,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 			name: 'Show sync conflicts',
 			callback: () => {
 				this.activateConflictView();
+			},
+		});
+
+		this.addCommand({
+			id: 'dev-create-test-conflict',
+			name: 'DEV: Create test conflict (for testing conflict UI)',
+			callback: async () => {
+				await this.createTestConflict();
 			},
 		});
 
@@ -583,6 +591,58 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private updateConflictCount(): void {
 		const count = this.conflictQueue?.count ?? 0;
 		this.statusBarManager?.setConflictCount(count);
+	}
+
+	/**
+	 * DEV: Create a fake conflict for testing the conflict resolution UI.
+	 * Picks the active file (or first .md file) and fabricates a
+	 * simulated "incoming" version with some changes.
+	 */
+	private async createTestConflict(): Promise<void> {
+		if (!this.conflictQueue) {
+			// Initialize a standalone queue if not authenticated
+			if (!this.eventManager) {
+				this.eventManager = new EventManager(this.app, async () => {}, this.syncStateManager);
+			}
+			this.conflictQueue = new ConflictQueue(this.app, this.syncStateManager, this.eventManager);
+			this.conflictQueue.load(this.settings.conflictQueue);
+		}
+
+		// Pick the active file, or fall back to the first .md file
+		const activeFile = this.app.workspace.getActiveFile?.();
+		const file = activeFile instanceof TFile
+			? activeFile
+			: this.app.vault.getFiles().find((f: TFile) => f.extension === 'md');
+
+		if (!file) {
+			new Notice('OneDrive DEV: No file found to create a test conflict');
+			return;
+		}
+
+		const localContent = await this.app.vault.readBinary(file);
+		const decoder = new TextDecoder('utf-8');
+		const localText = decoder.decode(localContent);
+
+		// Fabricate a fake "incoming" version
+		const fakeRemoteText = localText
+			+ '\n\n---\n_This line was added on another device (simulated incoming change)_\n';
+		const fakeRemoteContent = new TextEncoder().encode(fakeRemoteText).buffer;
+
+		await this.conflictQueue.add(
+			file.path,
+			localContent,
+			fakeRemoteContent,
+			file.stat.mtime,
+			Date.now() - 60000, // pretend remote was modified 1 minute ago
+			`dev-test-${Date.now()}`,
+			'fake-hash'
+		);
+
+		await this.saveSettings();
+		this.updateConflictCount();
+		await this.activateConflictView();
+
+		new Notice(`OneDrive DEV: Created test conflict for "${file.path}"`);
 	}
 
 	/**
