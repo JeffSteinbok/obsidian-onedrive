@@ -3,7 +3,7 @@
  * Syncs vault with OneDrive Personal/Consumer accounts using Device Code Flow
  */
 
-import { Plugin, Notice } from 'obsidian';
+import { Plugin, Notice, TFile } from 'obsidian';
 import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID, ONEDRIVE_PATHS } from './constants';
 import { logger } from './utils/logger';
@@ -21,6 +21,7 @@ import { FileOperations } from './api/fileOperations';
 import { SyncEngine } from './sync/syncEngine';
 import { SyncStateManager } from './sync/syncState';
 import { ConflictResolver } from './sync/conflictResolver';
+import { ConflictQueue } from './sync/conflictQueue';
 import { EventManager } from './sync/eventManager';
 
 // UI
@@ -28,6 +29,7 @@ import { OneDriveSettingTab } from './ui/settings';
 import { StatusBarManager, SyncStatus } from './ui/statusBar';
 import { DeviceCodeModal } from './ui/authModal';
 import { FolderSelection } from './ui/folderBrowserModal';
+import { ConflictView, CONFLICT_VIEW_TYPE } from './ui/conflictView';
 
 /**
  * Main plugin class
@@ -44,6 +46,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private syncEngine?: SyncEngine;
 	private syncStateManager: SyncStateManager;
 	private conflictResolver: ConflictResolver;
+	private conflictQueue?: ConflictQueue;
 	private eventManager?: EventManager;
 
 	// UI components
@@ -125,6 +128,33 @@ export default class OneDriveSyncPlugin extends Plugin {
 			},
 		});
 
+		this.addCommand({
+			id: 'show-conflicts',
+			name: 'Show sync conflicts',
+			callback: () => {
+				this.activateConflictView();
+			},
+		});
+
+		this.addCommand({
+			id: 'dev-create-test-conflict',
+			name: 'DEV: Create test conflict (for testing conflict UI)',
+			callback: async () => {
+				await this.createTestConflict();
+			},
+		});
+
+		// Register conflict view
+		this.registerView(CONFLICT_VIEW_TYPE, (leaf) => {
+			if (!this.conflictQueue) {
+				throw new Error('Conflict queue not initialized');
+			}
+			return new ConflictView(leaf, this.conflictQueue, async () => {
+				await this.saveSettings();
+				this.updateConflictCount();
+			});
+		});
+
 		// Add status bar item
 		const statusBarItem = this.addStatusBarItem();
 		this.statusBarManager = new StatusBarManager(statusBarItem, () => {
@@ -199,6 +229,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 				await this.performSync();
 			}, this.syncStateManager);
 
+			// Initialize conflict queue
+			this.conflictQueue = new ConflictQueue(this.app, this.syncStateManager, this.eventManager);
+			this.conflictQueue.load(this.settings.conflictQueue);
+
 			// Initialize sync engine
 			const isShared = this.oneDriveClient.isSharedDrive();
 			// For shared drives, upload paths are relative to the shared folder (no prefix needed).
@@ -217,7 +251,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.conflictResolver,
 				this.eventManager,
 				remoteRoot,
-				remoteRootOnDrive
+				remoteRootOnDrive,
+				this.conflictQueue
 			);
 
 			// Get user info to display in settings
@@ -418,6 +453,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.statusBarManager?.setLastSyncTime(now);
 			this.statusBarManager?.setStatus(SyncStatus.IDLE);
 
+			// Update conflict count and reveal view if there are new conflicts
+			this.updateConflictCount();
+			if (this.conflictQueue && this.conflictQueue.count > 0) {
+				this.activateConflictView();
+			}
+
 			// Save sync state
 			await this.saveSettings();
 
@@ -523,6 +564,88 @@ export default class OneDriveSyncPlugin extends Plugin {
 	}
 
 	/**
+	 * Activate (or reveal) the conflict resolution view
+	 */
+	private async activateConflictView(): Promise<void> {
+		const existing = this.app.workspace.getLeavesOfType(CONFLICT_VIEW_TYPE);
+		if (existing.length > 0) {
+			this.app.workspace.revealLeaf(existing[0]);
+			// Re-render in case queue changed
+			const view = existing[0].view;
+			if (view instanceof ConflictView) {
+				await view.renderView();
+			}
+			return;
+		}
+
+		const leaf = this.app.workspace.getRightLeaf(false);
+		if (leaf) {
+			await leaf.setViewState({ type: CONFLICT_VIEW_TYPE, active: true });
+			this.app.workspace.revealLeaf(leaf);
+		}
+	}
+
+	/**
+	 * Update the conflict count in the status bar
+	 */
+	private updateConflictCount(): void {
+		const count = this.conflictQueue?.count ?? 0;
+		this.statusBarManager?.setConflictCount(count);
+	}
+
+	/**
+	 * DEV: Create a fake conflict for testing the conflict resolution UI.
+	 * Picks the active file (or first .md file) and fabricates a
+	 * simulated "incoming" version with some changes.
+	 */
+	private async createTestConflict(): Promise<void> {
+		if (!this.conflictQueue) {
+			// Initialize a standalone queue if not authenticated
+			if (!this.eventManager) {
+				this.eventManager = new EventManager(this.app, async () => {}, this.syncStateManager);
+			}
+			this.conflictQueue = new ConflictQueue(this.app, this.syncStateManager, this.eventManager);
+			this.conflictQueue.load(this.settings.conflictQueue);
+		}
+
+		// Pick the active file, or fall back to the first .md file
+		const activeFile = this.app.workspace.getActiveFile?.();
+		const file = activeFile instanceof TFile
+			? activeFile
+			: this.app.vault.getFiles().find((f: TFile) => f.extension === 'md');
+
+		if (!file) {
+			new Notice('OneDrive DEV: No file found to create a test conflict');
+			return;
+		}
+
+		const localContent = await this.app.vault.readBinary(file);
+		const decoder = new TextDecoder('utf-8');
+		const localText = decoder.decode(localContent);
+
+		// Fabricate a fake "incoming" version
+		const fakeRemoteText = localText
+			+ '\n\n---\n_This line was added on another device (simulated incoming change)_\n';
+		const fakeRemoteContent = new TextEncoder().encode(fakeRemoteText).buffer;
+
+		await this.conflictQueue.add(
+			file.path,
+			localContent,
+			fakeRemoteContent,
+			file.stat.mtime,
+			Date.now() - 60000, // pretend remote was modified 1 minute ago
+			`dev-test-${Date.now()}`,
+			'fake-hash'
+		);
+
+		await this.saveSettings();
+		this.updateConflictCount();
+		await this.activateConflictView();
+
+		new Notice(`OneDrive DEV: Created test conflict for "${file.path}"`);
+	}
+
+	/**
 	 * Load settings from disk
 	 */
 	async loadSettings() {
@@ -538,6 +661,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		// Prepare sync state for save
 		this.settings.syncState = this.syncStateManager.prepareForSave();
+
+		// Prepare conflict queue for save
+		if (this.conflictQueue) {
+			this.settings.conflictQueue = this.conflictQueue.prepareForSave();
+		}
 
 		// Update conflict resolver strategy if changed
 		if (this.conflictResolver) {

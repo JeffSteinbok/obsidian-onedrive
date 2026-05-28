@@ -160,3 +160,25 @@ export function createConflictFileName(originalPath: string): string {
 
 	return `${nameWithoutExt} (conflict ${timestamp})${ext}`;
 }
+
+/**
+ * Known text file extensions (for diff display in conflict resolution)
+ */
+const TEXT_EXTENSIONS = new Set([
+	'.md', '.txt', '.markdown', '.mdown', '.mkd', '.mkdn',
+	'.json', '.yaml', '.yml', '.toml', '.xml', '.html', '.htm',
+	'.css', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs',
+	'.py', '.rb', '.java', '.c', '.cpp', '.h', '.hpp',
+	'.sh', '.bash', '.zsh', '.bat', '.ps1',
+	'.csv', '.tsv', '.log', '.ini', '.cfg', '.conf',
+	'.tex', '.latex', '.bib', '.org', '.rst', '.adoc',
+	'.svg', '.graphql', '.sql', '.r', '.lua', '.go',
+]);
+
+/**
+ * Check if a file path has a known text extension
+ */
+export function isTextExtension(path: string): boolean {
+	const ext = getFileExtension(path).toLowerCase();
+	return TEXT_EXTENSIONS.has(ext);
+}

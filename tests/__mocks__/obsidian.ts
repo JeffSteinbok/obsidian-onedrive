@@ -11,6 +11,7 @@ export class Plugin {
 	addCommand(_command: unknown) { return undefined as unknown; }
 	addStatusBarItem() { return { setText: () => {}, empty: () => {}, createEl: () => document.createElement('div') }; }
 	addSettingTab(_tab: unknown) {}
+	registerView(_type: string, _viewCreator: unknown) {}
 }
 export class PluginSettingTab {}
 export class Setting {}
@@ -23,6 +24,22 @@ export class Notice {
 	hide() {}
 }
 export class Modal {}
+export class WorkspaceLeaf {}
+export class ItemView {
+	containerEl: HTMLElement = document.createElement('div');
+	leaf: WorkspaceLeaf;
+	constructor(leaf: WorkspaceLeaf) {
+		this.leaf = leaf;
+		// Create the two child divs that Obsidian ItemView expects
+		this.containerEl.appendChild(document.createElement('div'));
+		this.containerEl.appendChild(document.createElement('div'));
+	}
+	getViewType(): string { return ''; }
+	getDisplayText(): string { return ''; }
+	getIcon(): string { return ''; }
+	async onOpen(): Promise<void> {}
+	async onClose(): Promise<void> {}
+}
 export class TFile {
 	path: string = '';
 	stat: { mtime: number; size: number; ctime: number } = { mtime: 0, size: 0, ctime: 0 };

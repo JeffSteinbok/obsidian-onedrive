@@ -271,7 +271,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				dropdown
 					.addOption(ConflictResolutionStrategy.LAST_WRITE_WINS, 'Last write wins')
 					.addOption(ConflictResolutionStrategy.CREATE_DUPLICATE, 'Create duplicate')
-					.addOption(ConflictResolutionStrategy.MANUAL, 'Manual (ask each time)')
+					.addOption(ConflictResolutionStrategy.MANUAL, 'Manual (review conflicts with diff)')
 					.setValue(this.plugin.settings.conflictResolution)
 					.onChange(async (value) => {
 						this.plugin.settings.conflictResolution = value as ConflictResolutionStrategy;

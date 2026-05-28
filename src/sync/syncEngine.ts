@@ -8,6 +8,7 @@ import { FileOperations } from '../api/fileOperations';
 import { OneDriveClient } from '../api/oneDriveClient';
 import { SyncStateManager } from './syncState';
 import { ConflictResolver } from './conflictResolver';
+import { ConflictQueue } from './conflictQueue';
 import { EventManager } from './eventManager';
 import {
 	SyncOperation,
@@ -36,7 +37,8 @@ export class SyncEngine {
 		private conflictResolver: ConflictResolver,
 		private eventManager: EventManager,
 		private remoteRoot: string = '',
-		remoteRootOnDrive?: string
+		remoteRootOnDrive?: string,
+		private conflictQueue?: ConflictQueue
 	) {
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -108,6 +110,7 @@ export class SyncEngine {
 			// 4. Execute operations
 			let completed = 0;
 			const downloadedPaths: string[] = [];
+			const conflictedPaths: string[] = [];
 			// Single persistent notice for progress — updates in place
 			const progressNotice = operations.length >= 5
 				? new Notice(`Syncing: 0/${operations.length} files...`, 0)
@@ -118,6 +121,9 @@ export class SyncEngine {
 
 				if (operation.direction === SyncDirection.DOWNLOAD) {
 					downloadedPaths.push(operation.path);
+				}
+				if (operation.direction === SyncDirection.CONFLICT) {
+					conflictedPaths.push(operation.path);
 				}
 
 				if (progressNotice) {
@@ -137,11 +143,24 @@ export class SyncEngine {
 			this.stateManager.setDeltaLink(deltaResponse.deltaLink);
 			this.stateManager.setLastSyncTime(Date.now());
 
-			// Clear dirty files only after successful sync
+			// Clear dirty files only after successful sync,
+			// but preserve conflicted paths so they stay dirty
 			this.eventManager.clearDirtyFiles();
+			for (const path of conflictedPaths) {
+				this.eventManager.addDirtyFile(path, 'modify');
+			}
 
 			logger.info('Sync completed successfully');
-			new Notice(`OneDrive sync: ${completed} file${completed === 1 ? '' : 's'} synced`);
+
+			const syncedCount = completed - conflictedPaths.length;
+			if (conflictedPaths.length > 0) {
+				new Notice(
+					`OneDrive sync: ${syncedCount} file${syncedCount === 1 ? '' : 's'} synced, ` +
+					`${conflictedPaths.length} conflict${conflictedPaths.length === 1 ? '' : 's'} need resolution`
+				);
+			} else {
+				new Notice(`OneDrive sync: ${syncedCount} file${syncedCount === 1 ? '' : 's'} synced`);
+			}
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
 			logger.error(`Sync failed: ${errorMsg}`, error);
@@ -173,6 +192,13 @@ export class SyncEngine {
 
 		// Process local changes
 		for (const change of localChanges) {
+			// Skip paths with pending conflicts — don't re-process until user resolves
+			if (this.conflictQueue?.hasConflict(change.path)) {
+				logger.debug(`Skipping ${change.path} — pending conflict`);
+				remoteByPath.delete(change.path);
+				continue;
+			}
+
 			const remoteItem = remoteByPath.get(change.path);
 
 			if (change.type === LocalChangeType.DELETE) {
@@ -251,6 +277,12 @@ export class SyncEngine {
 		// Process remaining remote changes (not conflicting with local)
 		for (const [vaultPath, item] of remoteByPath) {
 			if (localChangedPaths.has(vaultPath)) continue; // Already handled
+
+			// Skip paths with pending conflicts
+			if (this.conflictQueue?.hasConflict(vaultPath)) {
+				logger.debug(`Skipping remote change for ${vaultPath} — pending conflict`);
+				continue;
+			}
 
 			if (item.deleted) {
 				// Remote delete — delete locally
@@ -346,11 +378,49 @@ export class SyncEngine {
 				} else {
 					await this.downloadFile(operation);
 				}
+			} else if (operation.direction === SyncDirection.CONFLICT) {
+				await this.queueConflict(operation);
 			}
 		} catch (error) {
 			logger.error(`Failed to execute operation for ${operation.path}:`, error);
 			throw error;
 		}
+	}
+
+	/**
+	 * Queue a conflict for manual resolution.
+	 * Snapshots both local and remote content.
+	 */
+	private async queueConflict(operation: SyncOperation): Promise<void> {
+		if (!this.conflictQueue) {
+			logger.warn(`No conflict queue available, skipping conflict for ${operation.path}`);
+			return;
+		}
+
+		const file = this.app.vault.getAbstractFileByPath(operation.path);
+		if (!(file instanceof TFile)) {
+			logger.warn(`Local file not found for conflict: ${operation.path}`);
+			return;
+		}
+
+		if (!operation.remoteState?.oneDriveId) {
+			logger.warn(`No remote ID for conflict: ${operation.path}`);
+			return;
+		}
+
+		// Snapshot both versions
+		const localContent = await this.app.vault.readBinary(file);
+		const remoteContent = await this.fileOps.downloadFile(operation.remoteState.oneDriveId);
+
+		await this.conflictQueue.add(
+			operation.path,
+			localContent,
+			remoteContent,
+			file.stat.mtime,
+			operation.remoteState.remoteModifiedTime,
+			operation.remoteState.oneDriveId,
+			operation.remoteState.remoteHash
+		);
 	}
 
 	/**

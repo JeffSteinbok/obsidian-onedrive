@@ -83,6 +83,14 @@ this.dirtyFiles.delete(path);
 }
 
 /**
+ * Manually add a dirty file (e.g., after conflict resolution)
+ */
+addDirtyFile(path: string, type: 'modify' | 'create'): void {
+const changeType = type === 'create' ? LocalChangeType.CREATE : LocalChangeType.MODIFY;
+this.dirtyFiles.set(path, { path, type: changeType });
+}
+
+/**
  * Start listening to vault events
  */
 startListening(): void {
