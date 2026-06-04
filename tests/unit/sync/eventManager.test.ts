@@ -158,13 +158,26 @@ describe('EventManager', () => {
 			]);
 		});
 
-		it('keeps plugin binaries excluded when opted in', () => {
+		it('allows installed plugin manifest files when opted in', () => {
 			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
 				shouldSyncVaultPath(path, true)
 			);
 			eventManager.startListening();
 
 			eventCallbacks.modify(makeTFile('.obsidian/plugins/calendar/manifest.json', 100));
+
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: '.obsidian/plugins/calendar/manifest.json', type: LocalChangeType.MODIFY },
+			]);
+		});
+
+		it('keeps plugin binaries excluded when opted in', () => {
+			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
+				shouldSyncVaultPath(path, true)
+			);
+			eventManager.startListening();
+
+			eventCallbacks.modify(makeTFile('.obsidian/plugins/calendar/main.js', 100));
 
 			expect(eventManager.getDirtyFiles()).toEqual([]);
 		});

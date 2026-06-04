@@ -48,7 +48,7 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 | **Sync Interval**                  | Set to 0 for manual-only sync (recommended for battery)                                                              |
 | **Startup Sync Delay**             | Delay before first sync after launch (0 = disabled, 10s recommended)                                                 |
 | **Conflict Resolution**            | Last write wins (default), create duplicate, or manual                                                               |
-| **Sync Selected Plugin Manifests** | Optional — sync `.obsidian/community-plugins.json` and `.obsidian/core-plugins.json` without syncing plugin binaries |
+| **Sync Selected Plugin Manifests** | Optional — sync `.obsidian/community-plugins.json`, `.obsidian/core-plugins.json`, and `.obsidian/plugins/*/manifest.json` without syncing plugin binaries |
 | **Custom Client ID**               | Optional — bring your own Azure AD app                                                                               |
 | **Debug Logging**                  | Enable for troubleshooting                                                                                           |
 

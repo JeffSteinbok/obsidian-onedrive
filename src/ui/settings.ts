@@ -291,7 +291,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Sync selected plugin manifests')
 			.setDesc(
-				'Opt-in: sync .obsidian/community-plugins.json and .obsidian/core-plugins.json. ' +
+				'Opt-in: sync .obsidian/community-plugins.json, .obsidian/core-plugins.json, and .obsidian/plugins/*/manifest.json. ' +
 					'Does not sync plugin binaries.'
 			)
 			.addToggle((toggle) =>

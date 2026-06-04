@@ -144,6 +144,10 @@ const SYNCABLE_OBSIDIAN_PLUGIN_MANIFESTS = new Set([
 	'.obsidian/core-plugins.json',
 ]);
 
+function isInstalledPluginManifestPath(path: string): boolean {
+	return /^\.obsidian\/plugins\/[^/]+\/manifest\.json$/.test(path);
+}
+
 /**
  * Check whether a vault path should be synced.
  */
@@ -158,7 +162,9 @@ export function shouldSyncVaultPath(path: string, syncPluginManifests = false): 
 		return false;
 	}
 
-	return SYNCABLE_OBSIDIAN_PLUGIN_MANIFESTS.has(normalized);
+	return (
+		SYNCABLE_OBSIDIAN_PLUGIN_MANIFESTS.has(normalized) || isInstalledPluginManifestPath(normalized)
+	);
 }
 
 /**
