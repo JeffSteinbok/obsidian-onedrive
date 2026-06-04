@@ -137,6 +137,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'view-sync-logs',
+			name: 'View sync logs',
+			callback: async () => {
+				await this.openLogsNote();
+			},
+		});
+
+		this.addCommand({
 			id: 'dev-create-test-conflict',
 			name: 'DEV: Create test conflict (for testing conflict UI)',
 			callback: async () => {
@@ -591,6 +599,34 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private updateConflictCount(): void {
 		const count = this.conflictQueue?.count ?? 0;
 		this.statusBarManager?.setConflictCount(count);
+	}
+
+	/**
+	 * Create/update a readable vault note with recent plugin logs and open it.
+	 */
+	private async openLogsNote(): Promise<void> {
+		const lines = logger.getRecentLogs();
+		if (lines.length === 0) {
+			new Notice('No sync logs available yet.');
+			return;
+		}
+
+		const notePath = 'OneDrive Sync Logs.md';
+		const content = `# OneDrive Sync Logs\n\nLast updated: ${new Date().toISOString()}\n\n\`\`\`\n${lines.join('\n')}\n\`\`\`\n`;
+
+		let logFile: TFile;
+		const existing = this.app.vault.getAbstractFileByPath(notePath);
+		if (existing instanceof TFile) {
+			await this.app.vault.modify(existing, content);
+			logFile = existing;
+		} else if (!existing) {
+			logFile = await this.app.vault.create(notePath, content);
+		} else {
+			new Notice(`Cannot write logs to ${notePath} because that path is a folder.`);
+			return;
+		}
+
+		await this.app.workspace.getLeaf(true).openFile(logFile);
 	}
 
 	/**

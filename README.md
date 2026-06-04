@@ -50,6 +50,7 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 | **Conflict Resolution** | Last write wins (default), create duplicate, or manual |
 | **Custom Client ID** | Optional — bring your own Azure AD app |
 | **Debug Logging** | Enable for troubleshooting |
+| **View sync logs** | Run command palette → `OneDrive Sync: View sync logs` to open recent logs in a note (mobile-friendly) |
 
 ## 🔒 Access Modes
 

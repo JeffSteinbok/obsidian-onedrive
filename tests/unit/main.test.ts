@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
 		error: vi.fn(),
 		setDebugMode: vi.fn(),
 		enableFileLogging: vi.fn(),
+		getRecentLogs: vi.fn().mockReturnValue([]),
 	};
 
 	const tokenStorage = {
@@ -158,9 +159,13 @@ const createApp = () => ({
 		adapter: { getBasePath: vi.fn().mockReturnValue('/mock/vault') },
 		on: vi.fn().mockReturnValue({}),
 		offref: vi.fn(),
+		getAbstractFileByPath: vi.fn().mockReturnValue(null),
+		create: vi.fn(),
+		modify: vi.fn(),
 	},
 	workspace: {
 		on: vi.fn(),
+		getLeaf: vi.fn().mockReturnValue({ openFile: vi.fn() }),
 	},
 });
 
@@ -324,5 +329,26 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.remoteRootPath).toBeUndefined();
 		expect((plugin as any).syncEngine).toBeUndefined();
 		expect((plugin as any).eventManager).toBeUndefined();
+	});
+
+	it('view-sync-logs command creates and opens a log note', async () => {
+		mocks.logger.getRecentLogs.mockReturnValue(['[2026-01-01T00:00:00.000Z] [OneDrive Sync] [INFO] Test log']);
+		const createdFile = { path: 'OneDrive Sync Logs.md' } as any;
+		(plugin as any).app.vault.create = vi.fn().mockResolvedValue(createdFile);
+		const openFile = vi.fn().mockResolvedValue(undefined);
+		(plugin as any).app.workspace.getLeaf = vi.fn().mockReturnValue({ openFile });
+
+		await plugin.onload();
+		const viewLogsCommand = ((plugin as any).addCommand as any).mock.calls
+			.map((call: any[]) => call[0])
+			.find((cmd: any) => cmd.id === 'view-sync-logs');
+
+		await viewLogsCommand.callback();
+
+		expect((plugin as any).app.vault.create).toHaveBeenCalledWith(
+			'OneDrive Sync Logs.md',
+			expect.stringContaining('[OneDrive Sync] [INFO] Test log')
+		);
+		expect(openFile).toHaveBeenCalledWith(createdFile);
 	});
 });
