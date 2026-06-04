@@ -280,8 +280,11 @@ describe('pathUtils', () => {
 		});
 
 		it('should still exclude plugin binaries when opted in', () => {
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json', true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json', true)).toBe(true);
 			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/subdir/manifest.json', true)).toBe(
+				false
+			);
 		});
 	});
 });

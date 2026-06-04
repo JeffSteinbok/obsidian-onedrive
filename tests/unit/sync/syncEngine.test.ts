@@ -306,7 +306,7 @@ describe('SyncEngine', () => {
 		expect(stateManager.getFileState('.obsidian/community-plugins.json')).toBeUndefined();
 	});
 
-	it('downloads selected plugin manifest files when opted in', async () => {
+	it('downloads installed plugin manifest files when opted in', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		syncEngine = new SyncEngine(
 			mockApp as any,
@@ -320,14 +320,17 @@ describe('SyncEngine', () => {
 			undefined,
 			(path) => shouldSyncVaultPath(path, true)
 		);
-		const downloadedFile = makeTFile('.obsidian/community-plugins.json', 10, Date.now());
+		const downloadedFile = makeTFile('.obsidian/plugins/calendar/manifest.json', 10, Date.now());
 		mockClient.getDelta.mockResolvedValue({
 			items: [
-				makeRemoteFile('.obsidian/community-plugins.json', {
-					id: 'community-id',
-					parentReference: { id: 'parent-id', path: '/drive/root:/remote/root/.obsidian' },
-					name: 'community-plugins.json',
-					file: { mimeType: 'application/json', hashes: { quickXorHash: 'community-hash' } },
+				makeRemoteFile('.obsidian/plugins/calendar/manifest.json', {
+					id: 'plugin-manifest-id',
+					parentReference: {
+						id: 'parent-id',
+						path: '/drive/root:/remote/root/.obsidian/plugins/calendar',
+					},
+					name: 'manifest.json',
+					file: { mimeType: 'application/json', hashes: { quickXorHash: 'plugin-manifest-hash' } },
 				}),
 			],
 			deltaLink: 'delta-link-2',
@@ -336,11 +339,11 @@ describe('SyncEngine', () => {
 
 		await syncEngine.performSync();
 
-		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('community-id');
-		expect(stateManager.getFileState('.obsidian/community-plugins.json')).toMatchObject({
-			path: '.obsidian/community-plugins.json',
-			remoteHash: 'community-hash',
-			oneDriveId: 'community-id',
+		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('plugin-manifest-id');
+		expect(stateManager.getFileState('.obsidian/plugins/calendar/manifest.json')).toMatchObject({
+			path: '.obsidian/plugins/calendar/manifest.json',
+			remoteHash: 'plugin-manifest-hash',
+			oneDriveId: 'plugin-manifest-id',
 		});
 	});
 
