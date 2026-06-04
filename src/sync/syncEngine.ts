@@ -20,7 +20,14 @@ import {
 	LocalChangeType,
 } from '../types';
 import { logger } from '../utils/logger';
-import { normalizePath, toOneDrivePath, toVaultPath, getParentPath, stripGraphPrefix } from '../utils/pathUtils';
+import {
+	normalizePath,
+	toOneDrivePath,
+	toVaultPath,
+	getParentPath,
+	stripGraphPrefix,
+	shouldSyncVaultPath,
+} from '../utils/pathUtils';
 
 /**
  * Main sync engine
@@ -28,7 +35,7 @@ import { normalizePath, toOneDrivePath, toVaultPath, getParentPath, stripGraphPr
 export class SyncEngine {
 	private isSharedDrive: boolean;
 	private remoteRootOnDrive: string;
-	private static readonly DEFAULT_IGNORE_PATTERNS = ['.obsidian/**'];
+	private static readonly DEFAULT_IGNORE_PATTERNS: string[] = [];
 
 	constructor(
 		private app: App,
@@ -39,7 +46,8 @@ export class SyncEngine {
 		private eventManager: EventManager,
 		private remoteRoot: string = '',
 		remoteRootOnDrive?: string,
-		private conflictQueue?: ConflictQueue
+		private conflictQueue?: ConflictQueue,
+		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path)
 	) {
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -70,7 +78,9 @@ export class SyncEngine {
 			}
 			logger.info(`Local changes: ${localChanges.length} dirty files`);
 			for (const change of localChanges) {
-				logger.info(`  Local: ${change.type} ${change.path}${change.oldPath ? ` (from ${change.oldPath})` : ''}`);
+				logger.info(
+					`  Local: ${change.type} ${change.path}${change.oldPath ? ` (from ${change.oldPath})` : ''}`
+				);
 			}
 
 			// 2. Get remote changes via delta API
@@ -82,21 +92,27 @@ export class SyncEngine {
 			// Log all raw delta items for debugging
 			for (const item of deltaResponse.items) {
 				const vaultPath = this.remotePathToVaultPath(item);
-				logger.debug(`  Raw delta item: name=${item.name} path=${vaultPath} isFolder=${!!item.folder} isFile=${!!item.file} deleted=${!!item.deleted} parentPath=${item.parentReference?.path || 'none'}`);
+				logger.debug(
+					`  Raw delta item: name=${item.name} path=${vaultPath} isFolder=${!!item.folder} isFile=${!!item.file} deleted=${!!item.deleted} parentPath=${item.parentReference?.path || 'none'}`
+				);
 			}
 
-			// Filter remote changes: only files, skip .obsidian/
+			// Filter remote changes: only files, skip excluded .obsidian/ paths
 			const remoteChanges = deltaResponse.items.filter((item) => {
 				// Include files and deleted items (deleted items won't have .file)
 				if (item.folder && !item.deleted) return false;
 				const vaultPath = this.remotePathToVaultPath(item);
-				return !this.shouldIgnorePath(vaultPath, ignoreMatchers);
+				return this.shouldSyncPath(vaultPath) && !this.shouldIgnorePath(vaultPath, ignoreMatchers);
 			});
 
-			logger.info(`Delta returned ${deltaResponse.items.length} total items, ${remoteChanges.length} file changes`);
+			logger.info(
+				`Delta returned ${deltaResponse.items.length} total items, ${remoteChanges.length} file changes`
+			);
 			for (const item of remoteChanges) {
 				const vaultPath = this.remotePathToVaultPath(item);
-				logger.info(`  Remote: ${item.deleted ? 'DELETE' : 'CHANGED'} ${vaultPath} (id=${item.id})`);
+				logger.info(
+					`  Remote: ${item.deleted ? 'DELETE' : 'CHANGED'} ${vaultPath} (id=${item.id})`
+				);
 			}
 
 			// 3. Plan operations
@@ -109,7 +125,9 @@ export class SyncEngine {
 
 			if (operations.length === 0) {
 				if (isFirstSync && localChanges.length === 0 && remoteChanges.length === 0) {
-					logger.info('First sync with no local dirty files and empty remote — nothing to do. Edit or create files, then sync again.');
+					logger.info(
+						'First sync with no local dirty files and empty remote — nothing to do. Edit or create files, then sync again.'
+					);
 					new Notice('OneDrive sync: No files to sync. Edit or create files first.');
 				} else {
 					new Notice('OneDrive sync: Everything up to date');
@@ -125,9 +143,8 @@ export class SyncEngine {
 			const downloadedPaths: string[] = [];
 			const conflictedPaths: string[] = [];
 			// Single persistent notice for progress — updates in place
-			const progressNotice = operations.length >= 5
-				? new Notice(`Syncing: 0/${operations.length} files...`, 0)
-				: null;
+			const progressNotice =
+				operations.length >= 5 ? new Notice(`Syncing: 0/${operations.length} files...`, 0) : null;
 			for (const operation of operations) {
 				await this.executeOperation(operation);
 				completed++;
@@ -169,7 +186,7 @@ export class SyncEngine {
 			if (conflictedPaths.length > 0) {
 				new Notice(
 					`OneDrive sync: ${syncedCount} file${syncedCount === 1 ? '' : 's'} synced, ` +
-					`${conflictedPaths.length} conflict${conflictedPaths.length === 1 ? '' : 's'} need resolution`
+						`${conflictedPaths.length} conflict${conflictedPaths.length === 1 ? '' : 's'} need resolution`
 				);
 			} else {
 				new Notice(`OneDrive sync: ${syncedCount} file${syncedCount === 1 ? '' : 's'} synced`);
@@ -227,23 +244,23 @@ export class SyncEngine {
 				continue;
 			}
 
-				if (change.type === LocalChangeType.RENAME && change.oldPath) {
-					// Rename: upload to new path and delete old path from remote
-					const oldState = this.stateManager.getFileState(change.oldPath);
-					if (oldState?.oneDriveId) {
-						operations.push({
-							path: change.oldPath,
-							direction: SyncDirection.UPLOAD, // "upload" the deletion of old path
-							localState: undefined,
-							remoteState: oldState,
-						});
-					}
-					// Upload the file at its new path
-					operations.push({ path: change.path, direction: SyncDirection.UPLOAD });
-					this.stateManager.removeFileState(change.oldPath);
-					remoteByPath.delete(change.path);
-					continue;
+			if (change.type === LocalChangeType.RENAME && change.oldPath) {
+				// Rename: upload to new path and delete old path from remote
+				const oldState = this.stateManager.getFileState(change.oldPath);
+				if (oldState?.oneDriveId) {
+					operations.push({
+						path: change.oldPath,
+						direction: SyncDirection.UPLOAD, // "upload" the deletion of old path
+						localState: undefined,
+						remoteState: oldState,
+					});
 				}
+				// Upload the file at its new path
+				operations.push({ path: change.path, direction: SyncDirection.UPLOAD });
+				this.stateManager.removeFileState(change.oldPath);
+				remoteByPath.delete(change.path);
+				continue;
+			}
 
 			if (remoteItem && remoteItem.deleted) {
 				// Local change + remote delete = conflict, re-upload local
@@ -316,21 +333,21 @@ export class SyncEngine {
 			// On first sync, check if file already exists locally
 			if (isFirstSync) {
 				const file = this.app.vault.getAbstractFileByPath(vaultPath);
-					if (file instanceof TFile) {
-						if (file.stat.size === (item.size || 0)) {
-							// Same size — likely identical, store state and skip
-							this.stateManager.setFileState(vaultPath, this.itemToFileState(item));
-							continue;
-						}
-						// File exists but different size — download remote version
-						operations.push({
-							path: vaultPath,
-							direction: SyncDirection.DOWNLOAD,
-							remoteState: this.itemToFileState(item),
-						});
+				if (file instanceof TFile) {
+					if (file.stat.size === (item.size || 0)) {
+						// Same size — likely identical, store state and skip
+						this.stateManager.setFileState(vaultPath, this.itemToFileState(item));
 						continue;
 					}
+					// File exists but different size — download remote version
+					operations.push({
+						path: vaultPath,
+						direction: SyncDirection.DOWNLOAD,
+						remoteState: this.itemToFileState(item),
+					});
+					continue;
 				}
+			}
 
 			// Check if remote actually changed vs our stored state
 			const knownState = this.stateManager.getFileState(vaultPath);

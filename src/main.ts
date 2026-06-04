@@ -7,6 +7,7 @@ import { Plugin, Notice, TFile } from 'obsidian';
 import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID, ONEDRIVE_PATHS } from './constants';
 import { logger } from './utils/logger';
+import { shouldSyncVaultPath } from './utils/pathUtils';
 
 // Auth
 import { TokenStorage } from './auth/tokenStorage';
@@ -172,7 +173,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		// Perform startup sync if configured and sync target is set
-		if (this.tokenStorage.hasTokens() && this.settings.startupSyncDelay > 0 && this.isSyncConfigured()) {
+		if (
+			this.tokenStorage.hasTokens() &&
+			this.settings.startupSyncDelay > 0 &&
+			this.isSyncConfigured()
+		) {
 			setTimeout(async () => {
 				await this.triggerManualSync();
 			}, this.settings.startupSyncDelay * 1000);
@@ -216,7 +221,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.fileOps = new FileOperations(this.oneDriveClient);
 
 			// Configure shared drive if previously selected
-			if (this.settings.remoteDriveId && this.settings.remoteItemId && this.settings.remoteRootName) {
+			if (
+				this.settings.remoteDriveId &&
+				this.settings.remoteItemId &&
+				this.settings.remoteRootName
+			) {
 				this.oneDriveClient.setRemoteDrive(
 					this.settings.remoteDriveId,
 					this.settings.remoteItemId,
@@ -225,9 +234,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 			}
 
 			// Initialize event manager — listening starts after initial sync
-			this.eventManager = new EventManager(this.app, async () => {
-				await this.performSync();
-			}, this.syncStateManager);
+			this.eventManager = new EventManager(
+				this.app,
+				async () => {
+					await this.performSync();
+				},
+				this.syncStateManager,
+				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests)
+			);
 
 			// Initialize conflict queue
 			this.conflictQueue = new ConflictQueue(this.app, this.syncStateManager, this.eventManager);
@@ -237,10 +251,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 			const isShared = this.oneDriveClient.isSharedDrive();
 			// For shared drives, upload paths are relative to the shared folder (no prefix needed).
 			// For non-shared, prepend the remote path.
-			const remoteRoot = isShared ? '' : (this.settings.remotePath || ONEDRIVE_PATHS.APP_FOLDER);
+			const remoteRoot = isShared ? '' : this.settings.remotePath || ONEDRIVE_PATHS.APP_FOLDER;
 			// For path stripping of delta responses, use the actual path on the remote drive
 			const remoteRootOnDrive = isShared
-				? (this.settings.remoteRootPath || `/${this.settings.remoteRootName}`)
+				? this.settings.remoteRootPath || `/${this.settings.remoteRootName}`
 				: undefined;
 
 			this.syncEngine = new SyncEngine(
@@ -252,7 +266,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.eventManager,
 				remoteRoot,
 				remoteRootOnDrive,
-				this.conflictQueue
+				this.conflictQueue,
+				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests)
 			);
 
 			// Get user info to display in settings
@@ -502,7 +517,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 		if (!this.oneDriveClient) {
 			throw new Error('Not connected to OneDrive');
 		}
-		return this.oneDriveClient.listFoldersForPicker(path, sharedDriveId, sharedItemId, relativePathInShared);
+		return this.oneDriveClient.listFoldersForPicker(
+			path,
+			sharedDriveId,
+			sharedItemId,
+			relativePathInShared
+		);
 	}
 
 	/**
@@ -526,7 +546,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 			if (this.oneDriveClient) {
 				try {
 					const resolvedPath = await this.oneDriveClient.resolveSharedFolderPath(
-						selection.driveId, selection.itemId
+						selection.driveId,
+						selection.itemId
 					);
 					this.settings.remoteRootPath = resolvedPath;
 					logger.info(`Resolved shared folder path on remote drive: ${resolvedPath}`);
@@ -602,7 +623,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 		if (!this.conflictQueue) {
 			// Initialize a standalone queue if not authenticated
 			if (!this.eventManager) {
-				this.eventManager = new EventManager(this.app, async () => {}, this.syncStateManager);
+				this.eventManager = new EventManager(
+					this.app,
+					async () => {},
+					this.syncStateManager,
+					(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests)
+				);
 			}
 			this.conflictQueue = new ConflictQueue(this.app, this.syncStateManager, this.eventManager);
 			this.conflictQueue.load(this.settings.conflictQueue);
@@ -610,9 +636,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		// Pick the active file, or fall back to the first .md file
 		const activeFile = this.app.workspace.getActiveFile?.();
-		const file = activeFile instanceof TFile
-			? activeFile
-			: this.app.vault.getFiles().find((f: TFile) => f.extension === 'md');
+		const file =
+			activeFile instanceof TFile
+				? activeFile
+				: this.app.vault.getFiles().find((f: TFile) => f.extension === 'md');
 
 		if (!file) {
 			new Notice('OneDrive DEV: No file found to create a test conflict');
@@ -624,8 +651,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 		const localText = decoder.decode(localContent);
 
 		// Fabricate a fake "incoming" version
-		const fakeRemoteText = localText
-			+ '\n\n---\n_This line was added on another device (simulated incoming change)_\n';
+		const fakeRemoteText =
+			localText + '\n\n---\n_This line was added on another device (simulated incoming change)_\n';
 		const fakeRemoteContent = new TextEncoder().encode(fakeRemoteText).buffer;
 
 		await this.conflictQueue.add(
@@ -650,6 +677,21 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 */
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+
+	async onPluginManifestSyncChanged(enabled: boolean): Promise<void> {
+		if (this.settings.syncPluginManifests === enabled) {
+			return;
+		}
+
+		this.settings.syncPluginManifests = enabled;
+		this.syncStateManager.clearState();
+		await this.saveSettings();
+
+		new Notice(
+			`Selected plugin manifest sync ${enabled ? 'enabled' : 'disabled'} (.obsidian/community-plugins.json, .obsidian/core-plugins.json, and installed plugin manifest files). ` +
+				'Run Sync Now to apply the new scope.'
+		);
 	}
 
 	/**

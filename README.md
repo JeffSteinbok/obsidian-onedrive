@@ -43,13 +43,14 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 
 ### Configuration
 
-| Setting | Description |
-|---|---|
-| **Sync Interval** | Set to 0 for manual-only sync (recommended for battery) |
-| **Startup Sync Delay** | Delay before first sync after launch (0 = disabled, 10s recommended) |
-| **Conflict Resolution** | Last write wins (default), create duplicate, or manual |
-| **Custom Client ID** | Optional — bring your own Azure AD app |
-| **Debug Logging** | Enable for troubleshooting |
+| Setting                            | Description                                                                                                          |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Sync Interval**                  | Set to 0 for manual-only sync (recommended for battery)                                                              |
+| **Startup Sync Delay**             | Delay before first sync after launch (0 = disabled, 10s recommended)                                                 |
+| **Conflict Resolution**            | Last write wins (default), create duplicate, or manual                                                               |
+| **Sync Selected Plugin Manifests** | Optional — sync `.obsidian/community-plugins.json`, `.obsidian/core-plugins.json`, and `.obsidian/plugins/*/manifest.json` without syncing plugin binaries |
+| **Custom Client ID**               | Optional — bring your own Azure AD app                                                                               |
+| **Debug Logging**                  | Enable for troubleshooting                                                                                           |
 
 ### Optional: `.syncIgnore`
 
@@ -63,14 +64,14 @@ Create a `.syncIgnore` file at your vault root to skip extra files/folders from 
 
 ## 🔒 Access Modes
 
-| | App Folder (Default) | Full Access |
-|---|---|---|
-| **Permissions** | Minimal — isolated app folder | Full OneDrive access |
-| **Scopes** | `User.Read`, `Files.ReadWrite.AppFolder`, `offline_access` | `User.Read`, `Files.ReadWrite.All`, `offline_access` |
-| **Location** | `/Apps/ObsidianOneDrive/` | Anywhere you choose |
-| **Sharing** | No | Yes — share via OneDrive |
-| **Browseable** | Not easily | Yes — visible in OneDrive web/app |
-| **Best for** | Personal vaults, privacy-focused | Shared/family vaults |
+|                 | App Folder (Default)                                       | Full Access                                          |
+| --------------- | ---------------------------------------------------------- | ---------------------------------------------------- |
+| **Permissions** | Minimal — isolated app folder                              | Full OneDrive access                                 |
+| **Scopes**      | `User.Read`, `Files.ReadWrite.AppFolder`, `offline_access` | `User.Read`, `Files.ReadWrite.All`, `offline_access` |
+| **Location**    | `/Apps/ObsidianOneDrive/`                                  | Anywhere you choose                                  |
+| **Sharing**     | No                                                         | Yes — share via OneDrive                             |
+| **Browseable**  | Not easily                                                 | Yes — visible in OneDrive web/app                    |
+| **Best for**    | Personal vaults, privacy-focused                           | Shared/family vaults                                 |
 
 To switch modes: Settings → OneDrive Sync → Access Mode, then disconnect and reconnect.
 
