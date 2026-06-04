@@ -36,8 +36,9 @@ import { LargeDeleteWarningModal } from './ui/modals';
 import { LargeDeleteWarningInfo, LargeDeleteDecision } from './types';
 
 const SYNC_LOGS_NOTE_PATH = '.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md';
+const LIVE_LOG_FOLDER = '_OneDriveSyncLogs';
 const LIVE_LOG_HEADER = `> [!warning] OneDrive sync debug log
-> This file is **excluded from sync** — each device keeps its own. If you need to share these logs, copy the text into another note (or move this file out of the vault root).
+> This folder is **excluded from sync** — each device keeps its own. To share a specific day's log, move that file out of this folder.
 
 `;
 
@@ -45,7 +46,7 @@ function liveLogNotePath(date: Date = new Date()): string {
 	const yyyy = date.getFullYear();
 	const mm = String(date.getMonth() + 1).padStart(2, '0');
 	const dd = String(date.getDate()).padStart(2, '0');
-	return `_OneDriveSyncLogs-${yyyy}-${mm}-${dd}.md`;
+	return `${LIVE_LOG_FOLDER}/${yyyy}-${mm}-${dd}.md`;
 }
 
 /**
@@ -828,6 +829,10 @@ ${lines.join('\n')}
 					const path = liveLogNotePath();
 					const exists = await adapter.exists(path);
 					if (!exists) {
+						const folderExists = await adapter.exists(LIVE_LOG_FOLDER);
+						if (!folderExists) {
+							await adapter.mkdir(LIVE_LOG_FOLDER);
+						}
 						await adapter.write(path, LIVE_LOG_HEADER + line + '\n');
 					} else {
 						await adapter.append(path, line + '\n');
