@@ -92,6 +92,7 @@ export interface SyncState {
 	lastSyncTime: number; // Unix timestamp in milliseconds
 	fileStates: Map<string, FileState>;
 	deltaLink?: string; // OneDrive delta API cursor
+	obsidianDeltaLink?: string; // Separate delta cursor for .obsidian scope
 }
 
 export interface FileState {
@@ -200,7 +201,12 @@ export interface PluginSettings {
 	conflictResolution: ConflictResolutionStrategy;
 	startupSyncDelay: number; // Seconds (0 = disabled, 1, 10, 30)
 	syncPluginManifests: boolean; // Opt-in sync for selected Obsidian plugin manifest files
-	syncState?: { lastSyncTime: number; fileStates: Array<[string, FileState]>; deltaLink?: string };
+	syncState?: {
+		lastSyncTime: number;
+		fileStates: Array<[string, FileState]>;
+		deltaLink?: string;
+		obsidianDeltaLink?: string;
+	};
 	conflictQueue?: PersistedConflictQueue;
 
 	// Advanced

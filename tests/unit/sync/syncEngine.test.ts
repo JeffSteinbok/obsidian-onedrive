@@ -578,6 +578,55 @@ describe('SyncEngine', () => {
 		expect(mockApp.vault.adapter.writeBinary).not.toHaveBeenCalled();
 	});
 
+	it('uses a separate delta token stream for .obsidian scope when enabled', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setDeltaLink('main-delta-old');
+		stateManager.setObsidianDeltaLink('obsidian-delta-old');
+		syncEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			conflictResolver,
+			mockEventManager as any,
+			'/remote/root',
+			undefined,
+			undefined,
+			(path) => shouldSyncVaultPath(path, true)
+		);
+		mockClient.getDelta
+			.mockResolvedValueOnce({
+				items: [makeRemoteFile('notes/test.md', { id: 'remote-main-id' })],
+				deltaLink: 'main-delta-new',
+			})
+			.mockResolvedValueOnce({
+				items: [makeRemoteFile('.obsidian/community-plugins.json', { id: 'remote-obsidian-id' })],
+				deltaLink: 'obsidian-delta-new',
+			});
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 10, Date.now())
+		);
+
+		await syncEngine.performSync();
+
+		expect(mockClient.getDelta).toHaveBeenNthCalledWith(1, 'main-delta-old', '/remote/root');
+		expect(mockClient.getDelta).toHaveBeenNthCalledWith(2, 'obsidian-delta-old', '/remote/root');
+		expect(stateManager.getDeltaLink()).toBe('main-delta-new');
+		expect(stateManager.getObsidianDeltaLink()).toBe('obsidian-delta-new');
+	});
+
+	it('preserves the .obsidian delta token when .obsidian scope is disabled', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setObsidianDeltaLink('obsidian-delta-existing');
+		mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: 'main-delta-new' });
+
+		await syncEngine.performSync();
+
+		expect(mockClient.getDelta).toHaveBeenCalledTimes(1);
+		expect(stateManager.getDeltaLink()).toBe('main-delta-new');
+		expect(stateManager.getObsidianDeltaLink()).toBe('obsidian-delta-existing');
+	});
+
 	it('throws and shows an error notice when sync fails', async () => {
 		mockClient.getDelta.mockRejectedValue(new Error('delta failed'));
 

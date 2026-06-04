@@ -264,13 +264,13 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.syncState).toEqual(savedState);
 	});
 
-	it('onPluginManifestSyncChanged clears sync state and saves the new setting', async () => {
+	it('onPluginManifestSyncChanged saves the new setting without resetting sync state', async () => {
 		await plugin.onload();
 
 		await plugin.onPluginManifestSyncChanged(true);
 
 		expect(plugin.settings.syncPluginManifests).toBe(true);
-		expect(mocks.syncStateManager.clearState).toHaveBeenCalledTimes(1);
+		expect(mocks.syncStateManager.clearState).not.toHaveBeenCalled();
 		expect((plugin as any).saveData).toHaveBeenCalledWith(plugin.settings);
 	});
 

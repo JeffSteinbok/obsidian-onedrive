@@ -11,6 +11,7 @@ const mockPlugin = {
 		syncInterval: 5,
 		startupSyncDelay: 10,
 		conflictResolution: 'last-write-wins',
+		syncPluginManifests: false,
 		enableDebugLogging: false,
 		useCustomClientId: false,
 		customClientId: '',

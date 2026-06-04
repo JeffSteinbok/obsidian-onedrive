@@ -685,7 +685,6 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		this.settings.syncPluginManifests = enabled;
-		this.syncStateManager.clearState();
 		await this.saveSettings();
 
 		new Notice(
