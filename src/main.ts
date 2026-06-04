@@ -31,8 +31,22 @@ import { StatusBarManager, SyncStatus } from './ui/statusBar';
 import { DeviceCodeModal } from './ui/authModal';
 import { FolderSelection } from './ui/folderBrowserModal';
 import { ConflictView, CONFLICT_VIEW_TYPE } from './ui/conflictView';
+import { LargeDeleteWarningModal } from './ui/modals';
+
+import { LargeDeleteWarningInfo, LargeDeleteDecision } from './types';
 
 const SYNC_LOGS_NOTE_PATH = '.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md';
+const LIVE_LOG_HEADER = `> [!warning] OneDrive sync debug log
+> This file is **excluded from sync** — each device keeps its own. If you need to share these logs, copy the text into another note (or move this file out of the vault root).
+
+`;
+
+function liveLogNotePath(date: Date = new Date()): string {
+	const yyyy = date.getFullYear();
+	const mm = String(date.getMonth() + 1).padStart(2, '0');
+	const dd = String(date.getDate()).padStart(2, '0');
+	return `_OneDriveSyncLogs-${yyyy}-${mm}-${dd}.md`;
+}
 
 /**
  * Main plugin class
@@ -78,6 +92,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 		if (vaultPath) {
 			logger.enableFileLogging(vaultPath);
 		}
+		// Mirror logs to a vault-root note when debug logging is on
+		this.applyVaultLogHook();
 
 		// Initialize device code client with appropriate client ID and access mode
 		const clientId = this.settings.useCustomClientId
@@ -277,7 +293,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 				remoteRoot,
 				remoteRootOnDrive,
 				this.conflictQueue,
-				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings)
+				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings),
+				() => this.settings.largeDeleteThreshold ?? 0,
+				(info) => this.handleLargeDeleteWarning(info)
 			);
 
 			// Get user info to display in settings
@@ -756,7 +774,10 @@ ${lines.join('\n')}
 	async resetSyncToken(): Promise<void> {
 		this.syncStateManager.clearDeltaLink();
 		await this.saveSettings();
-		new Notice('Sync token reset. Next sync will re-read from OneDrive.');
+		new Notice(
+			'Sync reset. Delta cursors, file states, and last sync time cleared. ' +
+				'Next sync will re-read from OneDrive and reconcile local files.'
+		);
 	}
 
 	/**
@@ -781,7 +802,76 @@ ${lines.join('\n')}
 
 		// Update logger debug mode if changed
 		logger.setDebugMode(this.settings.enableDebugLogging);
+		this.applyVaultLogHook();
 
 		await this.saveData(this.settings);
+	}
+
+	/**
+	 * Install (or remove) a Logger hook that appends each log line to a
+	 * vault-root daily log file. Files match `_OneDriveSyncLogs-YYYY-MM-DD.md`
+	 * and are explicitly excluded from sync via shouldSyncVaultPath so each
+	 * device keeps its own.
+	 */
+	private applyVaultLogHook(): void {
+		if (!this.settings.enableDebugLogging) {
+			logger.setVaultLogHook(null);
+			return;
+		}
+		const adapter = this.app.vault.adapter;
+		// Serialize writes so concurrent log calls don't interleave or race
+		// on file existence checks.
+		let inFlight: Promise<void> = Promise.resolve();
+		logger.setVaultLogHook((line) => {
+			inFlight = inFlight.then(async () => {
+				try {
+					const path = liveLogNotePath();
+					const exists = await adapter.exists(path);
+					if (!exists) {
+						await adapter.write(path, LIVE_LOG_HEADER + line + '\n');
+					} else {
+						await adapter.append(path, line + '\n');
+					}
+				} catch {
+					// Swallow — never let log mirroring break the plugin.
+				}
+			});
+		});
+	}
+
+	/**
+	 * Show the large-delete warning modal and act on the user's choice.
+	 *
+	 * When the user picks "Disable plugin", we actually disable the plugin
+	 * after the modal closes (so the modal can finish unmounting first).
+	 * Either 'cancel' or 'disable' is returned to the sync engine, which
+	 * treats both as "abort this sync without advancing delta cursors".
+	 */
+	private handleLargeDeleteWarning(
+		info: LargeDeleteWarningInfo
+	): Promise<LargeDeleteDecision> {
+		return new Promise((resolve) => {
+			const modal = new LargeDeleteWarningModal(this.app, info, (decision) => {
+				if (decision === 'disable') {
+					// Defer so the modal closes cleanly before unloading the plugin.
+					setTimeout(() => {
+						try {
+							const plugins = (this.app as unknown as {
+								plugins?: { disablePlugin?: (id: string) => Promise<void> | void };
+							}).plugins;
+							if (plugins?.disablePlugin) {
+								void plugins.disablePlugin(this.manifest.id);
+							}
+						} catch (err) {
+							logger.error(
+								`Failed to disable plugin from large-delete modal: ${(err as Error)?.message || err}`
+							);
+						}
+					}, 0);
+				}
+				resolve(decision);
+			});
+			modal.open();
+		});
 	}
 }

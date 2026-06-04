@@ -146,11 +146,20 @@ export class SyncStateManager {
 	}
 
 	/**
-	 * Clear only the delta link, forcing a full re-read from server on next sync
+	 * Reset for a full re-scan. Clears delta cursors (main + .obsidian),
+	 * fileStates and lastSyncTime so the next sync re-reads everything from
+	 * server and recomputes local↔remote correspondences from scratch.
+	 *
+	 * Note: cleared state means etag/hash checks will not short-circuit, so
+	 * size-match heuristics in the first-sync planner will be used to avoid
+	 * unnecessary re-downloads.
 	 */
 	clearDeltaLink(): void {
-		this.state.deltaLink = undefined;
-		logger.debug('Delta link cleared — next sync will re-read from server');
+		this.state = {
+			lastSyncTime: 0,
+			fileStates: new Map(),
+		};
+		logger.debug('Sync reset — cleared delta links, file states, and last sync time');
 	}
 
 	/**

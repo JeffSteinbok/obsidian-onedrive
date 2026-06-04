@@ -380,11 +380,18 @@ export class OneDriveClient {
 	 * Get changes since last delta token using OneDrive delta API.
 	 * First call (no deltaLink): returns all items + deltaLink.
 	 * Subsequent calls: returns only changes since the token.
+	 *
+	 * @param deltaLink Stored delta cursor; if undefined the call starts a fresh stream.
+	 * @param remotePath Remote vault root path (Full Access mode only).
+	 * @param subPath Optional path under the vault root to scope the delta to (e.g. ".obsidian").
+	 *                When the scoped folder does not yet exist remotely the call returns an empty
+	 *                result so the first sync can proceed and later create it via upload.
 	 */
-	async getDelta(deltaLink?: string, remotePath?: string): Promise<DeltaResponse> {
-		logger.debug('Getting delta changes', { hasDeltaLink: !!deltaLink, remotePath });
+	async getDelta(deltaLink?: string, remotePath?: string, subPath?: string): Promise<DeltaResponse> {
+		logger.debug('Getting delta changes', { hasDeltaLink: !!deltaLink, remotePath, subPath });
 
 		const allItems: OneDriveItem[] = [];
+		const cleanSubPath = subPath ? subPath.replace(/^\/+|\/+$/g, '') : undefined;
 
 		try {
 			let nextUrl: string;
@@ -393,13 +400,26 @@ export class OneDriveClient {
 				// Use stored delta link for incremental changes
 				nextUrl = deltaLink;
 			} else if (this.isSharedDrive()) {
-				// Shared folder — delta scoped to the remote item
-				nextUrl = `/drives/${this.remoteDriveId}/items/${this.remoteItemId}/delta`;
+				if (cleanSubPath) {
+					const encoded = encodePathForGraph(cleanSubPath);
+					nextUrl = `/drives/${this.remoteDriveId}/items/${this.remoteItemId}:/${encoded}:/delta`;
+				} else {
+					nextUrl = `/drives/${this.remoteDriveId}/items/${this.remoteItemId}/delta`;
+				}
 			} else if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
-				nextUrl = '/me/drive/special/approot/delta';
+				if (cleanSubPath) {
+					const encoded = encodePathForGraph(cleanSubPath);
+					nextUrl = `/me/drive/special/approot:/${encoded}:/delta`;
+				} else {
+					nextUrl = '/me/drive/special/approot/delta';
+				}
 			} else if (remotePath) {
 				const cleanPath = remotePath.replace(/^\//, '');
-				const encoded = encodePathForGraph(cleanPath);
+				const fullPath = cleanSubPath ? `${cleanPath}/${cleanSubPath}` : cleanPath;
+				const encoded = encodePathForGraph(fullPath);
+				nextUrl = `/me/drive/root:/${encoded}:/delta`;
+			} else if (cleanSubPath) {
+				const encoded = encodePathForGraph(cleanSubPath);
 				nextUrl = `/me/drive/root:/${encoded}:/delta`;
 			} else {
 				nextUrl = '/me/drive/root/delta';
@@ -428,11 +448,17 @@ export class OneDriveClient {
 
 			return { items: allItems, deltaLink: '' };
 		} catch (error) {
+			// If the scoped folder does not exist yet, treat as empty so first sync can create it.
+			if (cleanSubPath && !deltaLink && this.isItemNotFoundError(error)) {
+				logger.info(`Delta target '${cleanSubPath}' not found remotely — treating as empty`);
+				return { items: [], deltaLink: '' };
+			}
+
 			// If the delta token is invalid/expired, do a full resync
 			if (deltaLink && error instanceof Error &&
 				(error.message.includes('resyncRequired') || error.message.includes('invalidToken'))) {
 				logger.warn('Delta token expired, performing full resync');
-				return this.getDelta(undefined, remotePath); // Retry without token
+				return this.getDelta(undefined, remotePath, subPath); // Retry without token
 			}
 
 			logger.error('Failed to get delta:', error);
@@ -440,6 +466,17 @@ export class OneDriveClient {
 				`Failed to get delta: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
 		}
+	}
+
+	private isItemNotFoundError(error: unknown): boolean {
+		if (error instanceof OneDriveError) {
+			if (error.statusCode === 404) return true;
+			if (error.code === 'itemNotFound') return true;
+		}
+		if (error instanceof Error && /itemNotFound|404/i.test(error.message)) {
+			return true;
+		}
+		return false;
 	}
 
 	/**

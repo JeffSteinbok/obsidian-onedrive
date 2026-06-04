@@ -331,6 +331,26 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				})
 			);
 
+		// Large-delete safety threshold
+		new Setting(containerEl)
+			.setName('Large delete warning threshold')
+			.setDesc(
+				'Pause and ask before a sync that would delete this many files. ' +
+					'Helps catch unintended remote deletions or accidental local deletes. ' +
+					'Set to 0 to disable.'
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder('25')
+					.setValue(String(this.plugin.settings.largeDeleteThreshold ?? 25))
+					.onChange(async (value) => {
+						const parsed = parseInt(value, 10);
+						if (Number.isNaN(parsed) || parsed < 0) return;
+						this.plugin.settings.largeDeleteThreshold = parsed;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		// Show remote path as read-only text in App Folder mode
 		if (this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
 			new Setting(containerEl)
