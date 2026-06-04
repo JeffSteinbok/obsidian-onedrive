@@ -130,6 +130,7 @@ describe('SyncEngine', () => {
 		mockApp.vault.readBinary.mockReset().mockResolvedValue(new ArrayBuffer(10));
 		mockApp.vault.delete.mockReset().mockResolvedValue(undefined);
 		mockApp.vault.adapter.exists.mockReset().mockResolvedValue(true);
+		mockApp.vault.adapter.read.mockReset().mockRejectedValue(new Error('missing .syncIgnore'));
 		mockApp.vault.adapter.mkdir.mockReset().mockResolvedValue(undefined);
 		mockApp.vault.adapter.writeBinary.mockReset().mockResolvedValue(undefined);
 
@@ -627,6 +628,58 @@ describe('SyncEngine', () => {
 		expect(stateManager.getObsidianDeltaLink()).toBe('obsidian-delta-existing');
 	});
 
+	it('filters remote changes using .syncIgnore patterns', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockApp.vault.adapter.read.mockResolvedValue('private/\n*.tmp');
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				makeRemoteFile('private/secret.md', { id: 'private-id' }),
+				makeRemoteFile('private/sub/secret.md', { id: 'private-nested-id' }),
+				makeRemoteFile('notes/draft.tmp', { id: 'tmp-id' }),
+				makeRemoteFile('notes/keep.md', { id: 'keep-id' }),
+			],
+			deltaLink: 'delta-link-2',
+		});
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('notes/keep.md', 10, Date.now()));
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.downloadFile).toHaveBeenCalledTimes(1);
+		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('keep-id');
+		expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith('notes/keep.md', expect.any(ArrayBuffer));
+	});
+
+	it('filters deeply nested .obsidian paths from remote changes', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		// .syncIgnore is empty; .obsidian/** exclusion is built-in
+		mockApp.vault.adapter.read.mockResolvedValue('');
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				makeRemoteFile('.obsidian/plugins/foo/main.js', { id: 'plugin-id' }),
+				makeRemoteFile('.obsidian/workspace.json', { id: 'workspace-id' }),
+				makeRemoteFile('notes/keep.md', { id: 'keep-id' }),
+			],
+			deltaLink: 'delta-link-3',
+		});
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('notes/keep.md', 10, Date.now()));
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.downloadFile).toHaveBeenCalledTimes(1);
+		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('keep-id');
+	});
+
+	it('removes ignored local dirty paths based on .syncIgnore', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockApp.vault.adapter.read.mockResolvedValue('private/');
+		mockEventManager.getDirtyFiles.mockReturnValue([{ path: 'private/local.md', type: LocalChangeType.MODIFY }]);
+
+		await syncEngine.performSync();
+
+		expect(mockEventManager.removeDirtyPaths).toHaveBeenCalledWith(['private/local.md']);
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+	});
+
 	it('throws and shows an error notice when sync fails', async () => {
 		mockClient.getDelta.mockRejectedValue(new Error('delta failed'));
 
@@ -675,5 +728,64 @@ describe('SyncEngine', () => {
 		await syncEngine.performSync();
 
 		expect(trackingNotice.calls).toContainEqual(['Syncing: 0/5 files...', 0]);
+	});
+
+	it('runs multiple sync operations in parallel', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		const changes = Array.from({ length: 3 }, (_, index) => ({
+			path: `notes/file-${index}.md`,
+			type: LocalChangeType.MODIFY,
+		}));
+		const pendingUploads = new Map<string, () => void>();
+		let resolveAllUploadsStarted!: () => void;
+		const allUploadsStarted = new Promise<void>((resolve, reject) => {
+			const timeout = setTimeout(
+				() => reject(new Error('Timed out waiting for uploads to start')),
+				1000
+			);
+			resolveAllUploadsStarted = () => {
+				clearTimeout(timeout);
+				resolve();
+			};
+		});
+		let activeUploads = 0;
+		let maxActiveUploads = 0;
+
+		mockEventManager.getDirtyFiles.mockReturnValue(changes);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 10, Date.now())
+		);
+		mockFileOps.uploadFile.mockImplementation(
+			(remotePath: string) =>
+				new Promise((resolve) => {
+					activeUploads++;
+					maxActiveUploads = Math.max(maxActiveUploads, activeUploads);
+					pendingUploads.set(remotePath, () => {
+						activeUploads--;
+						resolve(
+							makeRemoteItem({
+								id: `${remotePath}-id`,
+								name: remotePath.split('/').pop() ?? remotePath,
+								file: { mimeType: 'text/plain', hashes: { quickXorHash: `${remotePath}-hash` } },
+							})
+						);
+					});
+					if (pendingUploads.size === changes.length) {
+						resolveAllUploadsStarted();
+					}
+				})
+		);
+
+		const syncPromise = syncEngine.performSync();
+
+		await allUploadsStarted;
+		expect(pendingUploads.size).toBe(3);
+		expect(maxActiveUploads).toBeGreaterThan(1);
+
+		for (const resolveUpload of pendingUploads.values()) {
+			resolveUpload();
+		}
+
+		await syncPromise;
 	});
 });

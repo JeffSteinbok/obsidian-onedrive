@@ -32,6 +32,8 @@ import { DeviceCodeModal } from './ui/authModal';
 import { FolderSelection } from './ui/folderBrowserModal';
 import { ConflictView, CONFLICT_VIEW_TYPE } from './ui/conflictView';
 
+const SYNC_LOGS_NOTE_PATH = '.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md';
+
 /**
  * Main plugin class
  */
@@ -138,6 +140,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'view-sync-logs',
+			name: 'View sync logs',
+			callback: async () => {
+				await this.openLogsNote();
+			},
+		});
+
+		this.addCommand({
 			id: 'dev-create-test-conflict',
 			name: 'DEV: Create test conflict (for testing conflict UI)',
 			callback: async () => {
@@ -240,7 +250,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 					await this.performSync();
 				},
 				this.syncStateManager,
-				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests)
+				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings)
 			);
 
 			// Initialize conflict queue
@@ -267,7 +277,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 				remoteRoot,
 				remoteRootOnDrive,
 				this.conflictQueue,
-				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests)
+				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings)
 			);
 
 			// Get user info to display in settings
@@ -615,6 +625,41 @@ export default class OneDriveSyncPlugin extends Plugin {
 	}
 
 	/**
+	 * Create/update a readable vault note with recent plugin logs and open it.
+	 */
+	private async openLogsNote(): Promise<void> {
+		const lines = logger.getRecentLogs();
+		if (lines.length === 0) {
+			new Notice('No sync logs available yet.');
+			return;
+		}
+
+		const notePath = SYNC_LOGS_NOTE_PATH;
+		const content = `# OneDrive Sync Logs
+
+Last updated: ${new Date().toISOString()}
+
+\`\`\`
+${lines.join('\n')}
+\`\`\`
+`;
+
+		let logFile: TFile;
+		const existing = this.app.vault.getAbstractFileByPath(notePath);
+		if (existing instanceof TFile) {
+			await this.app.vault.modify(existing, content);
+			logFile = existing;
+		} else if (!existing) {
+			logFile = await this.app.vault.create(notePath, content);
+		} else {
+			new Notice(`Cannot write logs to ${notePath} because that path is a folder.`);
+			return;
+		}
+
+		await this.app.workspace.getLeaf(false).openFile(logFile);
+	}
+
+	/**
 	 * DEV: Create a fake conflict for testing the conflict resolution UI.
 	 * Picks the active file (or first .md file) and fabricates a
 	 * simulated "incoming" version with some changes.
@@ -688,9 +733,30 @@ export default class OneDriveSyncPlugin extends Plugin {
 		await this.saveSettings();
 
 		new Notice(
-			`Selected plugin manifest sync ${enabled ? 'enabled' : 'disabled'} (.obsidian/community-plugins.json, .obsidian/core-plugins.json, and installed plugin manifest files). ` +
+			`Plugin sync ${enabled ? 'enabled' : 'disabled'} (community-plugins.json, core-plugins.json, plugin manifests and binaries). ` +
 				'Run Sync Now to apply the new scope.'
 		);
+	}
+
+	async onAppSettingsSyncChanged(enabled: boolean): Promise<void> {
+		if (this.settings.syncAppSettings === enabled) {
+			return;
+		}
+
+		this.settings.syncAppSettings = enabled;
+		this.syncStateManager.clearState();
+		await this.saveSettings();
+
+		new Notice(
+			`App settings sync ${enabled ? 'enabled' : 'disabled'} (app.json, appearance.json, hotkeys.json). ` +
+				'Run Sync Now to apply the new scope.'
+		);
+	}
+
+	async resetSyncToken(): Promise<void> {
+		this.syncStateManager.clearDeltaLink();
+		await this.saveSettings();
+		new Notice('Sync token reset. Next sync will re-read from OneDrive.');
 	}
 
 	/**
