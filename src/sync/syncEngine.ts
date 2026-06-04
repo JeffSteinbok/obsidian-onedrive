@@ -57,10 +57,14 @@ export class SyncEngine {
 			// 1. Get local changes from event manager
 			const ignoreMatchers = await this.loadIgnoreMatchers();
 			const allLocalChanges = this.eventManager.getDirtyFiles();
-			const ignoredLocalPaths = allLocalChanges
-				.filter((change) => this.shouldIgnorePath(change.path, ignoreMatchers))
-				.map((change) => change.path);
-			const localChanges = allLocalChanges.filter((change) => !this.shouldIgnorePath(change.path, ignoreMatchers));
+			const ignoredLocalPaths: string[] = [];
+			const localChanges = allLocalChanges.filter((change) => {
+				if (this.shouldIgnorePath(change.path, ignoreMatchers)) {
+					ignoredLocalPaths.push(change.path);
+					return false;
+				}
+				return true;
+			});
 			if (ignoredLocalPaths.length > 0) {
 				this.eventManager.removeDirtyPaths(ignoredLocalPaths);
 			}
@@ -603,8 +607,8 @@ export class SyncEngine {
 		const hasPathSeparator = normalizedPattern.includes('/');
 		let regexPattern = normalizedPattern.replace(/\*\*/g, wildcardToken);
 		regexPattern = regexPattern.replace(/[.+^${}()|[\]\\/]/g, '\\$&');
-		regexPattern = regexPattern.replace(new RegExp(wildcardToken, 'g'), '.*');
 		regexPattern = regexPattern.replace(/\*/g, '[^/]*');
+		regexPattern = regexPattern.replace(new RegExp(wildcardToken, 'g'), '.*');
 
 		if (hasPathSeparator) {
 			return new RegExp(`^${regexPattern}$`);

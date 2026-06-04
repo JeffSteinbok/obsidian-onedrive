@@ -484,6 +484,7 @@ describe('SyncEngine', () => {
 		mockClient.getDelta.mockResolvedValue({
 			items: [
 				makeRemoteFile('private/secret.md', { id: 'private-id' }),
+				makeRemoteFile('private/sub/secret.md', { id: 'private-nested-id' }),
 				makeRemoteFile('notes/draft.tmp', { id: 'tmp-id' }),
 				makeRemoteFile('notes/keep.md', { id: 'keep-id' }),
 			],
@@ -496,6 +497,26 @@ describe('SyncEngine', () => {
 		expect(mockFileOps.downloadFile).toHaveBeenCalledTimes(1);
 		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('keep-id');
 		expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith('notes/keep.md', expect.any(ArrayBuffer));
+	});
+
+	it('filters deeply nested .obsidian paths from remote changes', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		// .syncIgnore is empty; .obsidian/** exclusion is built-in
+		mockApp.vault.adapter.read.mockResolvedValue('');
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				makeRemoteFile('.obsidian/plugins/foo/main.js', { id: 'plugin-id' }),
+				makeRemoteFile('.obsidian/workspace.json', { id: 'workspace-id' }),
+				makeRemoteFile('notes/keep.md', { id: 'keep-id' }),
+			],
+			deltaLink: 'delta-link-3',
+		});
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('notes/keep.md', 10, Date.now()));
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.downloadFile).toHaveBeenCalledTimes(1);
+		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('keep-id');
 	});
 
 	it('removes ignored local dirty paths based on .syncIgnore', async () => {
