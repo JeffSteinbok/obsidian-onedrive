@@ -993,4 +993,189 @@ export class SyncEngine {
 		const normalizedPath = normalizePath(path).replace(/^\/+/, '');
 		return ignoreMatchers.some((matcher) => matcher.test(normalizedPath));
 	}
+
+	/**
+	 * Reconcile the local vault from a full cloud listing. Treats cloud as
+	 * authoritative: any local file not present in cloud is deleted; any
+	 * cloud file not present locally is downloaded; size mismatches are
+	 * downloaded too. Use this to recover from delta collapse, files that
+	 * predate plugin installation, or any drift that Reset Sync Token
+	 * can't fix (Reset is upload-biased — it re-uploads local-only files).
+	 *
+	 * Destructive deletes are gated by the same large-delete confirmation
+	 * modal used by normal sync.
+	 */
+	async reconcileFromCloud(): Promise<void> {
+		logger.info('Starting reconcile-from-cloud operation');
+		const progress = (msg: string | undefined) => {
+			try {
+				this.onProgress?.(msg);
+			} catch {
+				// progress reporting must never break sync
+			}
+		};
+
+		try {
+			progress('listing cloud...');
+			const ignoreMatchers = await this.loadIgnoreMatchers();
+
+			// 1. Enumerate the entire remote vault. listAllItems recurses
+			// /children — it returns files AND folders. We only want files
+			// for diffing.
+			const allRemoteItems = await this.oneDriveClient.listAllItems(this.remoteRoot);
+			logger.info(`Reconcile: enumerated ${allRemoteItems.length} remote items`);
+
+			// 2. Build vaultPath -> OneDriveItem map for everything we'd sync.
+			const remoteFiles = new Map<string, OneDriveItem>();
+			for (const item of allRemoteItems) {
+				if (item.folder) continue;
+				const vaultPath = this.remotePathToVaultPath(item);
+				if (!vaultPath) continue;
+				if (!this.shouldSyncPath(vaultPath)) continue;
+				if (this.shouldIgnorePath(vaultPath, ignoreMatchers)) continue;
+				remoteFiles.set(vaultPath, item);
+			}
+
+			// 3. Snapshot local files we'd sync.
+			const localFiles = this.app.vault
+				.getFiles()
+				.filter((f) => this.shouldSyncPath(f.path))
+				.filter((f) => !this.shouldIgnorePath(f.path, ignoreMatchers));
+			const localByPath = new Map<string, TFile>(localFiles.map((f) => [f.path, f]));
+
+			// 4. Plan operations.
+			const operations: SyncOperation[] = [];
+			const localOnly: string[] = [];
+			const remoteOnly: string[] = [];
+			const sizeMismatch: string[] = [];
+
+			for (const local of localFiles) {
+				if (!remoteFiles.has(local.path)) {
+					localOnly.push(local.path);
+					// Encoded as a remote→local delete (download direction, no remoteState).
+					operations.push({
+						path: local.path,
+						direction: SyncDirection.DOWNLOAD,
+						remoteState: undefined,
+					});
+				}
+			}
+
+			for (const [path, item] of remoteFiles) {
+				const local = localByPath.get(path);
+				if (!local) {
+					remoteOnly.push(path);
+					operations.push({
+						path,
+						direction: SyncDirection.DOWNLOAD,
+						remoteState: this.itemToFileState(item),
+					});
+				} else {
+					const remoteSize = item.size || 0;
+					if (local.stat.size !== remoteSize) {
+						sizeMismatch.push(path);
+						operations.push({
+							path,
+							direction: SyncDirection.DOWNLOAD,
+							remoteState: this.itemToFileState(item),
+						});
+					} else {
+						// Same size — assume same content, just refresh tracked state.
+						this.stateManager.setFileState(path, this.itemToFileState(item));
+					}
+				}
+			}
+
+			logger.info(
+				`Reconcile plan: ${operations.length} operations ` +
+					`(localOnly=${localOnly.length} deletes, remoteOnly=${remoteOnly.length} downloads, sizeMismatch=${sizeMismatch.length} re-downloads)`
+			);
+
+			// 5. Large-delete confirmation for the destructive side.
+			const threshold = this.getLargeDeleteThreshold();
+			if (
+				threshold > 0 &&
+				localOnly.length >= threshold &&
+				this.largeDeleteWarningHandler
+			) {
+				logger.warn(
+					`Reconcile would delete ${localOnly.length} local files (threshold ${threshold}). Asking user.`
+				);
+				const decision = await this.largeDeleteWarningHandler({
+					localDeleteCount: localOnly.length,
+					remoteDeleteCount: 0,
+					threshold,
+					sampleLocalDeletes: localOnly.slice(0, 10),
+					sampleRemoteDeletes: [],
+				});
+				if (decision !== 'proceed') {
+					logger.info(`Reconcile cancelled by user (${operations.length} ops aborted)`);
+					new Notice('Reconcile from cloud cancelled.');
+					return;
+				}
+			}
+
+			if (operations.length === 0) {
+				logger.info('Reconcile: nothing to do — local already matches cloud');
+				new Notice('Reconcile from cloud: already in sync.');
+				return;
+			}
+
+			// 6. Execute.
+			let completed = 0;
+			progress(`0/${operations.length} files`);
+			const progressNotice =
+				operations.length >= 5
+					? new Notice(`Reconciling: 0/${operations.length} files...`, 0)
+					: null;
+			await this.executeOperations(operations, () => {
+				completed++;
+				const label = `${completed}/${operations.length} files`;
+				progress(label);
+				if (progressNotice) {
+					progressNotice.setMessage(`Reconciling: ${label}...`);
+				}
+			});
+			progressNotice?.hide();
+			progress(undefined);
+
+			// 7. Local file event listeners may have queued dirty entries while
+			// we were downloading. Clear them — we just authoritatively synced
+			// from cloud, anything pending is stale.
+			this.eventManager.clearDirtyFiles();
+
+			// 8. Advance delta cursors so the next normal sync starts clean.
+			progress('advancing delta cursor...');
+			try {
+				const newDelta = await this.oneDriveClient.getDelta(undefined, this.remoteRoot);
+				this.stateManager.setDeltaLink(newDelta.deltaLink);
+				const shouldSyncObsidianScope =
+					this.shouldSyncPath('.obsidian/community-plugins.json') ||
+					this.shouldSyncPath('.obsidian/app.json');
+				if (shouldSyncObsidianScope) {
+					const newObs = await this.oneDriveClient.getDelta(
+						undefined,
+						this.remoteRoot,
+						'.obsidian'
+					);
+					this.stateManager.setObsidianDeltaLink(newObs.deltaLink);
+				}
+			} catch (error) {
+				logger.warn(
+					'Reconcile: failed to advance delta cursor; next sync will re-enumerate via delta:',
+					error
+				);
+			}
+
+			this.stateManager.setLastSyncTime(Date.now());
+			logger.info(`Reconcile from cloud complete: ${operations.length} operations executed`);
+			new Notice(
+				`Reconcile from cloud complete: ${remoteOnly.length} downloaded, ${localOnly.length} deleted, ${sizeMismatch.length} refreshed.`
+			);
+		} catch (error) {
+			logger.error('Reconcile from cloud failed:', error);
+			new Notice(`Reconcile from cloud failed: ${error}`);
+			throw error;
+		}
+	}
 }

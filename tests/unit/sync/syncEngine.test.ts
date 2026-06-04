@@ -1354,3 +1354,123 @@ describe('SyncEngine remote folder-delete expansion', () => {
 		expect(stateManager.getFolderPathById(folderId)).toBeUndefined();
 	});
 });
+
+describe('SyncEngine reconcile from cloud', () => {
+	let stateManager: SyncStateManager;
+	let conflictResolver: ConflictResolver;
+	let mockFileOps: any;
+	let mockClient: any;
+	let mockEventManager: any;
+
+	beforeEach(() => {
+		stateManager = new SyncStateManager();
+		conflictResolver = new ConflictResolver(ConflictResolutionStrategy.LAST_WRITE_WINS);
+		mockFileOps = {
+			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
+			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+		};
+		mockClient = {
+			listAllItems: vi.fn(),
+			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'fresh-delta' }),
+			isSharedDrive: vi.fn().mockReturnValue(false),
+		};
+		mockEventManager = {
+			getDirtyFiles: vi.fn().mockReturnValue([]),
+			clearDirtyFiles: vi.fn(),
+			addDirtyFile: vi.fn(),
+			removeDirtyPaths: vi.fn(),
+			markOwnWrites: vi.fn(),
+			removeOwnWrite: vi.fn(),
+		};
+	});
+
+	it('deletes local-only files, downloads remote-only files, refreshes matching files', async () => {
+		// Cloud: A.md (matches local size), B.md (only in cloud), C.md (size mismatch)
+		mockClient.listAllItems.mockResolvedValue([
+			makeRemoteFile('A.md', { size: 10 }),
+			makeRemoteFile('B.md', { size: 20 }),
+			makeRemoteFile('C.md', { size: 30 }),
+		]);
+
+		// Local: A.md (size 10), C.md (size 99 — mismatch), D.md (local-only, should be deleted)
+		const localFiles = [
+			makeTFile('A.md', 10, Date.now()),
+			makeTFile('C.md', 99, Date.now()),
+			makeTFile('D.md', 5, Date.now()),
+		];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+
+		const engine = new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'/remote/root'
+		);
+
+		await engine.reconcileFromCloud();
+
+		// D.md (local-only) should have been deleted via vault.delete
+		const deletedPaths = (mockApp.vault.delete as Mock).mock.calls.map(
+			(c: any[]) => (c[0] as { path: string }).path
+		);
+		expect(deletedPaths).toContain('D.md');
+		expect(deletedPaths).not.toContain('A.md');
+
+		// B.md and C.md should have been downloaded (size-mismatch counts as download)
+		const downloadedIds = (mockFileOps.downloadFile as Mock).mock.calls.map((c: any[]) => c[0]);
+		expect(downloadedIds).toContain('B.md-id');
+		expect(downloadedIds).toContain('C.md-id');
+		expect(downloadedIds).not.toContain('A.md-id');
+
+		// A.md (matching size) should have tracked state refreshed without downloading
+		expect(stateManager.getFileState('A.md')).toBeDefined();
+
+		// Delta cursor should have been advanced
+		expect(mockClient.getDelta).toHaveBeenCalled();
+		expect(stateManager.getDeltaLink()).toBe('fresh-delta');
+	});
+
+	it('skips destructive deletes when user declines large-delete confirmation', async () => {
+		// Cloud is empty; local has 10 files — all would be deleted.
+		mockClient.listAllItems.mockResolvedValue([]);
+		const localFiles = Array.from({ length: 10 }, (_, i) =>
+			makeTFile(`Note${i}.md`, 10, Date.now())
+		);
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+
+		const handler = vi.fn().mockResolvedValue('cancel');
+
+		const engine = new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'/remote/root',
+			undefined,
+			undefined,
+			(p) => shouldSyncVaultPath(p),
+			() => 5, // threshold 5
+			handler
+		);
+
+		await engine.reconcileFromCloud();
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		// No deletes should have happened.
+		expect((mockApp.vault.delete as Mock).mock.calls.length).toBe(0);
+		// Cursor should NOT have been advanced when user cancelled.
+		expect(mockClient.getDelta).not.toHaveBeenCalled();
+	});
+});

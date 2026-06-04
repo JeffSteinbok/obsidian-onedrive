@@ -20,6 +20,7 @@ interface OneDrivePlugin {
 	onAppSettingsSyncChanged(enabled: boolean): Promise<void>;
 	onPluginManifestSyncChanged(enabled: boolean): Promise<void>;
 	resetSyncToken(): Promise<void>;
+	reconcileFromCloud(): Promise<void>;
 	authenticate(): Promise<void>;
 	disconnect(): void;
 	triggerManualSync(): Promise<void>;
@@ -368,6 +369,22 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					.setWarning()
 					.onClick(async () => {
 						await this.plugin.resetSyncToken();
+					})
+			);
+
+		// Reconcile from cloud (cloud-as-truth recovery — issue #26)
+		new Setting(containerEl)
+			.setName('Reconcile from cloud')
+			.setDesc(
+				'Treat cloud as authoritative. Deletes local files that no longer exist in OneDrive and downloads anything missing. ' +
+					'Use when Reset Sync Token has not cleared stale local files. Destructive — confirmation required for large deletes.'
+			)
+			.addButton((button) =>
+				button
+					.setButtonText('Reconcile from cloud')
+					.setWarning()
+					.onClick(async () => {
+						await this.plugin.reconcileFromCloud();
 					})
 			);
 
