@@ -1166,3 +1166,80 @@ describe('SyncEngine progress reporting', () => {
 		expect(messages[messages.length - 1]).toBeUndefined();
 	});
 });
+
+
+describe('SyncEngine remote-delete via id-only delta entries', () => {
+	let stateManager: SyncStateManager;
+	let conflictResolver: ConflictResolver;
+	let mockFileOps: any;
+	let mockClient: any;
+	let mockEventManager: any;
+
+	beforeEach(() => {
+		stateManager = new SyncStateManager();
+		conflictResolver = new ConflictResolver(ConflictResolutionStrategy.LAST_WRITE_WINS);
+		mockFileOps = {
+			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
+			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+		};
+		mockClient = {
+			getDelta: vi.fn(),
+			isSharedDrive: vi.fn().mockReturnValue(false),
+		};
+		mockEventManager = {
+			getDirtyFiles: vi.fn().mockReturnValue([]),
+			clearDirtyFiles: vi.fn(),
+			addDirtyFile: vi.fn(),
+			removeDirtyPaths: vi.fn(),
+			markOwnWrites: vi.fn(),
+			removeOwnWrite: vi.fn(),
+		};
+		(mockApp.vault.getFiles as Mock).mockReturnValue([]);
+	});
+
+	it('resolves an id-only delete entry to the tracked vault path and queues a local delete', async () => {
+		const targetPath = 'notes/from-other-device.md';
+		const targetId = '48043224B16FF524!sDELETEDONOTHERDEVICE';
+		stateManager.setFileState(targetPath, {
+			path: targetPath,
+			localMtime: 1,
+			remoteHash: 'h',
+			size: 10,
+			remoteModifiedTime: Date.now(),
+			oneDriveId: targetId,
+		});
+		// Pretend the file exists locally so the planner queues the delete op.
+		const file = makeTFile(targetPath, 10, Date.now());
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => (p === targetPath ? file : null)
+		);
+
+		// Microsoft Graph delete entry: id only, no name, no parentReference.
+		mockClient.getDelta.mockResolvedValue({
+			items: [{ id: targetId, deleted: { state: 'deleted' } } as any],
+			deltaLink: 'next-delta',
+		});
+		// Set a delta link so isFirstSync is false (we don't want the first-sync
+		// short-circuit, which doesn't issue deletes anyway).
+		stateManager.setDeltaLink('prev-delta');
+		stateManager.setLastSyncTime(1);
+
+		const engine = new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'/remote/root'
+		);
+
+		await engine.performSync();
+
+		// The file should have been deleted locally via Obsidian's vault API.
+		expect(mockApp.vault.delete).toHaveBeenCalledWith(file);
+		// And its tracked state should be gone so future syncs don't trip on it.
+		expect(stateManager.getFileState(targetPath)).toBeUndefined();
+	});
+});
