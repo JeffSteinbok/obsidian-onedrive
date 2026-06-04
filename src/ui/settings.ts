@@ -17,7 +17,9 @@ interface OneDrivePlugin {
 	settings: PluginSettings;
 	manifest: { version: string };
 	saveSettings(): Promise<void>;
+	onAppSettingsSyncChanged(enabled: boolean): Promise<void>;
 	onPluginManifestSyncChanged(enabled: boolean): Promise<void>;
+	resetSyncToken(): Promise<void>;
 	authenticate(): Promise<void>;
 	disconnect(): void;
 	triggerManualSync(): Promise<void>;
@@ -289,10 +291,20 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Sync selected plugin manifests')
+			.setName('Sync app settings')
 			.setDesc(
-				'Opt-in: sync .obsidian/community-plugins.json, .obsidian/core-plugins.json, and installed plugin manifest files (.obsidian/plugins/<plugin-id>/manifest.json). ' +
-					'Does not sync plugin binaries.'
+				'Sync .obsidian/app.json, .obsidian/appearance.json, and .obsidian/hotkeys.json to keep appearance and hotkeys consistent across devices.'
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.syncAppSettings).onChange(async (value) => {
+					await this.plugin.onAppSettingsSyncChanged(value);
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('Sync plugins')
+			.setDesc(
+				'Sync .obsidian/community-plugins.json, .obsidian/core-plugins.json, plugin manifests, and plugin binaries (main.js, styles.css). Does not sync plugin data files.'
 			)
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncPluginManifests).onChange(async (value) => {
@@ -326,10 +338,23 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				.setDesc(`Files sync to: /Apps/ObsidianOneDrive`);
 		}
 
+		// Reset sync token
+		new Setting(containerEl)
+			.setName('Reset sync token')
+			.setDesc('Force a full re-read from OneDrive on the next sync. Use if files appear missing or out of date.')
+			.addButton((button) =>
+				button
+					.setButtonText('Reset sync token')
+					.setWarning()
+					.onClick(async () => {
+						await this.plugin.resetSyncToken();
+					})
+			);
+
 		// Custom client ID toggle
 		new Setting(containerEl)
 			.setName('Use custom client ID')
-			.setDesc('Use your own Azure AD app registration (requires setup)')
+			.setDesc('Use your own Azure AD app registration. See the GitHub docs for setup instructions.')
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.useCustomClientId).onChange(async (value) => {
 					this.plugin.settings.useCustomClientId = value;
@@ -353,18 +378,8 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				);
 
 			const helpDiv = containerEl.createDiv({ cls: 'setting-item-description' });
-			helpDiv.innerHTML = `
-				<p><strong>How to get a custom client ID:</strong></p>
-				<ol>
-					<li>Go to <a href="https://portal.azure.com">Azure Portal</a> → Microsoft Entra ID → App registrations</li>
-					<li>Click "New registration"</li>
-					<li>Name: "Obsidian OneDrive Sync"</li>
-					<li>Supported account types: "Personal Microsoft accounts only"</li>
-					<li>Redirect URI: Leave blank (not needed for device code flow)</li>
-					<li>After registration, copy the Application (client) ID</li>
-					<li>Under Authentication → Enable "Allow public client flows"</li>
-				</ol>
-			`;
+			helpDiv.style.marginTop = '4px';
+			helpDiv.innerHTML = `See <a href="https://github.com/jeffsteinbok/obsidian-onedrive#custom-client-id" target="_blank">GitHub docs</a> for custom client ID setup instructions.`;
 		}
 	}
 }
