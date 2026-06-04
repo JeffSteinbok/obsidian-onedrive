@@ -19,6 +19,8 @@ class Logger {
 	private enableDebug = false;
 	private minLevel = LogLevel.INFO;
 	private logFilePath: string | null = null;
+	private recentLogs: string[] = [];
+	private static readonly MAX_RECENT_LOGS = 500;
 
 	setDebugMode(enabled: boolean) {
 		this.enableDebug = enabled;
@@ -60,16 +62,32 @@ class Logger {
 		return `[${timestamp}] [${PLUGIN_INFO.NAME}] [${level}] ${message}`;
 	}
 
-	private writeToFile(formatted: string, args: unknown[]): void {
+	private formatExtraArgs(args: unknown[]): string {
+		if (args.length === 0) return '';
+		return ' ' + args.map(a => {
+			try { return typeof a === 'string' ? a : JSON.stringify(a); }
+			catch { return String(a); }
+		}).join(' ');
+	}
+
+	private addToBuffer(line: string): void {
+		this.recentLogs.push(line);
+		if (this.recentLogs.length > Logger.MAX_RECENT_LOGS) {
+			this.recentLogs.shift();
+		}
+	}
+
+	getRecentLogs(limit = Logger.MAX_RECENT_LOGS): string[] {
+		if (limit <= 0) return [];
+		const boundedLimit = Math.min(limit, this.recentLogs.length);
+		if (boundedLimit === 0) return [];
+		return this.recentLogs.slice(-boundedLimit);
+	}
+
+	private writeToFile(line: string): void {
 		if (!this.logFilePath) return;
 		try {
-			const extra = args.length > 0
-				? ' ' + args.map(a => {
-					try { return typeof a === 'string' ? a : JSON.stringify(a); }
-					catch { return String(a); }
-				}).join(' ')
-				: '';
-			fs.appendFileSync(this.logFilePath, formatted + extra + '\n');
+			fs.appendFileSync(this.logFilePath, line + '\n');
 		} catch {
 			// silently ignore write errors
 		}
@@ -78,36 +96,44 @@ class Logger {
 	debug(message: string, ...args: unknown[]) {
 		if (this.shouldLog(LogLevel.DEBUG)) {
 			const formatted = this.formatMessage('DEBUG', message);
+			const line = formatted + this.formatExtraArgs(args);
 			// eslint-disable-next-line no-console
 			console.debug(formatted, ...args);
-			this.writeToFile(formatted, args);
+			this.addToBuffer(line);
+			this.writeToFile(line);
 		}
 	}
 
 	info(message: string, ...args: unknown[]) {
 		if (this.shouldLog(LogLevel.INFO)) {
 			const formatted = this.formatMessage('INFO', message);
+			const line = formatted + this.formatExtraArgs(args);
 			// eslint-disable-next-line no-console
 			console.info(formatted, ...args);
-			this.writeToFile(formatted, args);
+			this.addToBuffer(line);
+			this.writeToFile(line);
 		}
 	}
 
 	warn(message: string, ...args: unknown[]) {
 		if (this.shouldLog(LogLevel.WARN)) {
 			const formatted = this.formatMessage('WARN', message);
+			const line = formatted + this.formatExtraArgs(args);
 			// eslint-disable-next-line no-console
 			console.warn(formatted, ...args);
-			this.writeToFile(formatted, args);
+			this.addToBuffer(line);
+			this.writeToFile(line);
 		}
 	}
 
 	error(message: string, ...args: unknown[]) {
 		if (this.shouldLog(LogLevel.ERROR)) {
 			const formatted = this.formatMessage('ERROR', message);
+			const line = formatted + this.formatExtraArgs(args);
 			// eslint-disable-next-line no-console
 			console.error(formatted, ...args);
-			this.writeToFile(formatted, args);
+			this.addToBuffer(line);
+			this.writeToFile(line);
 		}
 	}
 
@@ -128,7 +154,11 @@ class Logger {
 						? console.warn
 						: console.error;
 
-		logMethod(this.formatMessage(LogLevel[level], message), sanitized);
+		const formatted = this.formatMessage(LogLevel[level], message);
+		logMethod(formatted, sanitized);
+		const line = formatted + this.formatExtraArgs(sanitized ? [sanitized] : []);
+		this.addToBuffer(line);
+		this.writeToFile(line);
 		/* eslint-enable no-console */
 	}
 

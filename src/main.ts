@@ -32,6 +32,8 @@ import { DeviceCodeModal } from './ui/authModal';
 import { FolderSelection } from './ui/folderBrowserModal';
 import { ConflictView, CONFLICT_VIEW_TYPE } from './ui/conflictView';
 
+const SYNC_LOGS_NOTE_PATH = '.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md';
+
 /**
  * Main plugin class
  */
@@ -134,6 +136,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 			name: 'Show sync conflicts',
 			callback: () => {
 				this.activateConflictView();
+			},
+		});
+
+		this.addCommand({
+			id: 'view-sync-logs',
+			name: 'View sync logs',
+			callback: async () => {
+				await this.openLogsNote();
 			},
 		});
 
@@ -612,6 +622,41 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private updateConflictCount(): void {
 		const count = this.conflictQueue?.count ?? 0;
 		this.statusBarManager?.setConflictCount(count);
+	}
+
+	/**
+	 * Create/update a readable vault note with recent plugin logs and open it.
+	 */
+	private async openLogsNote(): Promise<void> {
+		const lines = logger.getRecentLogs();
+		if (lines.length === 0) {
+			new Notice('No sync logs available yet.');
+			return;
+		}
+
+		const notePath = SYNC_LOGS_NOTE_PATH;
+		const content = `# OneDrive Sync Logs
+
+Last updated: ${new Date().toISOString()}
+
+\`\`\`
+${lines.join('\n')}
+\`\`\`
+`;
+
+		let logFile: TFile;
+		const existing = this.app.vault.getAbstractFileByPath(notePath);
+		if (existing instanceof TFile) {
+			await this.app.vault.modify(existing, content);
+			logFile = existing;
+		} else if (!existing) {
+			logFile = await this.app.vault.create(notePath, content);
+		} else {
+			new Notice(`Cannot write logs to ${notePath} because that path is a folder.`);
+			return;
+		}
+
+		await this.app.workspace.getLeaf(false).openFile(logFile);
 	}
 
 	/**

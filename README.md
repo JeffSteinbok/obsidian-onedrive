@@ -53,6 +53,7 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 | **Reset Sync Token**      | Force a full re-read from OneDrive on the next sync. Use if files appear missing or out of date                                                                           |
 | **Custom Client ID**      | Optional — bring your own Azure AD app (see [GitHub docs](#custom-client-id))                                                                                             |
 | **Debug Logging**         | Enable for troubleshooting                                                                                                                                                |
+| **View sync logs**        | Run command palette → `OneDrive Sync: View sync logs` to open recent logs in a note (mobile-friendly)                                                                    |
 
 ### Optional: `.syncIgnore`
 
