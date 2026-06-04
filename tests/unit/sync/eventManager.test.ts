@@ -171,13 +171,26 @@ describe('EventManager', () => {
 			]);
 		});
 
-		it('keeps plugin binaries excluded when opted in', () => {
+		it('syncs plugin binaries when plugin sync is opted in', () => {
 			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
 				shouldSyncVaultPath(path, true)
 			);
 			eventManager.startListening();
 
 			eventCallbacks.modify(makeTFile('.obsidian/plugins/calendar/main.js', 100));
+
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: '.obsidian/plugins/calendar/main.js', type: LocalChangeType.MODIFY },
+			]);
+		});
+
+		it('keeps plugin data files excluded when plugin sync is opted in', () => {
+			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
+				shouldSyncVaultPath(path, true)
+			);
+			eventManager.startListening();
+
+			eventCallbacks.modify(makeTFile('.obsidian/plugins/calendar/data.json', 100));
 
 			expect(eventManager.getDirtyFiles()).toEqual([]);
 		});
