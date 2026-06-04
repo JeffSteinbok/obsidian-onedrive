@@ -689,7 +689,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		await this.saveSettings();
 
 		new Notice(
-			`Selected plugin manifest sync ${enabled ? 'enabled' : 'disabled'} (.obsidian/community-plugins.json, .obsidian/core-plugins.json, and .obsidian/plugins/*/manifest.json). ` +
+			`Selected plugin manifest sync ${enabled ? 'enabled' : 'disabled'} (.obsidian/community-plugins.json, .obsidian/core-plugins.json, and installed plugin manifest files). ` +
 				'Run Sync Now to apply the new scope.'
 		);
 	}
