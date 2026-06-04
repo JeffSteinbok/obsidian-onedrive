@@ -83,6 +83,24 @@ export class SyncEngine {
 
 		try {
 			progress('starting...');
+
+			// Inventory snapshot — surfaces drift between what the plugin thinks
+			// is synced (tracked state) and what's actually in the vault. A large
+			// gap is the fingerprint of silent delete drops (e.g. Graph delta
+			// collapse hiding deletes that happened on another device).
+			const trackedCount = this.stateManager.getTrackedPaths().length;
+			const vaultCount = this.app.vault.getFiles().length;
+			const drift = vaultCount - trackedCount;
+			logger.info(
+				`Inventory: vaultFiles=${vaultCount} trackedStates=${trackedCount} drift=${drift >= 0 ? '+' : ''}${drift}`
+			);
+			if (Math.abs(drift) > 10 && trackedCount > 0) {
+				logger.warn(
+					`Inventory drift detected: vault has ${vaultCount} files but plugin tracks ${trackedCount} (${drift >= 0 ? '+' : ''}${drift}). ` +
+						`If the local total is much higher, this device may hold files that were deleted on another device but the delta API never reported the deletion.`
+				);
+			}
+
 			// 1. Get local changes from event manager
 			const ignoreMatchers = await this.loadIgnoreMatchers();
 			const allLocalChanges = this.eventManager.getDirtyFiles();
@@ -157,8 +175,16 @@ export class SyncEngine {
 				}) || []),
 			];
 
+			const obsidianRawCount = obsidianDeltaResponse?.items.length || 0;
+			const mainDeletes = deltaResponse.items.filter((i) => i.deleted).length;
+			const mainFolders = deltaResponse.items.filter((i) => !!i.folder).length;
+			const obsidianDeletes = obsidianDeltaResponse?.items.filter((i) => i.deleted).length || 0;
+			const remoteDeletes = remoteChanges.filter((i) => i.deleted).length;
 			logger.info(
-				`Delta returned ${deltaResponse.items.length} total items, ${remoteChanges.length} file changes`
+				`Delta returned ${deltaResponse.items.length + obsidianRawCount} raw items ` +
+					`(main: total=${deltaResponse.items.length} deletes=${mainDeletes} folders=${mainFolders}; ` +
+					`obsidian: total=${obsidianRawCount} deletes=${obsidianDeletes}); ` +
+					`${remoteChanges.length} kept after filter (${remoteDeletes} deletes)`
 			);
 			for (const item of remoteChanges) {
 				const vaultPath = this.remotePathToVaultPath(item);
