@@ -50,10 +50,41 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 | **Conflict Resolution**   | Last write wins (default), create duplicate, or manual                                                                                                                    |
 | **Sync App Settings**     | Optional — sync `.obsidian/app.json`, `.obsidian/appearance.json`, and `.obsidian/hotkeys.json` to keep appearance and hotkeys consistent across devices                  |
 | **Sync Plugins**          | Optional — sync plugin lists, manifests, and binaries (`main.js`, `styles.css`). Does **not** sync plugin data files (`data.json`)                                        |
-| **Reset Sync Token**      | Force a full re-read from OneDrive on the next sync. Use if files appear missing or out of date                                                                           |
+| **Reset Sync Token**      | Clears delta cursors and tracked file state — the next sync re-reads everything from OneDrive. Upload-biased: any local-only files will be re-uploaded to cloud           |
+| **Reconcile from Cloud**  | Treats cloud as authoritative. Deletes local-only files and downloads remote-only files. Use when Reset Sync Token can't clear stale local files. Large deletes confirmed |
 | **Custom Client ID**      | Optional — bring your own Azure AD app (see [GitHub docs](#custom-client-id))                                                                                             |
-| **Debug Logging**         | Enable for troubleshooting                                                                                                                                                |
+| **Debug Logging**         | Enable for troubleshooting. Writes a daily note under `_OneDriveSyncLogs/YYYY-MM-DD.md` (device-local, never synced)                                                      |
 | **View sync logs**        | Run command palette → `OneDrive Sync: View sync logs` to open recent logs in a note (mobile-friendly)                                                                    |
+
+### Commands
+
+Available via the command palette (`Ctrl/Cmd+P`):
+
+- **Sync now** — trigger a manual sync immediately
+- **Connect to OneDrive** / **Disconnect from OneDrive** — manage authentication
+- **Force full sync (re-download everything)** — clear sync state and re-pull all files from cloud
+- **Reconcile from cloud (cloud-as-truth recovery)** — destructive recovery; see Reset vs. Reconcile below
+- **Show sync conflicts** — open the conflict resolution view
+- **View sync logs** — open the current day's log note (mobile-friendly diagnostics)
+
+### Reset vs. Reconcile — which one?
+
+| Symptom                                                            | Use                       |
+| ------------------------------------------------------------------ | ------------------------- |
+| "Plugin lost track of state, want a fresh re-read from cloud"      | **Reset sync token**      |
+| "Files I deleted on another device are still here"                 | **Reconcile from cloud**  |
+| "I have files that pre-date the plugin and they need to be in cloud" | **Reset sync token**    |
+| "Vault has cruft that doesn't exist in OneDrive — wipe it"         | **Reconcile from cloud**  |
+
+**Reset sync token** is upload-biased: local always wins, so any local-only file gets pushed to cloud on the next sync. **Reconcile from cloud** is the opposite: cloud always wins, local-only files get deleted (with a confirmation prompt for large deletes). Empty folders left behind by reconcile are pruned automatically — except folders that also exist in OneDrive.
+
+### Files always excluded from sync
+
+The plugin hardcodes these exclusions for safety:
+
+- `.obsidian/plugins/obsidian-onedrive/` — prevents auth token leakage and self-downgrade
+- `.obsidian/workspace*.json` — per-device UI state (Obsidian Sync excludes these too)
+- `_OneDriveSyncLogs/` — device-local debug logs
 
 ### Optional: `.syncIgnore`
 
