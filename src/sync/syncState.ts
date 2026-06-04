@@ -15,6 +15,7 @@ export class SyncStateManager {
 		this.state = {
 			lastSyncTime: 0,
 			fileStates: new Map(),
+			folderStates: new Map(),
 		};
 	}
 
@@ -24,6 +25,7 @@ export class SyncStateManager {
 	loadState(data?: {
 		lastSyncTime: number;
 		fileStates: Array<[string, FileState]>;
+		folderStates?: Array<[string, string]>;
 		deltaLink?: string;
 		obsidianDeltaLink?: string;
 	}): void {
@@ -31,6 +33,7 @@ export class SyncStateManager {
 			this.state = {
 				lastSyncTime: 0,
 				fileStates: new Map(),
+				folderStates: new Map(),
 			};
 			return;
 		}
@@ -38,6 +41,7 @@ export class SyncStateManager {
 		this.state = {
 			lastSyncTime: data.lastSyncTime,
 			fileStates: new Map(data.fileStates),
+			folderStates: new Map(data.folderStates || []),
 			deltaLink: data.deltaLink,
 			obsidianDeltaLink: data.obsidianDeltaLink,
 		};
@@ -45,6 +49,7 @@ export class SyncStateManager {
 		logger.debug('Sync state loaded', {
 			lastSyncTime: new Date(data.lastSyncTime).toISOString(),
 			fileCount: this.state.fileStates.size,
+			folderCount: this.state.folderStates.size,
 			hasDeltaLink: !!data.deltaLink,
 			hasObsidianDeltaLink: !!data.obsidianDeltaLink,
 		});
@@ -56,12 +61,14 @@ export class SyncStateManager {
 	prepareForSave(): {
 		lastSyncTime: number;
 		fileStates: Array<[string, FileState]>;
+		folderStates: Array<[string, string]>;
 		deltaLink?: string;
 		obsidianDeltaLink?: string;
 	} {
 		return {
 			lastSyncTime: this.state.lastSyncTime,
 			fileStates: Array.from(this.state.fileStates.entries()),
+			folderStates: Array.from(this.state.folderStates.entries()),
 			deltaLink: this.state.deltaLink,
 			obsidianDeltaLink: this.state.obsidianDeltaLink,
 		};
@@ -154,6 +161,40 @@ export class SyncStateManager {
 	}
 
 	/**
+	 * Record (or update) a folder we know about by its OneDrive id. Tracking
+	 * folders lets us reverse-resolve folder-delete delta entries — which
+	 * arrive with only an id, just like file deletes — into a vault path so
+	 * we can synthesize per-file deletes for everything beneath that folder.
+	 */
+	setFolderState(oneDriveId: string, vaultPath: string): void {
+		if (!oneDriveId) return;
+		this.state.folderStates.set(oneDriveId, vaultPath);
+	}
+
+	getFolderPathById(oneDriveId: string): string | undefined {
+		if (!oneDriveId) return undefined;
+		return this.state.folderStates.get(oneDriveId);
+	}
+
+	removeFolderState(oneDriveId: string): void {
+		this.state.folderStates.delete(oneDriveId);
+	}
+
+	/**
+	 * Return tracked file states whose path lives under the given folder path.
+	 * Matches direct children and any deeper descendants. Used to expand a
+	 * single folder-delete delta entry into per-file delete operations.
+	 */
+	getFileStatesUnderFolder(folderPath: string): Array<{ path: string; state: FileState }> {
+		const prefix = folderPath.endsWith('/') ? folderPath : `${folderPath}/`;
+		const results: Array<{ path: string; state: FileState }> = [];
+		for (const [path, state] of this.state.fileStates) {
+			if (path.startsWith(prefix)) results.push({ path, state });
+		}
+		return results;
+	}
+
+	/**
 	 * Check if this is the first sync (no state yet)
 	 */
 	isFirstSync(): boolean {
@@ -173,6 +214,7 @@ export class SyncStateManager {
 		this.state = {
 			lastSyncTime: 0,
 			fileStates: new Map(),
+			folderStates: new Map(),
 		};
 		logger.debug('Sync reset — cleared delta links, file states, and last sync time');
 	}
@@ -184,6 +226,7 @@ export class SyncStateManager {
 		this.state = {
 			lastSyncTime: 0,
 			fileStates: new Map(),
+			folderStates: new Map(),
 		};
 		logger.debug('Sync state cleared');
 	}

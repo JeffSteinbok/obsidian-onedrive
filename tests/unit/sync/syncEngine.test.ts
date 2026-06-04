@@ -1243,3 +1243,114 @@ describe('SyncEngine remote-delete via id-only delta entries', () => {
 		expect(stateManager.getFileState(targetPath)).toBeUndefined();
 	});
 });
+
+
+describe('SyncEngine remote folder-delete expansion', () => {
+	let stateManager: SyncStateManager;
+	let conflictResolver: ConflictResolver;
+	let mockFileOps: any;
+	let mockClient: any;
+	let mockEventManager: any;
+
+	beforeEach(() => {
+		stateManager = new SyncStateManager();
+		conflictResolver = new ConflictResolver(ConflictResolutionStrategy.LAST_WRITE_WINS);
+		mockFileOps = {
+			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
+			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+		};
+		mockClient = {
+			getDelta: vi.fn(),
+			isSharedDrive: vi.fn().mockReturnValue(false),
+		};
+		mockEventManager = {
+			getDirtyFiles: vi.fn().mockReturnValue([]),
+			clearDirtyFiles: vi.fn(),
+			addDirtyFile: vi.fn(),
+			removeDirtyPaths: vi.fn(),
+			markOwnWrites: vi.fn(),
+			removeOwnWrite: vi.fn(),
+		};
+		(mockApp.vault.getFiles as Mock).mockReturnValue([]);
+	});
+
+	it('expands an id-only folder delete into per-file deletes for every tracked descendant', async () => {
+		const folderId = 'FOLDER-ID-DELETED-ELSEWHERE';
+		const folderPath = "Jeff's Notebook/Dog";
+		stateManager.setFolderState(folderId, folderPath);
+
+		const descendants = [
+			{ path: `${folderPath}/Links.md`, id: 'CHILD-1' },
+			{ path: `${folderPath}/Vet/Visits.md`, id: 'CHILD-2' },
+		];
+		for (const d of descendants) {
+			stateManager.setFileState(d.path, {
+				path: d.path,
+				localMtime: 1,
+				remoteHash: 'h',
+				size: 10,
+				remoteModifiedTime: Date.now(),
+				oneDriveId: d.id,
+			});
+		}
+		// Also track a file OUTSIDE the deleted folder — it must not be touched.
+		stateManager.setFileState('Notes/Other.md', {
+			path: 'Notes/Other.md',
+			localMtime: 1,
+			remoteHash: 'h',
+			size: 10,
+			remoteModifiedTime: Date.now(),
+			oneDriveId: 'OTHER-ID',
+		});
+
+		const localFiles = [
+			makeTFile(descendants[0].path, 10, Date.now()),
+			makeTFile(descendants[1].path, 10, Date.now()),
+			makeTFile('Notes/Other.md', 10, Date.now()),
+		];
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+
+		// Graph delta: a single folder-delete entry with id only.
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				{
+					id: folderId,
+					deleted: { state: 'deleted' },
+					folder: { childCount: 0 },
+				} as any,
+			],
+			deltaLink: 'next-delta',
+		});
+		stateManager.setDeltaLink('prev-delta');
+		stateManager.setLastSyncTime(1);
+
+		const engine = new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'/remote/root'
+		);
+
+		await engine.performSync();
+
+		// Both descendant files should have been deleted locally.
+		const deletedPaths = (mockApp.vault.delete as Mock).mock.calls.map(
+			(c: any[]) => (c[0] as { path: string }).path
+		);
+		expect(deletedPaths).toContain(descendants[0].path);
+		expect(deletedPaths).toContain(descendants[1].path);
+		// The unrelated file outside the folder must remain.
+		expect(deletedPaths).not.toContain('Notes/Other.md');
+		// Tracked state for both descendants should be cleaned up.
+		expect(stateManager.getFileState(descendants[0].path)).toBeUndefined();
+		expect(stateManager.getFileState(descendants[1].path)).toBeUndefined();
+		// Folder state for the deleted folder should be gone.
+		expect(stateManager.getFolderPathById(folderId)).toBeUndefined();
+	});
+});

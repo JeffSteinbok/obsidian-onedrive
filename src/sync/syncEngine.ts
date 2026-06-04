@@ -152,6 +152,55 @@ export class SyncEngine {
 				);
 			}
 
+			// Update folder tracking + expand folder-delete entries into
+			// per-file deletes. Microsoft Graph sends folder deletes the same
+			// way it sends file deletes — only an id, no name or parent — so
+			// without this pass we have no way to know which descendants are
+			// gone. Tracked folder state lets us reverse-resolve the id.
+			const synthesizedDeletes: OneDriveItem[] = [];
+			const allDeltaItems = [
+				...deltaResponse.items,
+				...(obsidianDeltaResponse?.items || []),
+			];
+			for (const item of allDeltaItems) {
+				if (!item.folder) continue;
+				if (item.deleted) {
+					const folderPath = item.id
+						? this.stateManager.getFolderPathById(item.id)
+						: undefined;
+					if (!folderPath) {
+						logger.warn(
+							`Folder delete delta entry could not be resolved to a tracked path (id=${item.id}). ` +
+								`Any descendants we knew about will remain until the next reconcile.`
+						);
+						continue;
+					}
+					const descendants = this.stateManager.getFileStatesUnderFolder(folderPath);
+					logger.info(
+						`Folder delete: ${folderPath} (id=${item.id}) → expanding into ${descendants.length} file deletes`
+					);
+					for (const { path, state } of descendants) {
+						synthesizedDeletes.push({
+							id: state.oneDriveId || `synthesized:${path}`,
+							name: undefined as unknown as string,
+							deleted: { state: 'deleted' },
+							file: {} as any,
+							parentReference: { path: '' } as any,
+							// Stash the resolved path so remotePathToVaultPath
+							// short-circuits without needing to consult state.
+							__resolvedVaultPath: path,
+						} as unknown as OneDriveItem);
+					}
+					this.stateManager.removeFolderState(item.id);
+				} else {
+					// Record/refresh the folder so future deletes can be resolved.
+					const folderPath = this.remotePathToVaultPath(item);
+					if (item.id && folderPath) {
+						this.stateManager.setFolderState(item.id, folderPath);
+					}
+				}
+			}
+
 			// Filter remote changes: split general files and .obsidian-scope files by independent delta streams,
 			// applying both the built-in shouldSyncPath check and user-defined .syncIgnore patterns.
 			const remoteChanges = [
@@ -173,6 +222,13 @@ export class SyncEngine {
 						!this.shouldIgnorePath(vaultPath, ignoreMatchers)
 					);
 				}) || []),
+				...synthesizedDeletes.filter((item) => {
+					const vaultPath = this.remotePathToVaultPath(item);
+					return (
+						this.shouldSyncPath(vaultPath) &&
+						!this.shouldIgnorePath(vaultPath, ignoreMatchers)
+					);
+				}),
 			];
 
 			const obsidianRawCount = obsidianDeltaResponse?.items.length || 0;
@@ -184,6 +240,7 @@ export class SyncEngine {
 				`Delta returned ${deltaResponse.items.length + obsidianRawCount} raw items ` +
 					`(main: total=${deltaResponse.items.length} deletes=${mainDeletes} folders=${mainFolders}; ` +
 					`obsidian: total=${obsidianRawCount} deletes=${obsidianDeletes}); ` +
+					`${synthesizedDeletes.length} synthesized from folder deletes; ` +
 					`${remoteChanges.length} kept after filter (${remoteDeletes} deletes)`
 			);
 			for (const item of remoteChanges) {
@@ -808,6 +865,12 @@ export class SyncEngine {
 	 * Convert remote OneDrive path to vault path
 	 */
 	private remotePathToVaultPath(item: OneDriveItem): string {
+		// Short-circuit for synthesized items where we already know the path
+		// (used by folder-delete expansion to avoid an unnecessary state lookup
+		// per child).
+		const stashed = (item as unknown as { __resolvedVaultPath?: string }).__resolvedVaultPath;
+		if (stashed) return stashed;
+
 		let fullPath: string;
 		if (item.parentReference?.path && item.name) {
 			fullPath = `${item.parentReference.path}/${item.name}`;
