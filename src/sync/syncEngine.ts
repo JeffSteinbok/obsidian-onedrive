@@ -20,14 +20,26 @@ import {
 	LocalChangeType,
 } from '../types';
 import { logger } from '../utils/logger';
-import { normalizePath, toOneDrivePath, toVaultPath, getParentPath, stripGraphPrefix } from '../utils/pathUtils';
+import {
+	normalizePath,
+	toOneDrivePath,
+	toVaultPath,
+	getParentPath,
+	stripGraphPrefix,
+	shouldSyncVaultPath,
+} from '../utils/pathUtils';
 
 /**
  * Main sync engine
  */
 export class SyncEngine {
+	// Keep a small fixed pool so new vaults sync faster without overwhelming local I/O or OneDrive.
+	// Four concurrent operations is a conservative middle ground for typical vaults and avoids bursty API usage.
+	private readonly maxConcurrentOperations = 4;
 	private isSharedDrive: boolean;
 	private remoteRootOnDrive: string;
+	private static readonly DEFAULT_IGNORE_PATTERNS: string[] = [];
+	private pendingVaultFolderCreates = new Map<string, Promise<void>>();
 
 	constructor(
 		private app: App,
@@ -38,7 +50,8 @@ export class SyncEngine {
 		private eventManager: EventManager,
 		private remoteRoot: string = '',
 		remoteRootOnDrive?: string,
-		private conflictQueue?: ConflictQueue
+		private conflictQueue?: ConflictQueue,
+		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path)
 	) {
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -54,10 +67,24 @@ export class SyncEngine {
 
 		try {
 			// 1. Get local changes from event manager
-			const localChanges = this.eventManager.getDirtyFiles();
+			const ignoreMatchers = await this.loadIgnoreMatchers();
+			const allLocalChanges = this.eventManager.getDirtyFiles();
+			const ignoredLocalPaths: string[] = [];
+			const localChanges = allLocalChanges.filter((change) => {
+				if (this.shouldIgnorePath(change.path, ignoreMatchers)) {
+					ignoredLocalPaths.push(change.path);
+					return false;
+				}
+				return true;
+			});
+			if (ignoredLocalPaths.length > 0) {
+				this.eventManager.removeDirtyPaths(ignoredLocalPaths);
+			}
 			logger.info(`Local changes: ${localChanges.length} dirty files`);
 			for (const change of localChanges) {
-				logger.info(`  Local: ${change.type} ${change.path}${change.oldPath ? ` (from ${change.oldPath})` : ''}`);
+				logger.info(
+					`  Local: ${change.type} ${change.path}${change.oldPath ? ` (from ${change.oldPath})` : ''}`
+				);
 			}
 
 			// 2. Get remote changes via delta API
@@ -69,21 +96,27 @@ export class SyncEngine {
 			// Log all raw delta items for debugging
 			for (const item of deltaResponse.items) {
 				const vaultPath = this.remotePathToVaultPath(item);
-				logger.debug(`  Raw delta item: name=${item.name} path=${vaultPath} isFolder=${!!item.folder} isFile=${!!item.file} deleted=${!!item.deleted} parentPath=${item.parentReference?.path || 'none'}`);
+				logger.debug(
+					`  Raw delta item: name=${item.name} path=${vaultPath} isFolder=${!!item.folder} isFile=${!!item.file} deleted=${!!item.deleted} parentPath=${item.parentReference?.path || 'none'}`
+				);
 			}
 
-			// Filter remote changes: only files, skip .obsidian/
+			// Filter remote changes: only files, skip excluded .obsidian/ paths
 			const remoteChanges = deltaResponse.items.filter((item) => {
 				// Include files and deleted items (deleted items won't have .file)
 				if (item.folder && !item.deleted) return false;
 				const vaultPath = this.remotePathToVaultPath(item);
-				return !vaultPath.startsWith('.obsidian/');
+				return this.shouldSyncPath(vaultPath) && !this.shouldIgnorePath(vaultPath, ignoreMatchers);
 			});
 
-			logger.info(`Delta returned ${deltaResponse.items.length} total items, ${remoteChanges.length} file changes`);
+			logger.info(
+				`Delta returned ${deltaResponse.items.length} total items, ${remoteChanges.length} file changes`
+			);
 			for (const item of remoteChanges) {
 				const vaultPath = this.remotePathToVaultPath(item);
-				logger.info(`  Remote: ${item.deleted ? 'DELETE' : 'CHANGED'} ${vaultPath} (id=${item.id})`);
+				logger.info(
+					`  Remote: ${item.deleted ? 'DELETE' : 'CHANGED'} ${vaultPath} (id=${item.id})`
+				);
 			}
 
 			// 3. Plan operations
@@ -96,7 +129,9 @@ export class SyncEngine {
 
 			if (operations.length === 0) {
 				if (isFirstSync && localChanges.length === 0 && remoteChanges.length === 0) {
-					logger.info('First sync with no local dirty files and empty remote — nothing to do. Edit or create files, then sync again.');
+					logger.info(
+						'First sync with no local dirty files and empty remote — nothing to do. Edit or create files, then sync again.'
+					);
 					new Notice('OneDrive sync: No files to sync. Edit or create files first.');
 				} else {
 					new Notice('OneDrive sync: Everything up to date');
@@ -112,11 +147,9 @@ export class SyncEngine {
 			const downloadedPaths: string[] = [];
 			const conflictedPaths: string[] = [];
 			// Single persistent notice for progress — updates in place
-			const progressNotice = operations.length >= 5
-				? new Notice(`Syncing: 0/${operations.length} files...`, 0)
-				: null;
-			for (const operation of operations) {
-				await this.executeOperation(operation);
+			const progressNotice =
+				operations.length >= 5 ? new Notice(`Syncing: 0/${operations.length} files...`, 0) : null;
+			await this.executeOperations(operations, (operation) => {
 				completed++;
 
 				if (operation.direction === SyncDirection.DOWNLOAD) {
@@ -129,7 +162,7 @@ export class SyncEngine {
 				if (progressNotice) {
 					progressNotice.setMessage(`Syncing: ${completed}/${operations.length} files...`);
 				}
-			}
+			});
 			// Dismiss progress notice
 			progressNotice?.hide();
 
@@ -156,7 +189,7 @@ export class SyncEngine {
 			if (conflictedPaths.length > 0) {
 				new Notice(
 					`OneDrive sync: ${syncedCount} file${syncedCount === 1 ? '' : 's'} synced, ` +
-					`${conflictedPaths.length} conflict${conflictedPaths.length === 1 ? '' : 's'} need resolution`
+						`${conflictedPaths.length} conflict${conflictedPaths.length === 1 ? '' : 's'} need resolution`
 				);
 			} else {
 				new Notice(`OneDrive sync: ${syncedCount} file${syncedCount === 1 ? '' : 's'} synced`);
@@ -188,7 +221,6 @@ export class SyncEngine {
 
 		// Build a set of locally changed paths
 		const localChangedPaths = new Set(localChanges.map((c) => c.path));
-		const localChangeMap = new Map(localChanges.map((c) => [c.path, c]));
 
 		// Process local changes
 		for (const change of localChanges) {
@@ -215,23 +247,23 @@ export class SyncEngine {
 				continue;
 			}
 
-				if (change.type === LocalChangeType.RENAME && change.oldPath) {
-					// Rename: upload to new path and delete old path from remote
-					const oldState = this.stateManager.getFileState(change.oldPath);
-					if (oldState?.oneDriveId) {
-						operations.push({
-							path: change.oldPath,
-							direction: SyncDirection.UPLOAD, // "upload" the deletion of old path
-							localState: undefined,
-							remoteState: oldState,
-						});
-					}
-					// Upload the file at its new path
-					operations.push({ path: change.path, direction: SyncDirection.UPLOAD });
-					this.stateManager.removeFileState(change.oldPath);
-					remoteByPath.delete(change.path);
-					continue;
+			if (change.type === LocalChangeType.RENAME && change.oldPath) {
+				// Rename: upload to new path and delete old path from remote
+				const oldState = this.stateManager.getFileState(change.oldPath);
+				if (oldState?.oneDriveId) {
+					operations.push({
+						path: change.oldPath,
+						direction: SyncDirection.UPLOAD, // "upload" the deletion of old path
+						localState: undefined,
+						remoteState: oldState,
+					});
 				}
+				// Upload the file at its new path
+				operations.push({ path: change.path, direction: SyncDirection.UPLOAD });
+				this.stateManager.removeFileState(change.oldPath);
+				remoteByPath.delete(change.path);
+				continue;
+			}
 
 			if (remoteItem && remoteItem.deleted) {
 				// Local change + remote delete = conflict, re-upload local
@@ -304,21 +336,21 @@ export class SyncEngine {
 			// On first sync, check if file already exists locally
 			if (isFirstSync) {
 				const file = this.app.vault.getAbstractFileByPath(vaultPath);
-					if (file instanceof TFile) {
-						if (file.stat.size === (item.size || 0)) {
-							// Same size — likely identical, store state and skip
-							this.stateManager.setFileState(vaultPath, this.itemToFileState(item));
-							continue;
-						}
-						// File exists but different size — download remote version
-						operations.push({
-							path: vaultPath,
-							direction: SyncDirection.DOWNLOAD,
-							remoteState: this.itemToFileState(item),
-						});
+				if (file instanceof TFile) {
+					if (file.stat.size === (item.size || 0)) {
+						// Same size — likely identical, store state and skip
+						this.stateManager.setFileState(vaultPath, this.itemToFileState(item));
 						continue;
 					}
+					// File exists but different size — download remote version
+					operations.push({
+						path: vaultPath,
+						direction: SyncDirection.DOWNLOAD,
+						remoteState: this.itemToFileState(item),
+					});
+					continue;
 				}
+			}
 
 			// Check if remote actually changed vs our stored state
 			const knownState = this.stateManager.getFileState(vaultPath);
@@ -385,6 +417,28 @@ export class SyncEngine {
 			logger.error(`Failed to execute operation for ${operation.path}:`, error);
 			throw error;
 		}
+	}
+
+	/**
+	 * Execute sync operations with limited parallelism.
+	 * Calls onComplete after each operation finishes successfully.
+	 */
+	private async executeOperations(
+		operations: SyncOperation[],
+		onComplete: (operation: SyncOperation) => void
+	): Promise<void> {
+		const parallelCount = Math.min(this.maxConcurrentOperations, operations.length);
+		let nextIndex = 0;
+
+		await Promise.all(
+			Array.from({ length: parallelCount }, async () => {
+				while (nextIndex < operations.length) {
+					const operation = operations[nextIndex++];
+					await this.executeOperation(operation);
+					onComplete(operation);
+				}
+			})
+		);
 	}
 
 	/**
@@ -456,10 +510,31 @@ export class SyncEngine {
 		const parentPath = getParentPath(filePath);
 		if (!parentPath) return;
 
-		const adapter = this.app.vault.adapter;
-		if (await adapter.exists(parentPath)) return;
+		const pendingCreate = this.pendingVaultFolderCreates.get(parentPath);
+		if (pendingCreate) {
+			await pendingCreate;
+			return;
+		}
 
-		await adapter.mkdir(parentPath);
+		const adapter = this.app.vault.adapter;
+		const createPromise = (async () => {
+			if (await adapter.exists(parentPath)) return;
+
+			try {
+				await adapter.mkdir(parentPath);
+			} catch (error) {
+				if (!(await adapter.exists(parentPath))) {
+					throw error;
+				}
+			}
+		})();
+
+		this.pendingVaultFolderCreates.set(parentPath, createPromise);
+		try {
+			await createPromise;
+		} finally {
+			this.pendingVaultFolderCreates.delete(parentPath);
+		}
 	}
 
 	/**
@@ -482,10 +557,7 @@ export class SyncEngine {
 			this.eventManager.markOwnWrites([operation.path]);
 			await adapter.writeBinary(operation.path, content);
 		} catch {
-			const parentPath = getParentPath(operation.path);
-			if (parentPath) {
-				await adapter.mkdir(parentPath);
-			}
+			await this.ensureVaultFolders(operation.path);
 			try {
 				await adapter.writeBinary(operation.path, content);
 			} catch (retryError) {
@@ -560,5 +632,54 @@ export class SyncEngine {
 		fullPath = stripGraphPrefix(fullPath);
 
 		return toVaultPath(fullPath, this.remoteRootOnDrive);
+	}
+
+	private async loadIgnoreMatchers(): Promise<RegExp[]> {
+		const patterns = [...SyncEngine.DEFAULT_IGNORE_PATTERNS];
+
+		try {
+			const content = await this.app.vault.adapter.read('.syncIgnore');
+			if (typeof content === 'string' && content.trim().length > 0) {
+				patterns.push(...this.parseSyncIgnorePatterns(content));
+			}
+		} catch {
+			// Ignore missing or unreadable .syncIgnore files
+		}
+
+		return patterns.map((pattern) => this.patternToRegex(pattern));
+	}
+
+	private parseSyncIgnorePatterns(content: string): string[] {
+		return content
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0 && !line.startsWith('#') && !line.startsWith('!'))
+			.map((line) => line.replace(/^\.\//, '').replace(/^\/+/, ''));
+	}
+
+	private patternToRegex(pattern: string): RegExp {
+		let normalizedPattern = normalizePath(pattern);
+		if (normalizedPattern.endsWith('/')) {
+			normalizedPattern = `${normalizedPattern}**`;
+		}
+
+		const wildcardToken = '__DOUBLE_STAR__';
+		const hasPathSeparator = normalizedPattern.includes('/');
+		let regexPattern = normalizedPattern.replace(/\*\*/g, wildcardToken);
+		regexPattern = regexPattern.replace(/[.+^${}()|[\]\\/]/g, '\\$&');
+		regexPattern = regexPattern.replace(/\*/g, '[^/]*');
+		regexPattern = regexPattern.replace(new RegExp(wildcardToken, 'g'), '.*');
+
+		if (hasPathSeparator) {
+			return new RegExp(`^${regexPattern}$`);
+		}
+
+		return new RegExp(`(^|/)${regexPattern}$`);
+	}
+
+	private shouldIgnorePath(path: string, ignoreMatchers: RegExp[]): boolean {
+		if (!path) return false;
+		const normalizedPath = normalizePath(path).replace(/^\/+/, '');
+		return ignoreMatchers.some((matcher) => matcher.test(normalizedPath));
 	}
 }

@@ -16,6 +16,7 @@ import {
 	toVaultPath,
 	encodePathForGraph,
 	stripGraphPrefix,
+	shouldSyncVaultPath,
 } from '../../../src/utils/pathUtils';
 
 describe('pathUtils', () => {
@@ -198,18 +199,21 @@ describe('pathUtils', () => {
 		});
 
 		it('should strip /drives/{driveId}/root: prefix', () => {
-			expect(stripGraphPrefix('/drives/48043224b16ff524/root:/Documents/ObsidianVaults/JeffBrain/file.md'))
-				.toBe('/Documents/ObsidianVaults/JeffBrain/file.md');
+			expect(
+				stripGraphPrefix(
+					'/drives/48043224b16ff524/root:/Documents/ObsidianVaults/JeffBrain/file.md'
+				)
+			).toBe('/Documents/ObsidianVaults/JeffBrain/file.md');
 		});
 
 		it('should handle uppercase drive IDs', () => {
-			expect(stripGraphPrefix('/drives/48043224B16FF524/root:/Documents/file.md'))
-				.toBe('/Documents/file.md');
+			expect(stripGraphPrefix('/drives/48043224B16FF524/root:/Documents/file.md')).toBe(
+				'/Documents/file.md'
+			);
 		});
 
 		it('should handle alphanumeric+special drive IDs', () => {
-			expect(stripGraphPrefix('/drives/ABC123!def/root:/file.md'))
-				.toBe('/file.md');
+			expect(stripGraphPrefix('/drives/ABC123!def/root:/file.md')).toBe('/file.md');
 		});
 
 		it('should return path unchanged if no prefix matches', () => {
@@ -226,35 +230,84 @@ describe('pathUtils', () => {
 			const parentPath = '/drives/48043224B16FF524/root:/Documents/ObsidianVaults/JeffBrain';
 			const name = 'Welcome.md';
 			const fullPath = `${parentPath}/${name}`;
-			
+
 			// 2. Strip the Graph prefix
 			const stripped = stripGraphPrefix(fullPath);
 			expect(stripped).toBe('/Documents/ObsidianVaults/JeffBrain/Welcome.md');
-			
+
 			// 3. Then toVaultPath strips the remote root
 			const vaultPath = toVaultPath(stripped, '/Documents/ObsidianVaults/JeffBrain');
 			expect(vaultPath).toBe('Welcome.md');
 		});
 
 		it('should handle nested file in shared drive end-to-end', () => {
-			const parentPath = '/drives/48043224B16FF524/root:/Documents/ObsidianVaults/JeffBrain/subfolder';
+			const parentPath =
+				'/drives/48043224B16FF524/root:/Documents/ObsidianVaults/JeffBrain/subfolder';
 			const name = 'note.md';
 			const fullPath = `${parentPath}/${name}`;
-			
+
 			const stripped = stripGraphPrefix(fullPath);
 			const vaultPath = toVaultPath(stripped, '/Documents/ObsidianVaults/JeffBrain');
 			expect(vaultPath).toBe('subfolder/note.md');
 		});
 
 		it('should correctly identify .obsidian files for filtering', () => {
-			const parentPath = '/drives/48043224B16FF524/root:/Documents/ObsidianVaults/JeffBrain/.obsidian';
+			const parentPath =
+				'/drives/48043224B16FF524/root:/Documents/ObsidianVaults/JeffBrain/.obsidian';
 			const name = 'workspace.json';
 			const fullPath = `${parentPath}/${name}`;
-			
+
 			const stripped = stripGraphPrefix(fullPath);
 			const vaultPath = toVaultPath(stripped, '/Documents/ObsidianVaults/JeffBrain');
 			expect(vaultPath).toBe('.obsidian/workspace.json');
 			expect(vaultPath.startsWith('.obsidian/')).toBe(true);
+		});
+	});
+
+	describe('shouldSyncVaultPath', () => {
+		it('should sync non-.obsidian files by default', () => {
+			expect(shouldSyncVaultPath('notes/file.md')).toBe(true);
+		});
+
+		it('should exclude .obsidian files by default', () => {
+			expect(shouldSyncVaultPath('.obsidian/workspace.json')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json')).toBe(false);
+		});
+
+		it('should sync app settings files when syncAppSettings is enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/app.json', false, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/appearance.json', false, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/hotkeys.json', false, true)).toBe(true);
+		});
+
+		it('should exclude non-allowlisted .obsidian files even when syncAppSettings is enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/workspace.json', false, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', false, true)).toBe(false);
+		});
+
+		it('should allow selected plugin manifest files when syncPluginManifests is opted in', () => {
+			expect(shouldSyncVaultPath('.obsidian/community-plugins.json', true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/core-plugins.json', true)).toBe(true);
+		});
+
+		it('should sync plugin binaries when syncPluginManifests is opted in', () => {
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json', true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/styles.css', true)).toBe(true);
+		});
+
+		it('should exclude plugin data files when syncPluginManifests is opted in', () => {
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/subdir/manifest.json', true)).toBe(
+				false
+			);
+		});
+
+		it('should sync app settings and plugin files simultaneously when both are enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/app.json', true, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/workspace.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', true, true)).toBe(false);
 		});
 	});
 });

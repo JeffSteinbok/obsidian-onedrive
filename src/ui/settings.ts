@@ -3,7 +3,12 @@
  */
 
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
-import { PluginSettings, ConflictResolutionStrategy, OneDriveAccessMode, OneDriveItem } from '../types';
+import {
+	PluginSettings,
+	ConflictResolutionStrategy,
+	OneDriveAccessMode,
+	OneDriveItem,
+} from '../types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID } from '../constants';
 import { FolderBrowserModal, FolderSelection } from './folderBrowserModal';
 
@@ -12,6 +17,9 @@ interface OneDrivePlugin {
 	settings: PluginSettings;
 	manifest: { version: string };
 	saveSettings(): Promise<void>;
+	onAppSettingsSyncChanged(enabled: boolean): Promise<void>;
+	onPluginManifestSyncChanged(enabled: boolean): Promise<void>;
+	resetSyncToken(): Promise<void>;
 	authenticate(): Promise<void>;
 	disconnect(): void;
 	triggerManualSync(): Promise<void>;
@@ -148,19 +156,17 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			);
 
 		// Determine if sync is ready (folder selected or app-folder mode)
-		const isSyncReady = isConnected && (
-			this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER ||
-			!!this.plugin.settings.remotePath
-		);
+		const isSyncReady =
+			isConnected &&
+			(this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER ||
+				!!this.plugin.settings.remotePath);
 
 		if (this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS) {
 			if (isConnected) {
 				// Show folder picker (browse button + current selection)
 				const currentPath = this.plugin.settings.remotePath || '(not selected)';
 				const isShared = !!this.plugin.settings.remoteDriveId;
-				const desc = isShared
-					? `${currentPath} (shared folder)`
-					: currentPath;
+				const desc = isShared ? `${currentPath} (shared folder)` : currentPath;
 
 				const folderSetting = new Setting(accessGroup)
 					.setName('Sync folder')
@@ -183,9 +189,12 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				// Sync Now button — only when a folder is selected
 				if (this.plugin.settings.remotePath) {
 					folderSetting.addButton((btn) =>
-						btn.setButtonText('Sync Now').setCta().onClick(async () => {
-							await this.plugin.triggerManualSync();
-						})
+						btn
+							.setButtonText('Sync Now')
+							.setCta()
+							.onClick(async () => {
+								await this.plugin.triggerManualSync();
+							})
 					);
 				}
 			} else {
@@ -205,12 +214,14 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 			// Sync Now for app-folder mode
 			if (isConnected) {
-				new Setting(accessGroup)
-					.addButton((btn) =>
-						btn.setButtonText('Sync Now').setCta().onClick(async () => {
+				new Setting(accessGroup).addButton((btn) =>
+					btn
+						.setButtonText('Sync Now')
+						.setCta()
+						.onClick(async () => {
 							await this.plugin.triggerManualSync();
 						})
-					);
+				);
 			}
 		}
 	}
@@ -278,6 +289,28 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		new Setting(containerEl)
+			.setName('Sync app settings')
+			.setDesc(
+				'Sync .obsidian/app.json, .obsidian/appearance.json, and .obsidian/hotkeys.json to keep appearance and hotkeys consistent across devices.'
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.syncAppSettings).onChange(async (value) => {
+					await this.plugin.onAppSettingsSyncChanged(value);
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('Sync plugins')
+			.setDesc(
+				'Sync .obsidian/community-plugins.json, .obsidian/core-plugins.json, plugin manifests, and plugin binaries (main.js, styles.css). Does not sync plugin data files.'
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.syncPluginManifests).onChange(async (value) => {
+					await this.plugin.onPluginManifestSyncChanged(value);
+				})
+			);
 	}
 
 	/**
@@ -305,10 +338,23 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				.setDesc(`Files sync to: /Apps/ObsidianOneDrive`);
 		}
 
+		// Reset sync token
+		new Setting(containerEl)
+			.setName('Reset sync token')
+			.setDesc('Force a full re-read from OneDrive on the next sync. Use if files appear missing or out of date.')
+			.addButton((button) =>
+				button
+					.setButtonText('Reset sync token')
+					.setWarning()
+					.onClick(async () => {
+						await this.plugin.resetSyncToken();
+					})
+			);
+
 		// Custom client ID toggle
 		new Setting(containerEl)
 			.setName('Use custom client ID')
-			.setDesc('Use your own Azure AD app registration (requires setup)')
+			.setDesc('Use your own Azure AD app registration. See the README for setup instructions.')
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.useCustomClientId).onChange(async (value) => {
 					this.plugin.settings.useCustomClientId = value;
@@ -332,18 +378,8 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				);
 
 			const helpDiv = containerEl.createDiv({ cls: 'setting-item-description' });
-			helpDiv.innerHTML = `
-				<p><strong>How to get a custom client ID:</strong></p>
-				<ol>
-					<li>Go to <a href="https://portal.azure.com">Azure Portal</a> → Microsoft Entra ID → App registrations</li>
-					<li>Click "New registration"</li>
-					<li>Name: "Obsidian OneDrive Sync"</li>
-					<li>Supported account types: "Personal Microsoft accounts only"</li>
-					<li>Redirect URI: Leave blank (not needed for device code flow)</li>
-					<li>After registration, copy the Application (client) ID</li>
-					<li>Under Authentication → Enable "Allow public client flows"</li>
-				</ol>
-			`;
+			helpDiv.style.marginTop = '4px';
+			helpDiv.innerHTML = `See <a href="https://github.com/jeffsteinbok/obsidian-onedrive#custom-client-id" target="_blank">Custom Client ID setup guide</a> in the README.`;
 		}
 	}
 }

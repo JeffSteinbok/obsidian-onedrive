@@ -14,7 +14,7 @@ Instead of polling OneDrive every few minutes (battery-draining), this plugin us
 1. **Detect Changes**: Compare local vault with OneDrive state
 2. **Determine Direction**: Decide whether to upload, download, or skip each file
 3. **Handle Conflicts**: Use configured strategy if both sides changed
-4. **Execute Operations**: Upload/download files as needed
+4. **Execute Operations**: Upload/download files in small parallel batches as needed
 5. **Update State**: Track last sync time and file hashes
 
 ## Conflict Resolution
