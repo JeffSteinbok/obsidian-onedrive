@@ -1144,6 +1144,21 @@ export class SyncEngine {
 			// from cloud, anything pending is stale.
 			this.eventManager.clearDirtyFiles();
 
+			// 7a. Prune empty folders left behind by the local-only file deletes.
+			// Same pattern as folder-delete expansion: collect parent dirs of
+			// each deleted file and pruneEmptyFolders walks deepest-first with
+			// ancestor cascade.
+			if (localOnly.length > 0) {
+				const parentDirs = new Set<string>();
+				for (const p of localOnly) {
+					const slash = p.lastIndexOf('/');
+					if (slash > 0) parentDirs.add(p.slice(0, slash));
+				}
+				if (parentDirs.size > 0) {
+					await this.pruneEmptyFolders(Array.from(parentDirs));
+				}
+			}
+
 			// 8. Advance delta cursors so the next normal sync starts clean.
 			progress('advancing delta cursor...');
 			try {
