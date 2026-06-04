@@ -199,6 +199,7 @@ export interface PluginSettings {
 	syncInterval: number; // Minutes (0 = manual only)
 	conflictResolution: ConflictResolutionStrategy;
 	startupSyncDelay: number; // Seconds (0 = disabled, 1, 10, 30)
+	syncPluginManifests: boolean; // Opt-in sync for selected Obsidian plugin manifest files
 	syncState?: { lastSyncTime: number; fileStates: Array<[string, FileState]>; deltaLink?: string };
 	conflictQueue?: PersistedConflictQueue;
 
@@ -225,6 +226,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	syncInterval: 5, // Poll every 5 minutes
 	conflictResolution: ConflictResolutionStrategy.LAST_WRITE_WINS,
 	startupSyncDelay: 10, // 10 seconds default
+	syncPluginManifests: false,
 	syncState: undefined,
 	conflictQueue: undefined,
 

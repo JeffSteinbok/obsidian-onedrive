@@ -139,6 +139,28 @@ export function stripGraphPrefix(path: string): string {
 	return result;
 }
 
+const SYNCABLE_OBSIDIAN_PLUGIN_MANIFESTS = new Set([
+	'.obsidian/community-plugins.json',
+	'.obsidian/core-plugins.json',
+]);
+
+/**
+ * Check whether a vault path should be synced.
+ */
+export function shouldSyncVaultPath(path: string, syncPluginManifests = false): boolean {
+	const normalized = normalizePath(path);
+
+	if (!normalized.startsWith('.obsidian/')) {
+		return true;
+	}
+
+	if (!syncPluginManifests) {
+		return false;
+	}
+
+	return SYNCABLE_OBSIDIAN_PLUGIN_MANIFESTS.has(normalized);
+}
+
 /**
  * Check if path is within root directory
  */
@@ -165,14 +187,56 @@ export function createConflictFileName(originalPath: string): string {
  * Known text file extensions (for diff display in conflict resolution)
  */
 const TEXT_EXTENSIONS = new Set([
-	'.md', '.txt', '.markdown', '.mdown', '.mkd', '.mkdn',
-	'.json', '.yaml', '.yml', '.toml', '.xml', '.html', '.htm',
-	'.css', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs',
-	'.py', '.rb', '.java', '.c', '.cpp', '.h', '.hpp',
-	'.sh', '.bash', '.zsh', '.bat', '.ps1',
-	'.csv', '.tsv', '.log', '.ini', '.cfg', '.conf',
-	'.tex', '.latex', '.bib', '.org', '.rst', '.adoc',
-	'.svg', '.graphql', '.sql', '.r', '.lua', '.go',
+	'.md',
+	'.txt',
+	'.markdown',
+	'.mdown',
+	'.mkd',
+	'.mkdn',
+	'.json',
+	'.yaml',
+	'.yml',
+	'.toml',
+	'.xml',
+	'.html',
+	'.htm',
+	'.css',
+	'.js',
+	'.ts',
+	'.jsx',
+	'.tsx',
+	'.mjs',
+	'.cjs',
+	'.py',
+	'.rb',
+	'.java',
+	'.c',
+	'.cpp',
+	'.h',
+	'.hpp',
+	'.sh',
+	'.bash',
+	'.zsh',
+	'.bat',
+	'.ps1',
+	'.csv',
+	'.tsv',
+	'.log',
+	'.ini',
+	'.cfg',
+	'.conf',
+	'.tex',
+	'.latex',
+	'.bib',
+	'.org',
+	'.rst',
+	'.adoc',
+	'.svg',
+	'.graphql',
+	'.sql',
+	'.r',
+	'.lua',
+	'.go',
 ]);
 
 /**
