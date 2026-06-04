@@ -159,6 +159,14 @@ function isInstalledPluginBinaryPath(path: string): boolean {
 }
 
 const LOG_NOTE_FOLDER = '_OneDriveSyncLogs/';
+const OWN_PLUGIN_FOLDER = '.obsidian/plugins/obsidian-onedrive/';
+
+// `workspace.json` and its per-device variants (`workspace-<host>.json`,
+// `workspace-<host>-N.json`, plus the mobile/legacy `workspace-mobile.json`)
+// hold local UI state — open tabs, pane layout, cursor positions. They change
+// constantly on every device and produce nothing but conflict noise when
+// synced. Obsidian Sync excludes them by default; we do the same.
+const WORKSPACE_STATE_PATTERN = /^\.obsidian\/workspace(-[^/]+)?\.json$/;
 
 /**
  * Check whether a vault path should be synced.
@@ -170,6 +178,18 @@ export function shouldSyncVaultPath(path: string, syncPluginManifests = false, s
 	// own. The leading underscore is on the folder, so users who want to share a
 	// specific day's log can simply move that file out of the folder.
 	if (normalized === LOG_NOTE_FOLDER.slice(0, -1) || normalized.startsWith(LOG_NOTE_FOLDER)) {
+		return false;
+	}
+
+	// Never sync the OneDrive plugin's own folder. Auth state in data.json must
+	// stay device-local, and syncing main.js across devices would let an older
+	// install on one device silently downgrade a newer install on another.
+	if (normalized === OWN_PLUGIN_FOLDER.slice(0, -1) || normalized.startsWith(OWN_PLUGIN_FOLDER)) {
+		return false;
+	}
+
+	// Never sync Obsidian's per-device workspace state.
+	if (WORKSPACE_STATE_PATTERN.test(normalized)) {
 		return false;
 	}
 

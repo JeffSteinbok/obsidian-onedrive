@@ -20,6 +20,7 @@ export class StatusBarManager {
 	private currentStatus: SyncStatus = SyncStatus.DISCONNECTED;
 	private lastSyncTime?: number;
 	private conflictCount = 0;
+	private progressMessage?: string;
 
 	constructor(statusBarItem: HTMLElement, private onSyncClick?: () => void) {
 		this.statusBarItem = statusBarItem;
@@ -38,8 +39,22 @@ export class StatusBarManager {
 	 */
 	setStatus(status: SyncStatus): void {
 		this.currentStatus = status;
+		if (status !== SyncStatus.SYNCING) {
+			this.progressMessage = undefined;
+		}
 		this.updateDisplay();
 		logger.debug('Status bar updated:', status);
+	}
+
+	/**
+	 * Set a free-form progress message shown while SYNCING (e.g. "42/361 files").
+	 * Cleared automatically when status changes away from SYNCING.
+	 */
+	setProgress(message: string | undefined): void {
+		this.progressMessage = message;
+		if (this.currentStatus === SyncStatus.SYNCING) {
+			this.updateDisplay();
+		}
 	}
 
 	/**
@@ -85,7 +100,7 @@ export class StatusBarManager {
 
 			case SyncStatus.SYNCING:
 				setIcon(iconEl, 'cloud');
-				textEl.setText('Syncing...');
+				textEl.setText(this.progressMessage ? `Syncing: ${this.progressMessage}` : 'Syncing...');
 				this.statusBarItem.addClass('is-syncing');
 				this.statusBarItem.removeClass('has-error');
 				this.addLoadingAnimation(iconEl);

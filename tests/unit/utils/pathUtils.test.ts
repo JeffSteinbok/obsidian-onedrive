@@ -321,5 +321,24 @@ describe('pathUtils', () => {
 			expect(shouldSyncVaultPath('_OneDriveSyncLogsBackup/foo.md')).toBe(true);
 			expect(shouldSyncVaultPath('notes/_OneDriveSyncLogs/x.md')).toBe(true);
 		});
+
+		it('never syncs the OneDrive plugin\'s own folder, even with plugin sync enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/main.js', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/manifest.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/data.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/styles.css', true, true)).toBe(false);
+			// Other plugins are unaffected.
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true)).toBe(true);
+		});
+
+		it('never syncs Obsidian per-device workspace state files', () => {
+			expect(shouldSyncVaultPath('.obsidian/workspace.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/workspace-mobile.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/workspace-JEFFSTEISL7.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/workspace-JEFFOFFICE3-6.json', true, true)).toBe(false);
+			// Other .obsidian files still follow the normal rules.
+			expect(shouldSyncVaultPath('.obsidian/app.json', false, true)).toBe(true);
+		});
 	});
 });

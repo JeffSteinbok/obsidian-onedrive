@@ -296,7 +296,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.conflictQueue,
 				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings),
 				() => this.settings.largeDeleteThreshold ?? 0,
-				(info) => this.handleLargeDeleteWarning(info)
+				(info) => this.handleLargeDeleteWarning(info),
+				(msg) => this.statusBarManager?.setProgress(msg)
 			);
 
 			// Get user info to display in settings
