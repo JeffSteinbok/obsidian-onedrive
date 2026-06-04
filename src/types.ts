@@ -91,6 +91,10 @@ export interface OneDriveUser {
 export interface SyncState {
 	lastSyncTime: number; // Unix timestamp in milliseconds
 	fileStates: Map<string, FileState>;
+	folderStates: Map<string, string>; // OneDrive folder id → vault path. Needed
+	// so that folder-delete delta entries (which arrive with id only — no name,
+	// no parentReference) can be reverse-resolved to a path and expanded into
+	// per-file deletes for everything we know was beneath that folder.
 	deltaLink?: string; // OneDrive delta API cursor
 	obsidianDeltaLink?: string; // Separate delta cursor for .obsidian scope
 }
