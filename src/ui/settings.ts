@@ -3,7 +3,12 @@
  */
 
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
-import { PluginSettings, ConflictResolutionStrategy, OneDriveAccessMode, OneDriveItem } from '../types';
+import {
+	PluginSettings,
+	ConflictResolutionStrategy,
+	OneDriveAccessMode,
+	OneDriveItem,
+} from '../types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID } from '../constants';
 import { FolderBrowserModal, FolderSelection } from './folderBrowserModal';
 
@@ -12,6 +17,7 @@ interface OneDrivePlugin {
 	settings: PluginSettings;
 	manifest: { version: string };
 	saveSettings(): Promise<void>;
+	onPluginManifestSyncChanged(enabled: boolean): Promise<void>;
 	authenticate(): Promise<void>;
 	disconnect(): void;
 	triggerManualSync(): Promise<void>;
@@ -148,19 +154,17 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			);
 
 		// Determine if sync is ready (folder selected or app-folder mode)
-		const isSyncReady = isConnected && (
-			this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER ||
-			!!this.plugin.settings.remotePath
-		);
+		const isSyncReady =
+			isConnected &&
+			(this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER ||
+				!!this.plugin.settings.remotePath);
 
 		if (this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS) {
 			if (isConnected) {
 				// Show folder picker (browse button + current selection)
 				const currentPath = this.plugin.settings.remotePath || '(not selected)';
 				const isShared = !!this.plugin.settings.remoteDriveId;
-				const desc = isShared
-					? `${currentPath} (shared folder)`
-					: currentPath;
+				const desc = isShared ? `${currentPath} (shared folder)` : currentPath;
 
 				const folderSetting = new Setting(accessGroup)
 					.setName('Sync folder')
@@ -183,9 +187,12 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				// Sync Now button — only when a folder is selected
 				if (this.plugin.settings.remotePath) {
 					folderSetting.addButton((btn) =>
-						btn.setButtonText('Sync Now').setCta().onClick(async () => {
-							await this.plugin.triggerManualSync();
-						})
+						btn
+							.setButtonText('Sync Now')
+							.setCta()
+							.onClick(async () => {
+								await this.plugin.triggerManualSync();
+							})
 					);
 				}
 			} else {
@@ -205,12 +212,14 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 			// Sync Now for app-folder mode
 			if (isConnected) {
-				new Setting(accessGroup)
-					.addButton((btn) =>
-						btn.setButtonText('Sync Now').setCta().onClick(async () => {
+				new Setting(accessGroup).addButton((btn) =>
+					btn
+						.setButtonText('Sync Now')
+						.setCta()
+						.onClick(async () => {
 							await this.plugin.triggerManualSync();
 						})
-					);
+				);
 			}
 		}
 	}
@@ -277,6 +286,18 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						this.plugin.settings.conflictResolution = value as ConflictResolutionStrategy;
 						await this.plugin.saveSettings();
 					})
+			);
+
+		new Setting(containerEl)
+			.setName('Sync selected plugin manifests')
+			.setDesc(
+				'Opt-in: sync .obsidian/community-plugins.json and .obsidian/core-plugins.json. ' +
+					'Does not sync plugin binaries.'
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.syncPluginManifests).onChange(async (value) => {
+					await this.plugin.onPluginManifestSyncChanged(value);
+				})
 			);
 	}
 

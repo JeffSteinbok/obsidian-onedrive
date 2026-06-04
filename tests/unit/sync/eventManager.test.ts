@@ -17,6 +17,7 @@ vi.mock('../../../src/constants', () => ({
 import { EventManager } from '../../../src/sync/eventManager';
 import { SyncStateManager } from '../../../src/sync/syncState';
 import { LocalChangeType, type FileState } from '../../../src/types';
+import { shouldSyncVaultPath } from '../../../src/utils/pathUtils';
 
 function makeFileState(path: string): FileState {
 	return {
@@ -73,7 +74,9 @@ describe('EventManager', () => {
 
 			eventCallbacks.modify(file);
 
-			expect(eventManager.getDirtyFiles()).toEqual([{ path: 'test.md', type: LocalChangeType.MODIFY }]);
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'test.md', type: LocalChangeType.MODIFY },
+			]);
 		});
 
 		it('adds create events to dirty files', () => {
@@ -82,7 +85,9 @@ describe('EventManager', () => {
 
 			eventCallbacks.create(file);
 
-			expect(eventManager.getDirtyFiles()).toEqual([{ path: 'created.md', type: LocalChangeType.CREATE }]);
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'created.md', type: LocalChangeType.CREATE },
+			]);
 		});
 
 		it('adds delete events to dirty files', () => {
@@ -91,7 +96,9 @@ describe('EventManager', () => {
 
 			eventCallbacks.delete(file);
 
-			expect(eventManager.getDirtyFiles()).toEqual([{ path: 'deleted.md', type: LocalChangeType.DELETE }]);
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'deleted.md', type: LocalChangeType.DELETE },
+			]);
 		});
 
 		it('adds rename events and removes the old path', () => {
@@ -124,7 +131,9 @@ describe('EventManager', () => {
 
 			eventManager.removeDirtyPaths(['remove.md']);
 
-			expect(eventManager.getDirtyFiles()).toEqual([{ path: 'keep.md', type: LocalChangeType.MODIFY }]);
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'keep.md', type: LocalChangeType.MODIFY },
+			]);
 		});
 	});
 
@@ -132,6 +141,30 @@ describe('EventManager', () => {
 		it('ignores files in .obsidian paths', () => {
 			eventManager.startListening();
 			eventCallbacks.modify(makeTFile('.obsidian/config', 100));
+
+			expect(eventManager.getDirtyFiles()).toEqual([]);
+		});
+
+		it('allows selected plugin manifest files when opted in', () => {
+			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
+				shouldSyncVaultPath(path, true)
+			);
+			eventManager.startListening();
+
+			eventCallbacks.modify(makeTFile('.obsidian/community-plugins.json', 100));
+
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: '.obsidian/community-plugins.json', type: LocalChangeType.MODIFY },
+			]);
+		});
+
+		it('keeps plugin binaries excluded when opted in', () => {
+			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
+				shouldSyncVaultPath(path, true)
+			);
+			eventManager.startListening();
+
+			eventCallbacks.modify(makeTFile('.obsidian/plugins/calendar/manifest.json', 100));
 
 			expect(eventManager.getDirtyFiles()).toEqual([]);
 		});
@@ -145,7 +178,9 @@ describe('EventManager', () => {
 			expect(eventManager.getDirtyFiles()).toEqual([]);
 
 			eventCallbacks.modify(file);
-			expect(eventManager.getDirtyFiles()).toEqual([{ path: 'test.md', type: LocalChangeType.MODIFY }]);
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'test.md', type: LocalChangeType.MODIFY },
+			]);
 		});
 
 		it('removes own-write suppression when requested', () => {
@@ -155,7 +190,9 @@ describe('EventManager', () => {
 
 			eventCallbacks.modify(makeTFile('test.md', 100));
 
-			expect(eventManager.getDirtyFiles()).toEqual([{ path: 'test.md', type: LocalChangeType.MODIFY }]);
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'test.md', type: LocalChangeType.MODIFY },
+			]);
 		});
 
 		it('suppresses startup create events for known files', () => {
@@ -172,7 +209,9 @@ describe('EventManager', () => {
 
 			eventCallbacks.create(makeTFile('brand-new.md', 100));
 
-			expect(eventManager.getDirtyFiles()).toEqual([{ path: 'brand-new.md', type: LocalChangeType.CREATE }]);
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'brand-new.md', type: LocalChangeType.CREATE },
+			]);
 		});
 
 		it('ignores non-TFile events', async () => {

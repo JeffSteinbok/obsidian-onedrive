@@ -81,18 +81,42 @@ const mocks = vi.hoisted(() => {
 		eventManager,
 		statusBarManager,
 		deviceCodeModal,
-		TokenStorage: vi.fn().mockImplementation(function() { return tokenStorage; }),
-		DeviceCodeFlowClient: vi.fn().mockImplementation(function() { return deviceCodeClient; }),
-		OneDriveAuthProvider: vi.fn().mockImplementation(function() { return {}; }),
-		OneDriveClient: vi.fn().mockImplementation(function() { return oneDriveClient; }),
-		FileOperations: vi.fn().mockImplementation(function() { return {}; }),
-		SyncEngine: vi.fn().mockImplementation(function() { return syncEngine; }),
-		SyncStateManager: vi.fn().mockImplementation(function() { return syncStateManager; }),
-		ConflictResolver: vi.fn().mockImplementation(function() { return conflictResolver; }),
-		EventManager: vi.fn().mockImplementation(function() { return eventManager; }),
-		OneDriveSettingTab: vi.fn().mockImplementation(function() { return {}; }),
-		StatusBarManager: vi.fn().mockImplementation(function() { return statusBarManager; }),
-		DeviceCodeModal: vi.fn().mockImplementation(function() { return deviceCodeModal; }),
+		TokenStorage: vi.fn().mockImplementation(function () {
+			return tokenStorage;
+		}),
+		DeviceCodeFlowClient: vi.fn().mockImplementation(function () {
+			return deviceCodeClient;
+		}),
+		OneDriveAuthProvider: vi.fn().mockImplementation(function () {
+			return {};
+		}),
+		OneDriveClient: vi.fn().mockImplementation(function () {
+			return oneDriveClient;
+		}),
+		FileOperations: vi.fn().mockImplementation(function () {
+			return {};
+		}),
+		SyncEngine: vi.fn().mockImplementation(function () {
+			return syncEngine;
+		}),
+		SyncStateManager: vi.fn().mockImplementation(function () {
+			return syncStateManager;
+		}),
+		ConflictResolver: vi.fn().mockImplementation(function () {
+			return conflictResolver;
+		}),
+		EventManager: vi.fn().mockImplementation(function () {
+			return eventManager;
+		}),
+		OneDriveSettingTab: vi.fn().mockImplementation(function () {
+			return {};
+		}),
+		StatusBarManager: vi.fn().mockImplementation(function () {
+			return statusBarManager;
+		}),
+		DeviceCodeModal: vi.fn().mockImplementation(function () {
+			return deviceCodeModal;
+		}),
 	};
 });
 
@@ -191,11 +215,14 @@ describe('OneDriveSyncPlugin', () => {
 		mocks.eventManager.isSyncInProgress.mockReturnValue(false);
 		mocks.eventManager.getDirtyFiles.mockReturnValue([]);
 
-		plugin = new OneDriveSyncPlugin({} as any, {
-			id: 'obsidian-onedrive',
-			name: 'OneDrive Sync',
-			version: '0.1.0',
-		} as any);
+		plugin = new OneDriveSyncPlugin(
+			{} as any,
+			{
+				id: 'obsidian-onedrive',
+				name: 'OneDrive Sync',
+				version: '0.1.0',
+			} as any
+		);
 		(plugin as any).loadData = vi.fn().mockResolvedValue({});
 		(plugin as any).saveData = vi.fn().mockResolvedValue(undefined);
 		(plugin as any).addRibbonIcon = vi.fn();
@@ -237,6 +264,16 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.syncState).toEqual(savedState);
 	});
 
+	it('onPluginManifestSyncChanged clears sync state and saves the new setting', async () => {
+		await plugin.onload();
+
+		await plugin.onPluginManifestSyncChanged(true);
+
+		expect(plugin.settings.syncPluginManifests).toBe(true);
+		expect(mocks.syncStateManager.clearState).toHaveBeenCalledTimes(1);
+		expect((plugin as any).saveData).toHaveBeenCalledWith(plugin.settings);
+	});
+
 	it('triggerManualSync returns early when no tokens are available', async () => {
 		await plugin.onload();
 		const performSyncSpy = vi.spyOn(plugin as any, 'performSync');
@@ -249,7 +286,9 @@ describe('OneDriveSyncPlugin', () => {
 
 	it('triggerManualSync blocks full-access sync until a remote path is set', async () => {
 		mocks.tokenStorage.hasTokens.mockReturnValue(true);
-		(plugin as any).loadData = vi.fn().mockResolvedValue({ accessMode: OneDriveAccessMode.FULL_ACCESS });
+		(plugin as any).loadData = vi
+			.fn()
+			.mockResolvedValue({ accessMode: OneDriveAccessMode.FULL_ACCESS });
 		await plugin.onload();
 		const performSyncSpy = vi.spyOn(plugin as any, 'performSync');
 
@@ -308,7 +347,11 @@ describe('OneDriveSyncPlugin', () => {
 			remoteItemId: 'item-id',
 			remoteRootName: 'Shared Root',
 			remoteRootPath: '/Shared Root',
-			connectedUser: { id: '2', displayName: 'Connected User', userPrincipalName: 'connected@test.com' },
+			connectedUser: {
+				id: '2',
+				displayName: 'Connected User',
+				userPrincipalName: 'connected@test.com',
+			},
 		});
 		await plugin.onload();
 
