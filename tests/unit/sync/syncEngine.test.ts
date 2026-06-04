@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi, waitFor, type Mock } from 'vitest';
 
 vi.mock('../../../src/utils/logger', () => ({
 	logger: {
@@ -626,5 +626,49 @@ describe('SyncEngine', () => {
 		await syncEngine.performSync();
 
 		expect(trackingNotice.calls).toContainEqual(['Syncing: 0/5 files...', 0]);
+	});
+
+	it('runs multiple sync operations in parallel', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		const changes = Array.from({ length: 3 }, (_, index) => ({
+			path: `notes/file-${index}.md`,
+			type: LocalChangeType.MODIFY,
+		}));
+		const pendingUploads = new Map<string, () => void>();
+		let activeUploads = 0;
+		let maxActiveUploads = 0;
+
+		mockEventManager.getDirtyFiles.mockReturnValue(changes);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 10, Date.now())
+		);
+		mockFileOps.uploadFile.mockImplementation(
+			(remotePath: string) =>
+				new Promise((resolve) => {
+					activeUploads++;
+					maxActiveUploads = Math.max(maxActiveUploads, activeUploads);
+					pendingUploads.set(remotePath, () => {
+						activeUploads--;
+						resolve(
+							makeRemoteItem({
+								id: `${remotePath}-id`,
+								name: remotePath.split('/').pop() ?? remotePath,
+								file: { mimeType: 'text/plain', hashes: { quickXorHash: `${remotePath}-hash` } },
+							})
+						);
+					});
+				})
+		);
+
+		const syncPromise = syncEngine.performSync();
+
+		await waitFor(() => expect(pendingUploads.size).toBe(3));
+		expect(maxActiveUploads).toBeGreaterThan(1);
+
+		for (const resolveUpload of pendingUploads.values()) {
+			resolveUpload();
+		}
+
+		await syncPromise;
 	});
 });

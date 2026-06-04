@@ -13,6 +13,7 @@ import { getParentPath } from '../utils/pathUtils';
  */
 export class FileOperations {
 	private chunkUploader: ChunkUploader;
+	private pendingFolderEnsures = new Map<string, Promise<void>>();
 
 	constructor(private client: OneDriveClient) {
 		this.chunkUploader = new ChunkUploader(client);
@@ -104,14 +105,42 @@ export class FileOperations {
 
 		for (const segment of segments) {
 			const nextPath = currentPath ? `${currentPath}/${segment}` : segment;
+			await this.ensureFolderExists(currentPath, segment, nextPath);
+			currentPath = nextPath;
+		}
+	}
 
-			// Check if folder exists, create if not
-			const exists = await this.client.itemExists(nextPath);
-			if (!exists) {
-				await this.client.createFolder(currentPath, segment);
+	private async ensureFolderExists(
+		parentPath: string,
+		folderName: string,
+		folderPath: string
+	): Promise<void> {
+		const pendingEnsure = this.pendingFolderEnsures.get(folderPath);
+		if (pendingEnsure) {
+			await pendingEnsure;
+			return;
+		}
+
+		const ensurePromise = (async () => {
+			const exists = await this.client.itemExists(folderPath);
+			if (exists) {
+				return;
 			}
 
-			currentPath = nextPath;
+			try {
+				await this.client.createFolder(parentPath, folderName);
+			} catch (error) {
+				if (!(await this.client.itemExists(folderPath))) {
+					throw error;
+				}
+			}
+		})();
+
+		this.pendingFolderEnsures.set(folderPath, ensurePromise);
+		try {
+			await ensurePromise;
+		} finally {
+			this.pendingFolderEnsures.delete(folderPath);
 		}
 	}
 
