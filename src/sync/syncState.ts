@@ -21,7 +21,12 @@ export class SyncStateManager {
 	/**
 	 * Load state from persisted data
 	 */
-	loadState(data?: { lastSyncTime: number; fileStates: Array<[string, FileState]>; deltaLink?: string }): void {
+	loadState(data?: {
+		lastSyncTime: number;
+		fileStates: Array<[string, FileState]>;
+		deltaLink?: string;
+		obsidianDeltaLink?: string;
+	}): void {
 		if (!data) {
 			this.state = {
 				lastSyncTime: 0,
@@ -34,23 +39,31 @@ export class SyncStateManager {
 			lastSyncTime: data.lastSyncTime,
 			fileStates: new Map(data.fileStates),
 			deltaLink: data.deltaLink,
+			obsidianDeltaLink: data.obsidianDeltaLink,
 		};
 
 		logger.debug('Sync state loaded', {
 			lastSyncTime: new Date(data.lastSyncTime).toISOString(),
 			fileCount: this.state.fileStates.size,
 			hasDeltaLink: !!data.deltaLink,
+			hasObsidianDeltaLink: !!data.obsidianDeltaLink,
 		});
 	}
 
 	/**
 	 * Prepare state for persistence
 	 */
-	prepareForSave(): { lastSyncTime: number; fileStates: Array<[string, FileState]>; deltaLink?: string } {
+	prepareForSave(): {
+		lastSyncTime: number;
+		fileStates: Array<[string, FileState]>;
+		deltaLink?: string;
+		obsidianDeltaLink?: string;
+	} {
 		return {
 			lastSyncTime: this.state.lastSyncTime,
 			fileStates: Array.from(this.state.fileStates.entries()),
 			deltaLink: this.state.deltaLink,
+			obsidianDeltaLink: this.state.obsidianDeltaLink,
 		};
 	}
 
@@ -81,6 +94,20 @@ export class SyncStateManager {
 	 */
 	setDeltaLink(deltaLink: string): void {
 		this.state.deltaLink = deltaLink;
+	}
+
+	/**
+	 * Get .obsidian delta link for incremental sync
+	 */
+	getObsidianDeltaLink(): string | undefined {
+		return this.state.obsidianDeltaLink;
+	}
+
+	/**
+	 * Set .obsidian delta link after sync
+	 */
+	setObsidianDeltaLink(deltaLink: string): void {
+		this.state.obsidianDeltaLink = deltaLink;
 	}
 
 	/**

@@ -730,7 +730,6 @@ ${lines.join('\n')}
 		}
 
 		this.settings.syncPluginManifests = enabled;
-		this.syncStateManager.clearState();
 		await this.saveSettings();
 
 		new Notice(

@@ -59,6 +59,10 @@ export class SyncEngine {
 		this.remoteRootOnDrive = remoteRootOnDrive || remoteRoot;
 	}
 
+	private isObsidianPath(path: string): boolean {
+		return normalizePath(path).startsWith('.obsidian/');
+	}
+
 	/**
 	 * Perform a sync using delta API + local dirty files
 	 */
@@ -89,9 +93,14 @@ export class SyncEngine {
 
 			// 2. Get remote changes via delta API
 			const deltaLink = this.stateManager.getDeltaLink();
+			const shouldSyncObsidianScope = this.shouldSyncPath('.obsidian/community-plugins.json');
 			const isFirstSync = this.stateManager.isFirstSync();
 			logger.info(`Delta query: isFirstSync=${isFirstSync}, hasDeltaLink=${!!deltaLink}`);
 			const deltaResponse = await this.oneDriveClient.getDelta(deltaLink, this.remoteRoot);
+			const obsidianDeltaLink = this.stateManager.getObsidianDeltaLink();
+			const obsidianDeltaResponse = shouldSyncObsidianScope
+				? await this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot)
+				: undefined;
 
 			// Log all raw delta items for debugging
 			for (const item of deltaResponse.items) {
@@ -101,13 +110,28 @@ export class SyncEngine {
 				);
 			}
 
-			// Filter remote changes: only files, skip excluded .obsidian/ paths
-			const remoteChanges = deltaResponse.items.filter((item) => {
-				// Include files and deleted items (deleted items won't have .file)
-				if (item.folder && !item.deleted) return false;
-				const vaultPath = this.remotePathToVaultPath(item);
-				return this.shouldSyncPath(vaultPath) && !this.shouldIgnorePath(vaultPath, ignoreMatchers);
-			});
+			// Filter remote changes: split general files and .obsidian-scope files by independent delta streams,
+			// applying both the built-in shouldSyncPath check and user-defined .syncIgnore patterns.
+			const remoteChanges = [
+				...deltaResponse.items.filter((item) => {
+					if (item.folder && !item.deleted) return false;
+					const vaultPath = this.remotePathToVaultPath(item);
+					return (
+						!this.isObsidianPath(vaultPath) &&
+						this.shouldSyncPath(vaultPath) &&
+						!this.shouldIgnorePath(vaultPath, ignoreMatchers)
+					);
+				}),
+				...(obsidianDeltaResponse?.items.filter((item) => {
+					if (item.folder && !item.deleted) return false;
+					const vaultPath = this.remotePathToVaultPath(item);
+					return (
+						this.isObsidianPath(vaultPath) &&
+						this.shouldSyncPath(vaultPath) &&
+						!this.shouldIgnorePath(vaultPath, ignoreMatchers)
+					);
+				}) || []),
+			];
 
 			logger.info(
 				`Delta returned ${deltaResponse.items.length} total items, ${remoteChanges.length} file changes`
@@ -136,8 +160,11 @@ export class SyncEngine {
 				} else {
 					new Notice('OneDrive sync: Everything up to date');
 				}
-				// Store delta link and update sync time even with no changes
+				// Store delta link(s) and update sync time even with no changes
 				this.stateManager.setDeltaLink(deltaResponse.deltaLink);
+				if (obsidianDeltaResponse) {
+					this.stateManager.setObsidianDeltaLink(obsidianDeltaResponse.deltaLink);
+				}
 				this.stateManager.setLastSyncTime(Date.now());
 				return;
 			}
@@ -172,8 +199,11 @@ export class SyncEngine {
 				this.eventManager.removeDirtyPaths(downloadedPaths);
 			}
 
-			// 5. Store new delta link and update sync time
+			// 5. Store new delta link(s) and update sync time
 			this.stateManager.setDeltaLink(deltaResponse.deltaLink);
+			if (obsidianDeltaResponse) {
+				this.stateManager.setObsidianDeltaLink(obsidianDeltaResponse.deltaLink);
+			}
 			this.stateManager.setLastSyncTime(Date.now());
 
 			// Clear dirty files only after successful sync,
