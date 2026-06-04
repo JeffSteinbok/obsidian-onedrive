@@ -73,13 +73,15 @@ class Logger {
 	private addToBuffer(line: string): void {
 		this.recentLogs.push(line);
 		if (this.recentLogs.length > Logger.MAX_RECENT_LOGS) {
-			this.recentLogs.splice(0, this.recentLogs.length - Logger.MAX_RECENT_LOGS);
+			this.recentLogs.shift();
 		}
 	}
 
 	getRecentLogs(limit = Logger.MAX_RECENT_LOGS): string[] {
 		if (limit <= 0) return [];
-		return this.recentLogs.slice(-limit);
+		const boundedLimit = Math.min(limit, this.recentLogs.length);
+		if (boundedLimit === 0) return [];
+		return this.recentLogs.slice(-boundedLimit);
 	}
 
 	private writeToFile(line: string): void {

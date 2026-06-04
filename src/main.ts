@@ -31,6 +31,8 @@ import { DeviceCodeModal } from './ui/authModal';
 import { FolderSelection } from './ui/folderBrowserModal';
 import { ConflictView, CONFLICT_VIEW_TYPE } from './ui/conflictView';
 
+const SYNC_LOGS_NOTE_PATH = '.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md';
+
 /**
  * Main plugin class
  */
@@ -611,8 +613,15 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return;
 		}
 
-		const notePath = 'OneDrive Sync Logs.md';
-		const content = `# OneDrive Sync Logs\n\nLast updated: ${new Date().toISOString()}\n\n\`\`\`\n${lines.join('\n')}\n\`\`\`\n`;
+		const notePath = SYNC_LOGS_NOTE_PATH;
+		const content = `# OneDrive Sync Logs
+
+Last updated: ${new Date().toISOString()}
+
+\`\`\`
+${lines.join('\n')}
+\`\`\`
+`;
 
 		let logFile: TFile;
 		const existing = this.app.vault.getAbstractFileByPath(notePath);
@@ -626,7 +635,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return;
 		}
 
-		await this.app.workspace.getLeaf(true).openFile(logFile);
+		await this.app.workspace.getLeaf(false).openFile(logFile);
 	}
 
 	/**
