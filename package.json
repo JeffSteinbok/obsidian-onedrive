@@ -31,8 +31,8 @@
 		"@types/node": "^20.10.0",
 		"@typescript-eslint/eslint-plugin": "^7.0.0",
 		"@typescript-eslint/parser": "^7.0.0",
-		"@vitest/coverage-v8": "^1.2.0",
-		"@vitest/ui": "^1.2.0",
+		"@vitest/coverage-v8": "^4.1.8",
+		"@vitest/ui": "^4.1.8",
 		"builtin-modules": "^3.3.0",
 		"esbuild": "^0.20.0",
 		"eslint": "^8.56.0",
@@ -42,7 +42,7 @@
 		"prettier": "^3.2.0",
 		"tslib": "^2.6.2",
 		"typescript": "^5.3.3",
-		"vitest": "^1.2.0"
+		"vitest": "^4.1.8"
 	},
 	"dependencies": {
 		"@azure/msal-node": "^2.6.0",
