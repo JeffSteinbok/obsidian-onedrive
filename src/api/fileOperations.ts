@@ -110,6 +110,9 @@ export class FileOperations {
 		}
 	}
 
+	/**
+	 * Ensure a single remote folder exists, sharing in-flight checks/creates across parallel uploads.
+	 */
 	private async ensureFolderExists(
 		parentPath: string,
 		folderName: string,

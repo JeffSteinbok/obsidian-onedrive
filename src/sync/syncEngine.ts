@@ -33,6 +33,8 @@ import {
  * Main sync engine
  */
 export class SyncEngine {
+	// Keep a small fixed pool so new vaults sync faster without overwhelming local I/O or OneDrive.
+	// Four concurrent operations is a conservative middle ground for typical vaults and avoids bursty API usage.
 	private readonly maxConcurrentOperations = 4;
 	private isSharedDrive: boolean;
 	private remoteRootOnDrive: string;
@@ -407,16 +409,17 @@ export class SyncEngine {
 
 	/**
 	 * Execute sync operations with limited parallelism.
+	 * Calls onComplete after each operation finishes successfully.
 	 */
 	private async executeOperations(
 		operations: SyncOperation[],
 		onComplete: (operation: SyncOperation) => void
 	): Promise<void> {
-		const concurrency = Math.min(this.maxConcurrentOperations, operations.length);
+		const parallelCount = Math.min(this.maxConcurrentOperations, operations.length);
 		let nextIndex = 0;
 
 		await Promise.all(
-			Array.from({ length: concurrency }, async () => {
+			Array.from({ length: parallelCount }, async () => {
 				while (nextIndex < operations.length) {
 					const operation = operations[nextIndex++];
 					await this.executeOperation(operation);

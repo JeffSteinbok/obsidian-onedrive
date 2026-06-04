@@ -635,6 +635,17 @@ describe('SyncEngine', () => {
 			type: LocalChangeType.MODIFY,
 		}));
 		const pendingUploads = new Map<string, () => void>();
+		let resolveAllUploadsStarted!: () => void;
+		const allUploadsStarted = new Promise<void>((resolve, reject) => {
+			const timeout = setTimeout(
+				() => reject(new Error('Timed out waiting for uploads to start')),
+				1000
+			);
+			resolveAllUploadsStarted = () => {
+				clearTimeout(timeout);
+				resolve();
+			};
+		});
 		let activeUploads = 0;
 		let maxActiveUploads = 0;
 
@@ -657,14 +668,15 @@ describe('SyncEngine', () => {
 							})
 						);
 					});
+					if (pendingUploads.size === changes.length) {
+						resolveAllUploadsStarted();
+					}
 				})
 		);
 
 		const syncPromise = syncEngine.performSync();
 
-		for (let attempt = 0; attempt < 10 && pendingUploads.size < 3; attempt++) {
-			await Promise.resolve();
-		}
+		await allUploadsStarted;
 		expect(pendingUploads.size).toBe(3);
 		expect(maxActiveUploads).toBeGreaterThan(1);
 
