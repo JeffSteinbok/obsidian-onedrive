@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi, waitFor, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 vi.mock('../../../src/utils/logger', () => ({
 	logger: {
@@ -662,7 +662,10 @@ describe('SyncEngine', () => {
 
 		const syncPromise = syncEngine.performSync();
 
-		await waitFor(() => expect(pendingUploads.size).toBe(3));
+		for (let attempt = 0; attempt < 10 && pendingUploads.size < 3; attempt++) {
+			await Promise.resolve();
+		}
+		expect(pendingUploads.size).toBe(3);
 		expect(maxActiveUploads).toBeGreaterThan(1);
 
 		for (const resolveUpload of pendingUploads.values()) {
