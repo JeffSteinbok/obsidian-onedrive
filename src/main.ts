@@ -240,7 +240,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 					await this.performSync();
 				},
 				this.syncStateManager,
-				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests)
+				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings)
 			);
 
 			// Initialize conflict queue
@@ -267,7 +267,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 				remoteRoot,
 				remoteRootOnDrive,
 				this.conflictQueue,
-				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests)
+				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings)
 			);
 
 			// Get user info to display in settings
@@ -689,9 +689,30 @@ export default class OneDriveSyncPlugin extends Plugin {
 		await this.saveSettings();
 
 		new Notice(
-			`Selected plugin manifest sync ${enabled ? 'enabled' : 'disabled'} (.obsidian/community-plugins.json, .obsidian/core-plugins.json, and installed plugin manifest files). ` +
+			`Plugin sync ${enabled ? 'enabled' : 'disabled'} (community-plugins.json, core-plugins.json, plugin manifests and binaries). ` +
 				'Run Sync Now to apply the new scope.'
 		);
+	}
+
+	async onAppSettingsSyncChanged(enabled: boolean): Promise<void> {
+		if (this.settings.syncAppSettings === enabled) {
+			return;
+		}
+
+		this.settings.syncAppSettings = enabled;
+		this.syncStateManager.clearState();
+		await this.saveSettings();
+
+		new Notice(
+			`App settings sync ${enabled ? 'enabled' : 'disabled'} (app.json, appearance.json, hotkeys.json). ` +
+				'Run Sync Now to apply the new scope.'
+		);
+	}
+
+	async resetSyncToken(): Promise<void> {
+		this.syncStateManager.clearDeltaLink();
+		await this.saveSettings();
+		new Notice('Sync token reset. Next sync will re-read from OneDrive.');
 	}
 
 	/**

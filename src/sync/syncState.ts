@@ -119,6 +119,14 @@ export class SyncStateManager {
 	}
 
 	/**
+	 * Clear only the delta link, forcing a full re-read from server on next sync
+	 */
+	clearDeltaLink(): void {
+		this.state.deltaLink = undefined;
+		logger.debug('Delta link cleared — next sync will re-read from server');
+	}
+
+	/**
 	 * Clear all state
 	 */
 	clearState(): void {
