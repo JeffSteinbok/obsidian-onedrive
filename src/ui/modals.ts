@@ -3,7 +3,7 @@
  */
 
 import { Modal, App, Setting } from 'obsidian';
-import { ConflictInfo } from '../types';
+import { ConflictInfo, LargeDeleteWarningInfo, LargeDeleteDecision } from '../types';
 
 /**
  * Conflict resolution modal
@@ -209,5 +209,110 @@ export class ErrorModal extends Modal {
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
+	}
+}
+
+
+/**
+ * Large-delete warning modal
+ *
+ * Shown when a planned sync would delete more files than the configured
+ * threshold. Gives the user three choices: proceed with the sync, cancel
+ * this sync, or cancel and disable the plugin so they can investigate.
+ *
+ * The modal returns the user's decision via a Promise; closing without
+ * picking a button resolves to "cancel" (the safe default).
+ */
+export class LargeDeleteWarningModal extends Modal {
+	private info: LargeDeleteWarningInfo;
+	private resolveDecision: (decision: LargeDeleteDecision) => void;
+	private decision: LargeDeleteDecision = 'cancel';
+
+	constructor(
+		app: App,
+		info: LargeDeleteWarningInfo,
+		resolve: (decision: LargeDeleteDecision) => void
+	) {
+		super(app);
+		this.info = info;
+		this.resolveDecision = resolve;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass('onedrive-large-delete-modal');
+
+		contentEl.createEl('h2', { text: 'OneDrive sync: large delete detected' });
+
+		const total = this.info.localDeleteCount + this.info.remoteDeleteCount;
+		const summary = contentEl.createEl('p');
+		summary.setText(
+			`This sync would delete ${total} file${total === 1 ? '' : 's'} ` +
+				`(threshold: ${this.info.threshold}). Review before continuing — ` +
+				`this could indicate an unintended remote change or an accidental local delete.`
+		);
+
+		if (this.info.localDeleteCount > 0) {
+			contentEl.createEl('h3', {
+				text: `${this.info.localDeleteCount} file${this.info.localDeleteCount === 1 ? '' : 's'} would be removed from this vault (driven by remote changes)`,
+			});
+			this.renderSamples(contentEl, this.info.sampleLocalDeletes, this.info.localDeleteCount);
+		}
+
+		if (this.info.remoteDeleteCount > 0) {
+			contentEl.createEl('h3', {
+				text: `${this.info.remoteDeleteCount} file${this.info.remoteDeleteCount === 1 ? '' : 's'} would be removed from OneDrive (driven by local deletes)`,
+			});
+			this.renderSamples(
+				contentEl,
+				this.info.sampleRemoteDeletes,
+				this.info.remoteDeleteCount
+			);
+		}
+
+		const hint = contentEl.createEl('p');
+		hint.setText(
+			'If you cancel or disable, the delta cursor is preserved so the same ' +
+				'plan will be re-checked next sync. Nothing has been deleted yet.'
+		);
+
+		new Setting(contentEl)
+			.addButton((b) =>
+				b
+					.setButtonText('Cancel sync')
+					.setCta()
+					.onClick(() => {
+						this.decision = 'cancel';
+						this.close();
+					})
+			)
+			.addButton((b) =>
+				b.setButtonText('Disable plugin').onClick(() => {
+					this.decision = 'disable';
+					this.close();
+				})
+			)
+			.addButton((b) =>
+				b.setButtonText('Proceed (this sync only)').setWarning().onClick(() => {
+					this.decision = 'proceed';
+					this.close();
+				})
+			);
+	}
+
+	private renderSamples(parent: HTMLElement, samples: string[], total: number) {
+		const list = parent.createEl('ul');
+		for (const path of samples) {
+			list.createEl('li', { text: path });
+		}
+		if (total > samples.length) {
+			parent.createEl('p', { text: `… and ${total - samples.length} more.` });
+		}
+	}
+
+	onClose() {
+		this.contentEl.empty();
+		this.resolveDecision(this.decision);
 	}
 }

@@ -18,6 +18,8 @@ import {
 	ConflictInfo,
 	LocalChange,
 	LocalChangeType,
+	LargeDeleteWarningHandler,
+	LargeDeleteDecision,
 } from '../types';
 import { logger } from '../utils/logger';
 import {
@@ -51,7 +53,9 @@ export class SyncEngine {
 		private remoteRoot: string = '',
 		remoteRootOnDrive?: string,
 		private conflictQueue?: ConflictQueue,
-		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path)
+		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path),
+		private getLargeDeleteThreshold: () => number = () => 0,
+		private largeDeleteWarningHandler?: LargeDeleteWarningHandler
 	) {
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -93,13 +97,18 @@ export class SyncEngine {
 
 			// 2. Get remote changes via delta API
 			const deltaLink = this.stateManager.getDeltaLink();
-			const shouldSyncObsidianScope = this.shouldSyncPath('.obsidian/community-plugins.json');
+			// The .obsidian stream is needed if EITHER app-settings or plugin-manifest
+			// sync is enabled. Probe both representative paths so the gate doesn't
+			// silently miss the syncAppSettings-only case.
+			const shouldSyncObsidianScope =
+				this.shouldSyncPath('.obsidian/community-plugins.json') ||
+				this.shouldSyncPath('.obsidian/app.json');
 			const isFirstSync = this.stateManager.isFirstSync();
 			logger.info(`Delta query: isFirstSync=${isFirstSync}, hasDeltaLink=${!!deltaLink}`);
 			const deltaResponse = await this.oneDriveClient.getDelta(deltaLink, this.remoteRoot);
 			const obsidianDeltaLink = this.stateManager.getObsidianDeltaLink();
 			const obsidianDeltaResponse = shouldSyncObsidianScope
-				? await this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot)
+				? await this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot, '.obsidian')
 				: undefined;
 
 			// Log all raw delta items for debugging
@@ -149,6 +158,25 @@ export class SyncEngine {
 			logger.info(`Sync plan: ${operations.length} operations`);
 			for (const op of operations) {
 				logger.info(`  Op: ${op.direction} ${op.path}`);
+			}
+
+			// Circuit breaker: if a sync would delete a large number of files,
+			// pause and confirm with the user before proceeding. First syncs are
+			// exempt (the reconciliation logic there doesn't issue deletes).
+			if (!isFirstSync) {
+				const decision = await this.maybeWarnLargeDeletes(operations);
+				if (decision === 'cancel' || decision === 'disable') {
+					logger.warn(
+						`Sync aborted by user (${decision}) due to large delete count. ` +
+							`Delta cursors not advanced; the same plan will be re-evaluated next sync.`
+					);
+					new Notice(
+						decision === 'disable'
+							? 'OneDrive sync: disabled. Investigate the deletes, then re-enable the plugin.'
+							: 'OneDrive sync: cancelled. The pending deletes were not applied.'
+					);
+					return;
+				}
 			}
 
 			if (operations.length === 0) {
@@ -229,6 +257,65 @@ export class SyncEngine {
 			logger.error(`Sync failed: ${errorMsg}`, error);
 			new Notice(`OneDrive sync failed: ${errorMsg}`);
 			throw error;
+		}
+	}
+
+	/**
+	 * Classify operations and, if the planned deletes exceed the configured
+	 * threshold, ask the user (via the injected handler) whether to proceed.
+	 *
+	 * Returns:
+	 *   - 'proceed': run the sync as planned (default when no handler, no
+	 *                threshold, or counts under the threshold).
+	 *   - 'cancel':  abort this sync, do not advance delta cursors so the same
+	 *                pending operations are re-planned next sync.
+	 *   - 'disable': same as cancel; caller has also been asked to disable the
+	 *                plugin via the handler.
+	 */
+	private async maybeWarnLargeDeletes(
+		operations: SyncOperation[]
+	): Promise<LargeDeleteDecision> {
+		const threshold = Math.max(0, Math.floor(this.getLargeDeleteThreshold() || 0));
+		if (threshold <= 0 || !this.largeDeleteWarningHandler) return 'proceed';
+
+		const localDeletes: string[] = []; // remote-driven local deletes (data-loss risk)
+		const remoteDeletes: string[] = []; // local-driven remote deletes
+		for (const op of operations) {
+			if (
+				op.direction === SyncDirection.DOWNLOAD &&
+				op.remoteState === undefined
+			) {
+				localDeletes.push(op.path);
+			} else if (
+				op.direction === SyncDirection.UPLOAD &&
+				op.localState === undefined &&
+				op.remoteState !== undefined
+			) {
+				remoteDeletes.push(op.path);
+			}
+		}
+
+		const total = localDeletes.length + remoteDeletes.length;
+		if (total < threshold) return 'proceed';
+
+		logger.warn(
+			`Large delete detected: ${localDeletes.length} local + ${remoteDeletes.length} remote ` +
+				`(threshold ${threshold}). Asking user before proceeding.`
+		);
+
+		try {
+			return await this.largeDeleteWarningHandler({
+				localDeleteCount: localDeletes.length,
+				remoteDeleteCount: remoteDeletes.length,
+				threshold,
+				sampleLocalDeletes: localDeletes.slice(0, 10),
+				sampleRemoteDeletes: remoteDeletes.slice(0, 10),
+			});
+		} catch (err) {
+			logger.error(
+				`Large-delete warning handler threw; cancelling sync as a safety default: ${(err as Error)?.message || err}`
+			);
+			return 'cancel';
 		}
 	}
 

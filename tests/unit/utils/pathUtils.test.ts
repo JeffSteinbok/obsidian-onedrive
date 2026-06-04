@@ -309,5 +309,14 @@ describe('pathUtils', () => {
 			expect(shouldSyncVaultPath('.obsidian/workspace.json', true, true)).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', true, true)).toBe(false);
 		});
+
+		it('always excludes the per-device debug log notes from sync', () => {
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs.md')).toBe(false);
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs-2026-06-04.md')).toBe(false);
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs-2026-06-04.md', true, true)).toBe(false);
+			// Adjacent paths that aren't log files should still sync
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs/foo.md')).toBe(true);
+			expect(shouldSyncVaultPath('notes/_OneDriveSyncLogs.md')).toBe(true);
+		});
 	});
 });

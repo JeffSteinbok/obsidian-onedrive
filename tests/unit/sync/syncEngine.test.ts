@@ -8,6 +8,7 @@ vi.mock('../../../src/utils/logger', () => ({
 		error: vi.fn(),
 		setDebugMode: vi.fn(),
 		enableFileLogging: vi.fn(),
+		setVaultLogHook: vi.fn(),
 	},
 }));
 
@@ -611,7 +612,7 @@ describe('SyncEngine', () => {
 		await syncEngine.performSync();
 
 		expect(mockClient.getDelta).toHaveBeenNthCalledWith(1, 'main-delta-old', '/remote/root');
-		expect(mockClient.getDelta).toHaveBeenNthCalledWith(2, 'obsidian-delta-old', '/remote/root');
+		expect(mockClient.getDelta).toHaveBeenNthCalledWith(2, 'obsidian-delta-old', '/remote/root', '.obsidian');
 		expect(stateManager.getDeltaLink()).toBe('main-delta-new');
 		expect(stateManager.getObsidianDeltaLink()).toBe('obsidian-delta-new');
 	});
@@ -626,6 +627,32 @@ describe('SyncEngine', () => {
 		expect(mockClient.getDelta).toHaveBeenCalledTimes(1);
 		expect(stateManager.getDeltaLink()).toBe('main-delta-new');
 		expect(stateManager.getObsidianDeltaLink()).toBe('obsidian-delta-existing');
+	});
+
+	it('runs the .obsidian delta stream when only syncAppSettings is enabled', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		syncEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			conflictResolver,
+			mockEventManager as any,
+			'/remote/root',
+			undefined,
+			undefined,
+			// syncPluginManifests=false, syncAppSettings=true
+			(path) => shouldSyncVaultPath(path, false, true)
+		);
+		mockClient.getDelta
+			.mockResolvedValueOnce({ items: [], deltaLink: 'main-delta-new' })
+			.mockResolvedValueOnce({ items: [], deltaLink: 'obsidian-delta-new' });
+
+		await syncEngine.performSync();
+
+		expect(mockClient.getDelta).toHaveBeenCalledTimes(2);
+		expect(mockClient.getDelta).toHaveBeenNthCalledWith(2, undefined, '/remote/root', '.obsidian');
+		expect(stateManager.getObsidianDeltaLink()).toBe('obsidian-delta-new');
 	});
 
 	it('filters remote changes using .syncIgnore patterns', async () => {
@@ -699,6 +726,27 @@ describe('SyncEngine', () => {
 		await syncEngine.performSync();
 
 		expect(mockEventManager.clearDirtyFiles).toHaveBeenCalledTimes(1);
+	});
+
+	it('clearDeltaLink resets delta cursors, file states, and lastSyncTime', () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setDeltaLink('main-delta');
+		stateManager.setObsidianDeltaLink('obsidian-delta');
+		stateManager.setFileState('notes/keep.md', {
+			path: 'notes/keep.md',
+			localMtime: 1,
+			remoteHash: 'abc',
+			size: 10,
+			remoteModifiedTime: 1,
+			oneDriveId: 'id-1',
+		});
+
+		stateManager.clearDeltaLink();
+
+		expect(stateManager.getDeltaLink()).toBeUndefined();
+		expect(stateManager.getObsidianDeltaLink()).toBeUndefined();
+		expect(stateManager.getFileState('notes/keep.md')).toBeUndefined();
+		expect(stateManager.isFirstSync()).toBe(true);
 	});
 
 	it('removes downloaded paths from the dirty set', async () => {
@@ -787,5 +835,153 @@ describe('SyncEngine', () => {
 		}
 
 		await syncPromise;
+	});
+});
+
+
+describe('SyncEngine large-delete circuit breaker', () => {
+	let stateManager: SyncStateManager;
+	let conflictResolver: ConflictResolver;
+	let mockFileOps: any;
+	let mockClient: any;
+	let mockEventManager: any;
+
+	beforeEach(() => {
+		stateManager = new SyncStateManager();
+		conflictResolver = new ConflictResolver(ConflictResolutionStrategy.LAST_WRITE_WINS);
+		mockFileOps = {
+			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
+			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+		};
+		mockClient = {
+			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'delta-link-1' }),
+			isSharedDrive: vi.fn().mockReturnValue(false),
+		};
+		mockEventManager = {
+			getDirtyFiles: vi.fn().mockReturnValue([]),
+			clearDirtyFiles: vi.fn(),
+			addDirtyFile: vi.fn(),
+			removeDirtyPaths: vi.fn(),
+			markOwnWrites: vi.fn(),
+		};
+	});
+
+	function makeEngine(threshold: number, handler?: any) {
+		return new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'/remote/root',
+			undefined,
+			undefined,
+			() => true,
+			() => threshold,
+			handler
+		);
+	}
+
+	function seedDeletes(remoteDeleteCount: number) {
+		// Establish state so the engine knows the files existed; not first sync.
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setDeltaLink('prev-delta');
+		const deletes = Array.from({ length: remoteDeleteCount }, (_, i) =>
+			makeRemoteDelete(`notes/gone-${i}.md`, { id: `gone-${i}-id` })
+		);
+		for (let i = 0; i < remoteDeleteCount; i++) {
+			const path = `notes/gone-${i}.md`;
+			stateManager.setFileState(path, {
+				path,
+				localMtime: 1,
+				remoteHash: 'h',
+				size: 10,
+				remoteModifiedTime: 1,
+				oneDriveId: `gone-${i}-id`,
+			});
+			(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation((p: string) =>
+				p.startsWith('notes/gone-') ? makeTFile(p, 10, Date.now()) : null
+			);
+		}
+		mockClient.getDelta.mockResolvedValue({ items: deletes, deltaLink: 'next-delta' });
+	}
+
+	it('does not warn when delete count is below the threshold', async () => {
+		const handler = vi.fn();
+		const engine = makeEngine(10, handler);
+		seedDeletes(3);
+
+		await engine.performSync();
+
+		expect(handler).not.toHaveBeenCalled();
+		expect(mockApp.vault.delete).toHaveBeenCalled();
+		expect(stateManager.getDeltaLink()).toBe('next-delta');
+	});
+
+	it('does not warn when threshold is 0 (disabled)', async () => {
+		const handler = vi.fn();
+		const engine = makeEngine(0, handler);
+		seedDeletes(50);
+
+		await engine.performSync();
+
+		expect(handler).not.toHaveBeenCalled();
+		expect(mockApp.vault.delete).toHaveBeenCalled();
+	});
+
+	it('asks the handler when delete count meets the threshold and proceeds on "proceed"', async () => {
+		const handler = vi.fn().mockResolvedValue('proceed');
+		const engine = makeEngine(5, handler);
+		seedDeletes(7);
+
+		await engine.performSync();
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		const info = handler.mock.calls[0][0];
+		expect(info.localDeleteCount).toBe(7);
+		expect(info.remoteDeleteCount).toBe(0);
+		expect(info.sampleLocalDeletes).toHaveLength(7);
+		expect(mockApp.vault.delete).toHaveBeenCalledTimes(7);
+		expect(stateManager.getDeltaLink()).toBe('next-delta');
+	});
+
+	it('aborts without advancing the delta cursor when the user cancels', async () => {
+		const handler = vi.fn().mockResolvedValue('cancel');
+		const engine = makeEngine(5, handler);
+		seedDeletes(7);
+
+		await engine.performSync();
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(mockApp.vault.delete).not.toHaveBeenCalled();
+		// Cursor still points at the pre-sync value so the user gets re-prompted next time.
+		expect(stateManager.getDeltaLink()).toBe('prev-delta');
+	});
+
+	it('aborts without advancing the delta cursor when the user picks "disable"', async () => {
+		const handler = vi.fn().mockResolvedValue('disable');
+		const engine = makeEngine(5, handler);
+		seedDeletes(7);
+
+		await engine.performSync();
+
+		expect(mockApp.vault.delete).not.toHaveBeenCalled();
+		expect(stateManager.getDeltaLink()).toBe('prev-delta');
+	});
+
+	it('skips the warning on first sync even when many files would be touched', async () => {
+		const handler = vi.fn();
+		const engine = makeEngine(5, handler);
+		// First sync: no prior deltaLink, no prior lastSyncTime.
+		const deletes = Array.from({ length: 10 }, (_, i) =>
+			makeRemoteDelete(`notes/gone-${i}.md`, { id: `gone-${i}-id` })
+		);
+		mockClient.getDelta.mockResolvedValue({ items: deletes, deltaLink: 'first-delta' });
+
+		await engine.performSync();
+
+		expect(handler).not.toHaveBeenCalled();
 	});
 });

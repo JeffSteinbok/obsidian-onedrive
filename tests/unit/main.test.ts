@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
 		error: vi.fn(),
 		setDebugMode: vi.fn(),
 		enableFileLogging: vi.fn(),
+		setVaultLogHook: vi.fn(),
 		getRecentLogs: vi.fn().mockReturnValue([]),
 	};
 

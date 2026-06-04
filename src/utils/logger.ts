@@ -20,11 +20,21 @@ class Logger {
 	private minLevel = LogLevel.INFO;
 	private logFilePath: string | null = null;
 	private recentLogs: string[] = [];
+	private vaultLogHook: ((line: string) => void) | null = null;
 	private static readonly MAX_RECENT_LOGS = 500;
 
 	setDebugMode(enabled: boolean) {
 		this.enableDebug = enabled;
 		this.minLevel = enabled ? LogLevel.DEBUG : LogLevel.INFO;
+	}
+
+	/**
+	 * Register (or clear) a sink that receives every formatted log line.
+	 * Used by the plugin to mirror logs into a vault-root note for in-app /
+	 * mobile inspection. Pass null to detach.
+	 */
+	setVaultLogHook(hook: ((line: string) => void) | null): void {
+		this.vaultLogHook = hook;
 	}
 
 	/**
@@ -74,6 +84,13 @@ class Logger {
 		this.recentLogs.push(line);
 		if (this.recentLogs.length > Logger.MAX_RECENT_LOGS) {
 			this.recentLogs.shift();
+		}
+		if (this.vaultLogHook) {
+			try {
+				this.vaultLogHook(line);
+			} catch {
+				// Never let a sink failure break logging
+			}
 		}
 	}
 

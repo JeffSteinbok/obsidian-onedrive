@@ -136,6 +136,20 @@ export interface SyncOperation {
 	remoteState?: FileState;
 }
 
+export interface LargeDeleteWarningInfo {
+	localDeleteCount: number; // files about to be deleted from the local vault (driven by remote)
+	remoteDeleteCount: number; // files about to be deleted from OneDrive (driven by local)
+	threshold: number;
+	sampleLocalDeletes: string[]; // up to 10 example paths
+	sampleRemoteDeletes: string[]; // up to 10 example paths
+}
+
+export type LargeDeleteDecision = 'proceed' | 'cancel' | 'disable';
+
+export type LargeDeleteWarningHandler = (
+	info: LargeDeleteWarningInfo
+) => Promise<LargeDeleteDecision>;
+
 export enum ConflictResolutionStrategy {
 	LAST_WRITE_WINS = 'last-write-wins',
 	CREATE_DUPLICATE = 'create-duplicate',
@@ -217,6 +231,7 @@ export interface PluginSettings {
 	remoteRootName?: string; // Display name of the root folder on the remote drive
 	remoteRootPath?: string; // Full path of the folder on the remote drive (e.g. /Documents/ObsidianVaults/JeffBrain)
 	enableDebugLogging: boolean;
+	largeDeleteThreshold: number; // Warn if a sync would delete more than this many files (0 = disabled)
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -241,6 +256,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	// Advanced
 	remotePath: undefined, // Only used with Full Access mode
 	enableDebugLogging: false,
+	largeDeleteThreshold: 25,
 };
 
 // ============================================================================
