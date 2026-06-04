@@ -354,7 +354,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		// Custom client ID toggle
 		new Setting(containerEl)
 			.setName('Use custom client ID')
-			.setDesc('Use your own Azure AD app registration. See the GitHub docs for setup instructions.')
+			.setDesc('Use your own Azure AD app registration. See the README for setup instructions.')
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.useCustomClientId).onChange(async (value) => {
 					this.plugin.settings.useCustomClientId = value;
@@ -379,7 +379,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 			const helpDiv = containerEl.createDiv({ cls: 'setting-item-description' });
 			helpDiv.style.marginTop = '4px';
-			helpDiv.innerHTML = `See <a href="https://github.com/jeffsteinbok/obsidian-onedrive#custom-client-id" target="_blank">GitHub docs</a> for custom client ID setup instructions.`;
+			helpDiv.innerHTML = `See <a href="https://github.com/jeffsteinbok/obsidian-onedrive#custom-client-id" target="_blank">Custom Client ID setup guide</a> in the README.`;
 		}
 	}
 }
