@@ -3,7 +3,7 @@
  * Uses OneDrive delta API for remote changes and vault events for local changes
  */
 
-import { App, Notice, TFile } from 'obsidian';
+import { App, Notice, TFile, TFolder } from 'obsidian';
 import { FileOperations } from '../api/fileOperations';
 import { OneDriveClient } from '../api/oneDriveClient';
 import { SyncStateManager } from './syncState';
@@ -876,6 +876,45 @@ export class SyncEngine {
 		}
 	}
 
+	/**
+	 * Sweep the entire vault for empty folders and prune them, deepest-first
+	 * so cascades collapse in one pass. Skips folders whose path is in
+	 * `keepPaths` — those exist on cloud and the user wants them preserved.
+	 * Returns the number of folders actually deleted.
+	 */
+	private async pruneAllEmptyFolders(keepPaths: Set<string>): Promise<number> {
+		const root = this.app.vault.getRoot();
+		const allFolders: TFolder[] = [];
+		const walk = (folder: TFolder) => {
+			for (const child of folder.children) {
+				if (child instanceof TFolder) {
+					allFolders.push(child);
+					walk(child);
+				}
+			}
+		};
+		walk(root);
+		allFolders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+
+		let deleted = 0;
+		for (const folder of allFolders) {
+			if (folder.children.length > 0) continue;
+			if (keepPaths.has(folder.path)) continue;
+			// Skip anything we don't sync — including the log folder, our own
+			// plugin folder, and .obsidian (unless explicitly synced). Those
+			// are device-local and must not be pruned by reconcile.
+			if (!this.shouldSyncPath(folder.path)) continue;
+			try {
+				await this.app.vault.delete(folder);
+				deleted++;
+				logger.debug(`Reconcile: pruned empty folder ${folder.path}`);
+			} catch (error) {
+				logger.warn(`Reconcile: failed to prune empty folder ${folder.path}:`, error);
+			}
+		}
+		return deleted;
+	}
+
 	private async tryRemoveFolderAndAncestors(folderPath: string): Promise<void> {
 		let current: string | null = folderPath;
 		while (current && current !== '' && current !== '/') {
@@ -1017,6 +1056,7 @@ export class SyncEngine {
 
 		try {
 			progress('listing cloud...');
+			new Notice('Reconcile from cloud: listing OneDrive...', 6000);
 			const ignoreMatchers = await this.loadIgnoreMatchers();
 
 			// 1. Enumerate the entire remote vault. listAllItems recurses
@@ -1025,12 +1065,19 @@ export class SyncEngine {
 			const allRemoteItems = await this.oneDriveClient.listAllItems(this.remoteRoot);
 			logger.info(`Reconcile: enumerated ${allRemoteItems.length} remote items`);
 
-			// 2. Build vaultPath -> OneDriveItem map for everything we'd sync.
+			// 2. Build vaultPath -> OneDriveItem map for everything we'd sync,
+			// plus a set of folder paths that exist on cloud so we don't
+			// prune local empty folders the user intentionally created on
+			// another device.
 			const remoteFiles = new Map<string, OneDriveItem>();
+			const remoteFolders = new Set<string>();
 			for (const item of allRemoteItems) {
-				if (item.folder) continue;
 				const vaultPath = this.remotePathToVaultPath(item);
 				if (!vaultPath) continue;
+				if (item.folder) {
+					remoteFolders.add(vaultPath);
+					continue;
+				}
 				if (!this.shouldSyncPath(vaultPath)) continue;
 				if (this.shouldIgnorePath(vaultPath, ignoreMatchers)) continue;
 				remoteFiles.set(vaultPath, item);
@@ -1117,26 +1164,29 @@ export class SyncEngine {
 
 			if (operations.length === 0) {
 				logger.info('Reconcile: nothing to do — local already matches cloud');
-				new Notice('Reconcile from cloud: already in sync.');
+				const pruned = await this.pruneAllEmptyFolders(remoteFolders);
+				new Notice(
+					pruned > 0
+						? `Reconcile from cloud: already in sync. Pruned ${pruned} empty folder${pruned === 1 ? '' : 's'}.`
+						: 'Reconcile from cloud: already in sync.'
+				);
 				return;
 			}
 
 			// 6. Execute.
 			let completed = 0;
 			progress(`0/${operations.length} files`);
-			const progressNotice =
-				operations.length >= 5
-					? new Notice(`Reconciling: 0/${operations.length} files...`, 0)
-					: null;
+			const progressNotice = new Notice(
+				`Reconciling: 0/${operations.length} files...`,
+				0
+			);
 			await this.executeOperations(operations, () => {
 				completed++;
 				const label = `${completed}/${operations.length} files`;
 				progress(label);
-				if (progressNotice) {
-					progressNotice.setMessage(`Reconciling: ${label}...`);
-				}
+				progressNotice.setMessage(`Reconciling: ${label}...`);
 			});
-			progressNotice?.hide();
+			progressNotice.hide();
 			progress(undefined);
 
 			// 7. Local file event listeners may have queued dirty entries while
@@ -1144,19 +1194,12 @@ export class SyncEngine {
 			// from cloud, anything pending is stale.
 			this.eventManager.clearDirtyFiles();
 
-			// 7a. Prune empty folders left behind by the local-only file deletes.
-			// Same pattern as folder-delete expansion: collect parent dirs of
-			// each deleted file and pruneEmptyFolders walks deepest-first with
-			// ancestor cascade.
-			if (localOnly.length > 0) {
-				const parentDirs = new Set<string>();
-				for (const p of localOnly) {
-					const slash = p.lastIndexOf('/');
-					if (slash > 0) parentDirs.add(p.slice(0, slash));
-				}
-				if (parentDirs.size > 0) {
-					await this.pruneEmptyFolders(Array.from(parentDirs));
-				}
+			// 7a. Sweep the entire vault for empty folders and prune them,
+			// EXCEPT those that exist on cloud — those were intentionally
+			// created on another device and we should keep them locally.
+			const prunedCount = await this.pruneAllEmptyFolders(remoteFolders);
+			if (prunedCount > 0) {
+				logger.info(`Reconcile: pruned ${prunedCount} empty folder(s)`);
 			}
 
 			// 8. Advance delta cursors so the next normal sync starts clean.
