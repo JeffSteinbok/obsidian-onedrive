@@ -274,17 +274,40 @@ describe('pathUtils', () => {
 			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json')).toBe(false);
 		});
 
-		it('should allow selected plugin manifest files when opted in', () => {
+		it('should sync app settings files when syncAppSettings is enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/app.json', false, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/appearance.json', false, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/hotkeys.json', false, true)).toBe(true);
+		});
+
+		it('should exclude non-allowlisted .obsidian files even when syncAppSettings is enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/workspace.json', false, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', false, true)).toBe(false);
+		});
+
+		it('should allow selected plugin manifest files when syncPluginManifests is opted in', () => {
 			expect(shouldSyncVaultPath('.obsidian/community-plugins.json', true)).toBe(true);
 			expect(shouldSyncVaultPath('.obsidian/core-plugins.json', true)).toBe(true);
 		});
 
-		it('should still exclude plugin binaries when opted in', () => {
+		it('should sync plugin binaries when syncPluginManifests is opted in', () => {
 			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json', true)).toBe(true);
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/styles.css', true)).toBe(true);
+		});
+
+		it('should exclude plugin data files when syncPluginManifests is opted in', () => {
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', true)).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/subdir/manifest.json', true)).toBe(
 				false
 			);
+		});
+
+		it('should sync app settings and plugin files simultaneously when both are enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/app.json', true, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/workspace.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', true, true)).toBe(false);
 		});
 	});
 });
