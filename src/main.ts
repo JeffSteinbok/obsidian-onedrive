@@ -77,6 +77,13 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Load settings
 		await this.loadSettings();
 
+		// Self-heal our entry in community-plugins.json. If we're loading,
+		// we're enabled on this device — so don't let a sync from another
+		// device (which may not have had us installed yet) silently remove
+		// us. Without this, the file ping-pongs and we drop off this device
+		// the next time another device's list overwrites ours.
+		await this.ensureSelfInCommunityPluginsList();
+
 		// Initialize core components
 		this.tokenStorage = new TokenStorage();
 		this.syncStateManager = new SyncStateManager();
@@ -145,6 +152,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 				await this.saveSettings();
 				new Notice('Sync state cleared. Running full sync...');
 				await this.triggerManualSync();
+			},
+		});
+
+		this.addCommand({
+			id: 'reconcile-from-cloud',
+			name: 'Reconcile from cloud (cloud-as-truth recovery)',
+			callback: async () => {
+				await this.reconcileFromCloud();
 			},
 		});
 
@@ -744,6 +759,38 @@ ${lines.join('\n')}
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 	}
 
+	/**
+	 * Make sure this plugin's id is listed in `.obsidian/community-plugins.json`.
+	 * That file is the list of *enabled* plugins; if a sync from another device
+	 * overwrites it with a version that doesn't include us, we'd silently
+	 * disappear on next Obsidian launch. Since we're running, we're enabled —
+	 * re-add ourselves if missing.
+	 */
+	private async ensureSelfInCommunityPluginsList(): Promise<void> {
+		const path = '.obsidian/community-plugins.json';
+		const adapter = this.app.vault.adapter;
+		const id = this.manifest?.id;
+		if (!id) return;
+		try {
+			let list: string[] = [];
+			if (await adapter.exists(path)) {
+				const raw = await adapter.read(path);
+				try {
+					const parsed = JSON.parse(raw);
+					if (Array.isArray(parsed)) list = parsed.filter((x) => typeof x === 'string');
+				} catch {
+					logger.warn(`community-plugins.json is malformed; rewriting with just ${id}`);
+				}
+			}
+			if (list.includes(id)) return;
+			list.push(id);
+			await adapter.write(path, JSON.stringify(list, null, 2));
+			logger.info(`Self-healed: added ${id} back to community-plugins.json`);
+		} catch (error) {
+			logger.warn('Failed to self-heal community-plugins.json:', error);
+		}
+	}
+
 	async onPluginManifestSyncChanged(enabled: boolean): Promise<void> {
 		if (this.settings.syncPluginManifests === enabled) {
 			return;
@@ -780,6 +827,40 @@ ${lines.join('\n')}
 			'Sync reset. Delta cursors, file states, and last sync time cleared. ' +
 				'Next sync will re-read from OneDrive and reconcile local files.'
 		);
+	}
+
+	/**
+	 * Reconcile the local vault from a full cloud listing. Treats cloud as
+	 * authoritative — local-only files are deleted, remote-only files are
+	 * downloaded. Destructive deletes are confirmed via the large-delete
+	 * modal. See issue #26.
+	 */
+	async reconcileFromCloud(): Promise<void> {
+		if (!this.tokenStorage.hasTokens()) {
+			new Notice('Reconcile from cloud: not connected to OneDrive.');
+			return;
+		}
+		if (!this.isSyncConfigured()) {
+			new Notice('Reconcile from cloud: select a sync folder in settings first.');
+			return;
+		}
+		if (!this.syncEngine) {
+			new Notice('Reconcile from cloud: sync engine not initialized.');
+			return;
+		}
+		if (this.eventManager?.isSyncInProgress()) {
+			new Notice('Reconcile from cloud: a sync is already in progress.');
+			return;
+		}
+		try {
+			this.statusBarManager?.setStatus(SyncStatus.SYNCING);
+			await this.syncEngine.reconcileFromCloud();
+			await this.saveSettings();
+			this.statusBarManager?.setStatus(SyncStatus.IDLE);
+		} catch (error) {
+			this.statusBarManager?.setStatus(SyncStatus.ERROR);
+			throw error;
+		}
 	}
 
 	/**
