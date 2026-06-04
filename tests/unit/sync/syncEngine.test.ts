@@ -1096,3 +1096,73 @@ describe('SyncEngine first-sync local vault enumeration', () => {
 		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
 	});
 });
+
+
+describe('SyncEngine progress reporting', () => {
+	let stateManager: SyncStateManager;
+	let conflictResolver: ConflictResolver;
+	let mockFileOps: any;
+	let mockClient: any;
+	let mockEventManager: any;
+
+	beforeEach(() => {
+		stateManager = new SyncStateManager();
+		conflictResolver = new ConflictResolver(ConflictResolutionStrategy.LAST_WRITE_WINS);
+		mockFileOps = {
+			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
+			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+		};
+		mockClient = {
+			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'first-delta' }),
+			isSharedDrive: vi.fn().mockReturnValue(false),
+		};
+		mockEventManager = {
+			getDirtyFiles: vi.fn().mockReturnValue([]),
+			clearDirtyFiles: vi.fn(),
+			addDirtyFile: vi.fn(),
+			removeDirtyPaths: vi.fn(),
+			markOwnWrites: vi.fn(),
+		};
+	});
+
+	it('emits phase progress before any operations execute and per-file progress during execution', async () => {
+		const onProgress = vi.fn();
+		const localFiles = [
+			makeTFile('notes/a.md', 5, Date.now()),
+			makeTFile('notes/b.md', 6, Date.now()),
+		];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+
+		const engine = new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'/remote/root',
+			undefined,
+			undefined,
+			() => true,
+			() => 0,
+			undefined,
+			onProgress
+		);
+
+		await engine.performSync();
+
+		const messages = onProgress.mock.calls.map((c: any[]) => c[0]);
+		// Phase markers are emitted before per-file progress starts.
+		expect(messages).toContain('starting...');
+		expect(messages).toContain('fetching remote changes...');
+		expect(messages).toContain('planning...');
+		// Per-file progress should reach the total operation count.
+		expect(messages).toContain('2/2 files');
+		// Final clear so the status bar drops back to idle.
+		expect(messages[messages.length - 1]).toBeUndefined();
+	});
+});

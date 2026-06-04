@@ -55,7 +55,8 @@ export class SyncEngine {
 		private conflictQueue?: ConflictQueue,
 		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path),
 		private getLargeDeleteThreshold: () => number = () => 0,
-		private largeDeleteWarningHandler?: LargeDeleteWarningHandler
+		private largeDeleteWarningHandler?: LargeDeleteWarningHandler,
+		private onProgress?: (message: string | undefined) => void
 	) {
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -72,8 +73,16 @@ export class SyncEngine {
 	 */
 	async performSync(): Promise<void> {
 		logger.info('Starting sync operation');
+		const progress = (msg: string | undefined) => {
+			try {
+				this.onProgress?.(msg);
+			} catch {
+				// progress reporting must never break sync
+			}
+		};
 
 		try {
+			progress('starting...');
 			// 1. Get local changes from event manager
 			const ignoreMatchers = await this.loadIgnoreMatchers();
 			const allLocalChanges = this.eventManager.getDirtyFiles();
@@ -96,6 +105,7 @@ export class SyncEngine {
 			}
 
 			// 2. Get remote changes via delta API
+			progress('fetching remote changes...');
 			const deltaLink = this.stateManager.getDeltaLink();
 			// The .obsidian stream is needed if EITHER app-settings or plugin-manifest
 			// sync is enabled. Probe both representative paths so the gate doesn't
@@ -107,9 +117,14 @@ export class SyncEngine {
 			logger.info(`Delta query: isFirstSync=${isFirstSync}, hasDeltaLink=${!!deltaLink}`);
 			const deltaResponse = await this.oneDriveClient.getDelta(deltaLink, this.remoteRoot);
 			const obsidianDeltaLink = this.stateManager.getObsidianDeltaLink();
+			if (shouldSyncObsidianScope) {
+				progress('fetching .obsidian changes...');
+			}
 			const obsidianDeltaResponse = shouldSyncObsidianScope
 				? await this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot, '.obsidian')
 				: undefined;
+
+			progress('planning...');
 
 			// Log all raw delta items for debugging
 			for (const item of deltaResponse.items) {
@@ -229,6 +244,7 @@ export class SyncEngine {
 			let completed = 0;
 			const downloadedPaths: string[] = [];
 			const conflictedPaths: string[] = [];
+			progress(`0/${operations.length} files`);
 			// Single persistent notice for progress — updates in place
 			const progressNotice =
 				operations.length >= 5 ? new Notice(`Syncing: 0/${operations.length} files...`, 0) : null;
@@ -242,12 +258,15 @@ export class SyncEngine {
 					conflictedPaths.push(operation.path);
 				}
 
+				const progressLabel = `${completed}/${operations.length} files`;
+				progress(progressLabel);
 				if (progressNotice) {
-					progressNotice.setMessage(`Syncing: ${completed}/${operations.length} files...`);
+					progressNotice.setMessage(`Syncing: ${progressLabel}...`);
 				}
 			});
 			// Dismiss progress notice
 			progressNotice?.hide();
+			progress(undefined);
 
 			// Clear any dirty-file entries for paths we just downloaded,
 			// so they don't boomerang back as uploads on the next cycle
