@@ -51,6 +51,15 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 | **Custom Client ID** | Optional — bring your own Azure AD app |
 | **Debug Logging** | Enable for troubleshooting |
 
+### Optional: `.syncIgnore`
+
+Create a `.syncIgnore` file at your vault root to skip extra files/folders from sync (similar to `.gitignore`).
+
+- One pattern per line
+- `#` starts a comment
+- Folder pattern example: `private/`
+- Wildcard example: `*.tmp`
+
 ## 🔒 Access Modes
 
 | | App Folder (Default) | Full Access |

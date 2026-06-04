@@ -28,6 +28,7 @@ import { normalizePath, toOneDrivePath, toVaultPath, getParentPath, stripGraphPr
 export class SyncEngine {
 	private isSharedDrive: boolean;
 	private remoteRootOnDrive: string;
+	private static readonly DEFAULT_IGNORE_PATTERNS = ['.obsidian/**'];
 
 	constructor(
 		private app: App,
@@ -54,7 +55,15 @@ export class SyncEngine {
 
 		try {
 			// 1. Get local changes from event manager
-			const localChanges = this.eventManager.getDirtyFiles();
+			const ignoreMatchers = await this.loadIgnoreMatchers();
+			const allLocalChanges = this.eventManager.getDirtyFiles();
+			const ignoredLocalPaths = allLocalChanges
+				.filter((change) => this.shouldIgnorePath(change.path, ignoreMatchers))
+				.map((change) => change.path);
+			const localChanges = allLocalChanges.filter((change) => !this.shouldIgnorePath(change.path, ignoreMatchers));
+			if (ignoredLocalPaths.length > 0) {
+				this.eventManager.removeDirtyPaths(ignoredLocalPaths);
+			}
 			logger.info(`Local changes: ${localChanges.length} dirty files`);
 			for (const change of localChanges) {
 				logger.info(`  Local: ${change.type} ${change.path}${change.oldPath ? ` (from ${change.oldPath})` : ''}`);
@@ -77,7 +86,7 @@ export class SyncEngine {
 				// Include files and deleted items (deleted items won't have .file)
 				if (item.folder && !item.deleted) return false;
 				const vaultPath = this.remotePathToVaultPath(item);
-				return !vaultPath.startsWith('.obsidian/');
+				return !this.shouldIgnorePath(vaultPath, ignoreMatchers);
 			});
 
 			logger.info(`Delta returned ${deltaResponse.items.length} total items, ${remoteChanges.length} file changes`);
@@ -188,7 +197,6 @@ export class SyncEngine {
 
 		// Build a set of locally changed paths
 		const localChangedPaths = new Set(localChanges.map((c) => c.path));
-		const localChangeMap = new Map(localChanges.map((c) => [c.path, c]));
 
 		// Process local changes
 		for (const change of localChanges) {
@@ -560,5 +568,54 @@ export class SyncEngine {
 		fullPath = stripGraphPrefix(fullPath);
 
 		return toVaultPath(fullPath, this.remoteRootOnDrive);
+	}
+
+	private async loadIgnoreMatchers(): Promise<RegExp[]> {
+		const patterns = [...SyncEngine.DEFAULT_IGNORE_PATTERNS];
+
+		try {
+			const content = await this.app.vault.adapter.read('.syncIgnore');
+			if (typeof content === 'string' && content.trim().length > 0) {
+				patterns.push(...this.parseSyncIgnorePatterns(content));
+			}
+		} catch {
+			// Ignore missing or unreadable .syncIgnore files
+		}
+
+		return patterns.map((pattern) => this.patternToRegex(pattern));
+	}
+
+	private parseSyncIgnorePatterns(content: string): string[] {
+		return content
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0 && !line.startsWith('#') && !line.startsWith('!'))
+			.map((line) => line.replace(/^\.\/+/, '').replace(/^\/+/, ''));
+	}
+
+	private patternToRegex(pattern: string): RegExp {
+		let normalizedPattern = normalizePath(pattern);
+		if (normalizedPattern.endsWith('/')) {
+			normalizedPattern = `${normalizedPattern}**`;
+		}
+
+		const wildcardToken = '__DOUBLE_STAR__';
+		const hasPathSeparator = normalizedPattern.includes('/');
+		let regexPattern = normalizedPattern.replace(/\*\*/g, wildcardToken);
+		regexPattern = regexPattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+		regexPattern = regexPattern.replace(new RegExp(wildcardToken, 'g'), '.*');
+		regexPattern = regexPattern.replace(/\*/g, '[^/]*');
+
+		if (hasPathSeparator) {
+			return new RegExp(`^${regexPattern}$`);
+		}
+
+		return new RegExp(`(^|/)${regexPattern}$`);
+	}
+
+	private shouldIgnorePath(path: string, ignoreMatchers: RegExp[]): boolean {
+		if (!path) return false;
+		const normalizedPath = normalizePath(path).replace(/^\/+/, '');
+		return ignoreMatchers.some((matcher) => matcher.test(normalizedPath));
 	}
 }
