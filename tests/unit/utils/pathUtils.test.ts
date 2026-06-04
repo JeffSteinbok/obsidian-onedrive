@@ -310,13 +310,16 @@ describe('pathUtils', () => {
 			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', true, true)).toBe(false);
 		});
 
-		it('always excludes the per-device debug log notes from sync', () => {
-			expect(shouldSyncVaultPath('_OneDriveSyncLogs.md')).toBe(false);
-			expect(shouldSyncVaultPath('_OneDriveSyncLogs-2026-06-04.md')).toBe(false);
-			expect(shouldSyncVaultPath('_OneDriveSyncLogs-2026-06-04.md', true, true)).toBe(false);
-			// Adjacent paths that aren't log files should still sync
-			expect(shouldSyncVaultPath('_OneDriveSyncLogs/foo.md')).toBe(true);
-			expect(shouldSyncVaultPath('notes/_OneDriveSyncLogs.md')).toBe(true);
+		it('always excludes the per-device debug log folder from sync', () => {
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs')).toBe(false);
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs/2026-06-04.md')).toBe(false);
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs/sub/dir/note.md', true, true)).toBe(false);
+			// Files that just look similar should still sync — exclusion is
+			// folder-scoped, not name-scoped, so moving a log out of the folder
+			// makes it syncable again.
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs-2026-06-04.md')).toBe(true);
+			expect(shouldSyncVaultPath('_OneDriveSyncLogsBackup/foo.md')).toBe(true);
+			expect(shouldSyncVaultPath('notes/_OneDriveSyncLogs/x.md')).toBe(true);
 		});
 	});
 });

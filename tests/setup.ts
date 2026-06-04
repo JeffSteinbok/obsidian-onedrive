@@ -26,7 +26,7 @@ export const mockApp = {
 		off: vi.fn(),
 		offref: vi.fn(),
 		getAbstractFileByPath: vi.fn(),
-		getFiles: vi.fn(),
+		getFiles: vi.fn().mockReturnValue([]),
 		readBinary: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
 		delete: vi.fn().mockResolvedValue(undefined),
 	},

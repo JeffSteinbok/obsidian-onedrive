@@ -158,7 +158,7 @@ function isInstalledPluginBinaryPath(path: string): boolean {
 	return /^\.obsidian\/plugins\/[^/]+\/(main\.js|styles\.css)$/.test(path);
 }
 
-const LOG_NOTE_PATTERN = /^_OneDriveSyncLogs(-\d{4}-\d{2}-\d{2})?\.md$/;
+const LOG_NOTE_FOLDER = '_OneDriveSyncLogs/';
 
 /**
  * Check whether a vault path should be synced.
@@ -166,9 +166,10 @@ const LOG_NOTE_PATTERN = /^_OneDriveSyncLogs(-\d{4}-\d{2}-\d{2})?\.md$/;
 export function shouldSyncVaultPath(path: string, syncPluginManifests = false, syncAppSettings = false): boolean {
 	const normalized = normalizePath(path);
 
-	// Plugin debug log files live in the vault root so mobile users can open them
-	// from the file explorer, but they must never sync (each device writes its own).
-	if (LOG_NOTE_PATTERN.test(normalized)) {
+	// Plugin debug log notes live in a dedicated folder so each device keeps its
+	// own. The leading underscore is on the folder, so users who want to share a
+	// specific day's log can simply move that file out of the folder.
+	if (normalized === LOG_NOTE_FOLDER.slice(0, -1) || normalized.startsWith(LOG_NOTE_FOLDER)) {
 		return false;
 	}
 

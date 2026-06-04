@@ -155,6 +155,34 @@ export class SyncEngine {
 			// 3. Plan operations
 			const operations = this.planOperations(localChanges, remoteChanges, isFirstSync);
 
+			// 3b. On first sync (or post-reset), the dirty-file queue is empty so
+			// the planner only sees files via the remote delta. Local files that
+			// don't exist remotely would silently be skipped. Walk the vault here
+			// and add UPLOAD ops for any syncable local-only files.
+			if (isFirstSync) {
+				const remoteCoveredPaths = new Set<string>(operations.map((op) => op.path));
+				// Any file whose state was stored during planOperations (same-size
+				// short-circuit) is also "covered" — local matches remote, no work.
+				for (const path of this.stateManager.getTrackedPaths()) {
+					remoteCoveredPaths.add(path);
+				}
+				let localOnlyCount = 0;
+				for (const file of this.app.vault.getFiles()) {
+					const path = file.path;
+					if (remoteCoveredPaths.has(path)) continue;
+					if (!this.shouldSyncPath(path)) continue;
+					if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
+					if (this.conflictQueue?.hasConflict(path)) continue;
+					operations.push({ path, direction: SyncDirection.UPLOAD });
+					localOnlyCount++;
+				}
+				if (localOnlyCount > 0) {
+					logger.info(
+						`First-sync local enumeration: queued ${localOnlyCount} local-only file uploads`
+					);
+				}
+			}
+
 			logger.info(`Sync plan: ${operations.length} operations`);
 			for (const op of operations) {
 				logger.info(`  Op: ${op.direction} ${op.path}`);

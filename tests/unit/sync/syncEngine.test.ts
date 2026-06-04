@@ -985,3 +985,114 @@ describe('SyncEngine large-delete circuit breaker', () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 });
+
+
+describe('SyncEngine first-sync local vault enumeration', () => {
+	let stateManager: SyncStateManager;
+	let conflictResolver: ConflictResolver;
+	let mockFileOps: any;
+	let mockClient: any;
+	let mockEventManager: any;
+
+	beforeEach(() => {
+		stateManager = new SyncStateManager();
+		conflictResolver = new ConflictResolver(ConflictResolutionStrategy.LAST_WRITE_WINS);
+		mockFileOps = {
+			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
+			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+		};
+		mockClient = {
+			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'first-delta' }),
+			isSharedDrive: vi.fn().mockReturnValue(false),
+		};
+		mockEventManager = {
+			getDirtyFiles: vi.fn().mockReturnValue([]),
+			clearDirtyFiles: vi.fn(),
+			addDirtyFile: vi.fn(),
+			removeDirtyPaths: vi.fn(),
+			markOwnWrites: vi.fn(),
+		};
+	});
+
+	function makeEngine() {
+		return new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'/remote/root'
+		);
+	}
+
+	it('uploads local-only files on first sync even when the dirty queue is empty', async () => {
+		// Phone has notes that OneDrive has never seen — empty remote delta.
+		const localFiles = [
+			makeTFile('notes/keep.md', 10, Date.now()),
+			makeTFile('Home/idea.md', 20, Date.now()),
+		];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+
+		await makeEngine().performSync();
+
+		const uploadedPaths = mockFileOps.uploadFile.mock.calls.map((c: any[]) => c[0]).sort();
+		expect(uploadedPaths).toEqual(['/remote/root/Home/idea.md', '/remote/root/notes/keep.md']);
+	});
+
+	it('does not duplicate uploads for files already matched by remote on first sync', async () => {
+		const localFiles = [
+			makeTFile('notes/keep.md', 100, Date.now()), // same size as remote — should size-match
+			makeTFile('notes/local-only.md', 50, Date.now()),
+		];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('notes/keep.md', { id: 'remote-keep', size: 100 })],
+			deltaLink: 'first-delta',
+		});
+
+		await makeEngine().performSync();
+
+		const uploadedPaths = mockFileOps.uploadFile.mock.calls.map((c: any[]) => c[0]);
+		expect(uploadedPaths).toEqual(['/remote/root/notes/local-only.md']);
+	});
+
+	it('skips local files that should not be synced (e.g. the log folder)', async () => {
+		const localFiles = [
+			makeTFile('notes/keep.md', 10, Date.now()),
+			makeTFile('_OneDriveSyncLogs/2026-06-04.md', 999, Date.now()),
+		];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+
+		await makeEngine().performSync();
+
+		const uploadedPaths = mockFileOps.uploadFile.mock.calls.map((c: any[]) => c[0]);
+		expect(uploadedPaths).toEqual(['/remote/root/notes/keep.md']);
+	});
+
+	it('does not enumerate local files on subsequent (non-first) syncs', async () => {
+		// Establish prior sync state so isFirstSync() is false.
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setDeltaLink('prev-delta');
+		const localFiles = [makeTFile('notes/local-only.md', 50, Date.now())];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+
+		await makeEngine().performSync();
+
+		// Without an event-driven dirty entry, a non-first sync should NOT upload.
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+	});
+});
