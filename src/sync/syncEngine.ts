@@ -158,6 +158,7 @@ export class SyncEngine {
 			// without this pass we have no way to know which descendants are
 			// gone. Tracked folder state lets us reverse-resolve the id.
 			const synthesizedDeletes: OneDriveItem[] = [];
+			const deletedFolderPaths: string[] = [];
 			const allDeltaItems = [
 				...deltaResponse.items,
 				...(obsidianDeltaResponse?.items || []),
@@ -179,6 +180,7 @@ export class SyncEngine {
 					logger.info(
 						`Folder delete: ${folderPath} (id=${item.id}) → expanding into ${descendants.length} file deletes`
 					);
+					deletedFolderPaths.push(folderPath);
 					for (const { path, state } of descendants) {
 						synthesizedDeletes.push({
 							id: state.oneDriveId || `synthesized:${path}`,
@@ -350,6 +352,12 @@ export class SyncEngine {
 			// Dismiss progress notice
 			progressNotice?.hide();
 			progress(undefined);
+
+			// Prune folders we just emptied via folder-delete expansion. Without
+			// this the per-file deletes leave empty husk folders on disk.
+			if (deletedFolderPaths.length > 0) {
+				await this.pruneEmptyFolders(deletedFolderPaths);
+			}
 
 			// Clear any dirty-file entries for paths we just downloaded,
 			// so they don't boomerang back as uploads on the next cycle
@@ -846,6 +854,47 @@ export class SyncEngine {
 			logger.debug(`Deleted local file ${filePath}`);
 		}
 		this.stateManager.removeFileState(filePath);
+	}
+
+	/**
+	 * Delete folders that became empty after their descendants were removed by
+	 * folder-delete expansion. Walks deepest-first and cascades up: when a
+	 * folder is removed, its parent is reconsidered (it too may now be empty).
+	 *
+	 * Only deletes folders that are actually empty — if the user has unrelated
+	 * files in there (e.g. local-only, never synced), the folder is left alone.
+	 */
+	private async pruneEmptyFolders(folderPaths: string[]): Promise<void> {
+		// Dedupe and sort deepest-first so children are pruned before parents.
+		const candidates = new Set<string>(folderPaths);
+		const sorted = Array.from(candidates).sort(
+			(a, b) => b.split('/').length - a.split('/').length
+		);
+
+		for (const path of sorted) {
+			await this.tryRemoveFolderAndAncestors(path);
+		}
+	}
+
+	private async tryRemoveFolderAndAncestors(folderPath: string): Promise<void> {
+		let current: string | null = folderPath;
+		while (current && current !== '' && current !== '/') {
+			const folder = this.app.vault.getAbstractFileByPath(current);
+			if (!folder) return;
+			// Only TFolder has `children`. Bail if this is a file or untyped.
+			const children = (folder as unknown as { children?: unknown[] }).children;
+			if (!Array.isArray(children)) return;
+			if (children.length > 0) return;
+			try {
+				await this.app.vault.delete(folder);
+				logger.debug(`Pruned empty folder ${current}`);
+			} catch (error) {
+				logger.warn(`Failed to prune empty folder ${current}:`, error);
+				return;
+			}
+			const slash = current.lastIndexOf('/');
+			current = slash > 0 ? current.slice(0, slash) : null;
+		}
 	}
 
 	/**
