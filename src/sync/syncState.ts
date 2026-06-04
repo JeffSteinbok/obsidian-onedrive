@@ -139,6 +139,21 @@ export class SyncStateManager {
 	}
 
 	/**
+	 * Reverse-resolve a OneDrive item id to the vault path it is currently
+	 * tracked under. Microsoft Graph delta returns deleted items with only
+	 * an id — no name, no parentReference — so the only way to know which
+	 * local file the deletion refers to is via the id we recorded when the
+	 * file was last uploaded or downloaded.
+	 */
+	getPathByOneDriveId(oneDriveId: string): string | undefined {
+		if (!oneDriveId) return undefined;
+		for (const [path, state] of this.state.fileStates) {
+			if (state.oneDriveId === oneDriveId) return path;
+		}
+		return undefined;
+	}
+
+	/**
 	 * Check if this is the first sync (no state yet)
 	 */
 	isFirstSync(): boolean {

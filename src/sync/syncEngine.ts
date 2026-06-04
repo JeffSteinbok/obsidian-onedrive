@@ -814,7 +814,16 @@ export class SyncEngine {
 		} else if (item.name) {
 			fullPath = item.name;
 		} else {
-			// Deleted or root items may lack name/path
+			// Microsoft Graph delta emits deleted items with only `id` set —
+			// no name, no parentReference. Reverse-resolve via tracked state
+			// so deletes from other devices actually land on this one. If the
+			// id isn't in state (e.g. file was never synced through this
+			// device), we have to give up: returning '' keeps existing
+			// callers safe.
+			if (item.id) {
+				const trackedPath = this.stateManager.getPathByOneDriveId(item.id);
+				if (trackedPath) return trackedPath;
+			}
 			return '';
 		}
 
