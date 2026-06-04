@@ -590,7 +590,7 @@ export class SyncEngine {
 			.split(/\r?\n/)
 			.map((line) => line.trim())
 			.filter((line) => line.length > 0 && !line.startsWith('#') && !line.startsWith('!'))
-			.map((line) => line.replace(/^\.\/+/, '').replace(/^\/+/, ''));
+			.map((line) => line.replace(/^\.\//, '').replace(/^\/+/, ''));
 	}
 
 	private patternToRegex(pattern: string): RegExp {
@@ -602,7 +602,7 @@ export class SyncEngine {
 		const wildcardToken = '__DOUBLE_STAR__';
 		const hasPathSeparator = normalizedPattern.includes('/');
 		let regexPattern = normalizedPattern.replace(/\*\*/g, wildcardToken);
-		regexPattern = regexPattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+		regexPattern = regexPattern.replace(/[.+^${}()|[\]\\/]/g, '\\$&');
 		regexPattern = regexPattern.replace(new RegExp(wildcardToken, 'g'), '.*');
 		regexPattern = regexPattern.replace(/\*/g, '[^/]*');
 

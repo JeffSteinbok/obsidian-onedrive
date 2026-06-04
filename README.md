@@ -57,6 +57,7 @@ Create a `.syncIgnore` file at your vault root to skip extra files/folders from 
 
 - One pattern per line
 - `#` starts a comment
+- `!` negation patterns are not supported
 - Folder pattern example: `private/`
 - Wildcard example: `*.tmp`
 
