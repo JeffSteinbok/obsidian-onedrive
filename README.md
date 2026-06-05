@@ -29,6 +29,11 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 2. Search for **"OneDrive Sync"**
 3. Click **Install**, then **Enable**
 
+> [!NOTE]
+> **Upgrading from 1.0.x?** Version 1.1.0 uses a new Azure app registration. After updating, you'll need to **disconnect and reconnect** to OneDrive in the plugin settings. Your files in OneDrive are not affected — the plugin will re-sync on first connection.
+>
+> To clean up the old app authorization, visit [account.live.com/consent/Manage](https://account.live.com/consent/Manage), find the old entry (it may appear as "Obsidian OneDrive Sync by Jeff Steinbok"), and click **Remove**. You can also delete the old `/Apps/Obsidian OneDrive Sync by Jeff Steinbok` folder from your OneDrive if present.
+
 ### Via BRAT (Beta Testing)
 
 1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) from Community Plugins
