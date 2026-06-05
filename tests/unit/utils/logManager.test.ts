@@ -69,7 +69,10 @@ line two
 			createdFile.path = SYNC_LOGS_NOTE_PATH;
 			const openFile = vi.fn().mockResolvedValue(undefined);
 			const vault = {
-				adapter: {} as any,
+				adapter: {
+					exists: vi.fn().mockResolvedValue(true),
+					mkdir: vi.fn().mockResolvedValue(undefined),
+				} as any,
 				getAbstractFileByPath: vi.fn().mockReturnValue(null),
 				modify: vi.fn(),
 				create: vi.fn().mockResolvedValue(createdFile),

@@ -181,7 +181,11 @@ import { DEFAULT_SETTINGS, OneDriveAccessMode } from '../../src/types';
 
 const createApp = () => ({
 	vault: {
-		adapter: { getBasePath: vi.fn().mockReturnValue('/mock/vault') },
+		adapter: {
+			getBasePath: vi.fn().mockReturnValue('/mock/vault'),
+			exists: vi.fn().mockResolvedValue(true),
+			mkdir: vi.fn().mockResolvedValue(undefined),
+		},
 		on: vi.fn().mockReturnValue({}),
 		offref: vi.fn(),
 		getAbstractFileByPath: vi.fn().mockReturnValue(null),
@@ -273,6 +277,8 @@ describe('OneDriveSyncPlugin', () => {
 	it('onPluginManifestSyncChanged saves the new setting without resetting sync state', async () => {
 		await plugin.onload();
 
+		// Default is now true, so toggle to false then back to true
+		await plugin.onPluginManifestSyncChanged(false);
 		await plugin.onPluginManifestSyncChanged(true);
 
 		expect(plugin.settings.syncPluginManifests).toBe(true);
