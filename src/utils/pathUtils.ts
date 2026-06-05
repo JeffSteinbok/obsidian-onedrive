@@ -159,7 +159,9 @@ function isInstalledPluginBinaryPath(path: string): boolean {
 }
 
 const LOG_NOTE_FOLDER = '_OneDriveSyncLogs/';
-const OWN_PLUGIN_FOLDER = '.obsidian/plugins/obsidian-onedrive/';
+const OWN_PLUGIN_FOLDER = '.obsidian/plugins/onedrive-sync/';
+// Exclude the old plugin folder too, so upgrades don't sync stale auth/state
+const OLD_PLUGIN_FOLDER = '.obsidian/plugins/obsidian-onedrive/';
 
 // `workspace.json` and its per-device variants (`workspace-<host>.json`,
 // `workspace-<host>-N.json`, plus the mobile/legacy `workspace-mobile.json`)
@@ -185,6 +187,11 @@ export function shouldSyncVaultPath(path: string, syncPluginManifests = false, s
 	// stay device-local, and syncing main.js across devices would let an older
 	// install on one device silently downgrade a newer install on another.
 	if (normalized === OWN_PLUGIN_FOLDER.slice(0, -1) || normalized.startsWith(OWN_PLUGIN_FOLDER)) {
+		return false;
+	}
+
+	// Also exclude the old plugin folder (pre-rename) so upgrades don't sync stale data
+	if (normalized === OLD_PLUGIN_FOLDER.slice(0, -1) || normalized.startsWith(OLD_PLUGIN_FOLDER)) {
 		return false;
 	}
 

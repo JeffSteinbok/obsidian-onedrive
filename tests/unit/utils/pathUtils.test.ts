@@ -323,11 +323,14 @@ describe('pathUtils', () => {
 		});
 
 		it('never syncs the OneDrive plugin\'s own folder, even with plugin sync enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/main.js', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/manifest.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/data.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/styles.css', true, true)).toBe(false);
+			// Old plugin folder should also be excluded (migration safety)
 			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive')).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/main.js', true, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/manifest.json', true, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/data.json', true, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/styles.css', true, true)).toBe(false);
 			// Other plugins are unaffected.
 			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true)).toBe(true);
 		});

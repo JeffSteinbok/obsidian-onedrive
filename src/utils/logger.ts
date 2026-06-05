@@ -39,11 +39,11 @@ class Logger {
 
 	/**
 	 * Enable file logging — call with the vault path to write logs to
-	 * <vault>/.obsidian/plugins/obsidian-onedrive/sync.log
+	 * <vault>/.obsidian/plugins/onedrive-sync/sync.log
 	 */
 	enableFileLogging(vaultPath: string): void {
 		try {
-			const logDir = path.join(vaultPath, '.obsidian', 'plugins', 'obsidian-onedrive');
+			const logDir = path.join(vaultPath, '.obsidian', 'plugins', 'onedrive-sync');
 			this.logFilePath = path.join(logDir, 'sync.log');
 			// Ensure directory exists
 			if (!fs.existsSync(logDir)) {

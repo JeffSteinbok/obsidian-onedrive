@@ -22,7 +22,7 @@ npx vitest run   # run all unit tests
 ## Deploy to Test Vault
 
 ```bash
-cp main.js ~/Documents/JeffBrain-Octo/JeffBrain-Octo/.obsidian/plugins/obsidian-onedrive/main.js
+cp main.js ~/Documents/JeffBrain-Octo/JeffBrain-Octo/.obsidian/plugins/onedrive-sync/main.js
 ```
 
 Then reload the plugin in Obsidian.

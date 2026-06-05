@@ -31,7 +31,7 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 ### Manual
 
 1. Download `main.js` and `manifest.json` from the [latest release](https://github.com/JeffSteinbok/obsidian-onedrive/releases)
-2. Place them in `.obsidian/plugins/obsidian-onedrive/`
+2. Place them in `.obsidian/plugins/onedrive-sync/`
 3. Enable the plugin in Settings → Community Plugins
 
 ## 🔧 Setup
@@ -82,7 +82,7 @@ Available via the command palette (`Ctrl/Cmd+P`):
 
 The plugin hardcodes these exclusions for safety:
 
-- `.obsidian/plugins/obsidian-onedrive/` — prevents auth token leakage and self-downgrade
+- `.obsidian/plugins/onedrive-sync/` — prevents auth token leakage and self-downgrade
 - `.obsidian/workspace*.json` — per-device UI state (Obsidian Sync excludes these too)
 - `_OneDriveSyncLogs/` — device-local debug logs
 

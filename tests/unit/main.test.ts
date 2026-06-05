@@ -224,7 +224,7 @@ describe('OneDriveSyncPlugin', () => {
 		plugin = new OneDriveSyncPlugin(
 			{} as any,
 			{
-				id: 'obsidian-onedrive',
+				id: 'onedrive-sync',
 				name: 'OneDrive Sync',
 				version: '0.1.0',
 			} as any
@@ -377,7 +377,7 @@ describe('OneDriveSyncPlugin', () => {
 
 	it('view-sync-logs command creates and opens a log note', async () => {
 		mocks.logger.getRecentLogs.mockReturnValue(['[2026-01-01T00:00:00.000Z] [OneDrive Sync] [INFO] Test log']);
-		const createdFile = { path: '.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md' } as any;
+		const createdFile = { path: '.obsidian/plugins/onedrive-sync/OneDrive Sync Logs.md' } as any;
 		(plugin as any).app.vault.create = vi.fn().mockResolvedValue(createdFile);
 		const openFile = vi.fn().mockResolvedValue(undefined);
 		(plugin as any).app.workspace.getLeaf = vi.fn().mockReturnValue({ openFile });
@@ -390,7 +390,7 @@ describe('OneDriveSyncPlugin', () => {
 		await viewLogsCommand.callback();
 
 		expect((plugin as any).app.vault.create).toHaveBeenCalledWith(
-			'.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md',
+			'.obsidian/plugins/onedrive-sync/OneDrive Sync Logs.md',
 			expect.stringContaining('[OneDrive Sync] [INFO] Test log')
 		);
 		expect(openFile).toHaveBeenCalledWith(createdFile);

@@ -67,11 +67,7 @@ export class DeviceCodeFlowClient {
 
 			const data: DeviceCodeResponse = response.json;
 
-			logger.debug('Device code received', {
-				user_code: data.user_code,
-				verification_uri: data.verification_uri,
-				expires_in: data.expires_in,
-			});
+			logger.debug(`Device code received (expires_in=${data.expires_in}, uri=${data.verification_uri})`);
 
 			return data;
 		} catch (error) {

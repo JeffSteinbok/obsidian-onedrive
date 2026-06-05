@@ -11,7 +11,7 @@ import { createConflictFileName, isTextExtension } from '../utils/pathUtils';
 import { EventManager } from './eventManager';
 import { SyncStateManager } from './syncState';
 
-const CONFLICTS_DIR = '.obsidian/plugins/obsidian-onedrive/conflicts';
+const CONFLICTS_DIR = '.obsidian/plugins/onedrive-sync/conflicts';
 
 export class ConflictQueue {
 	private entries: Map<string, ConflictEntry> = new Map();

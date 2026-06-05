@@ -8,6 +8,11 @@ import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } fr
 import { DEFAULT_ONEDRIVE_CLIENT_ID, ONEDRIVE_PATHS } from './constants';
 import { logger } from './utils/logger';
 import { shouldSyncVaultPath } from './utils/pathUtils';
+import {
+	applyVaultLogHook as applyPluginVaultLogHook,
+	openLogsNote as openPluginLogsNote,
+} from './utils/logManager';
+import { ensureSelfInCommunityPluginsList as guardCommunityPluginsList } from './utils/pluginListGuard';
 
 // Auth
 import { TokenStorage } from './auth/tokenStorage';
@@ -34,20 +39,6 @@ import { ConflictView, CONFLICT_VIEW_TYPE } from './ui/conflictView';
 import { LargeDeleteWarningModal } from './ui/modals';
 
 import { LargeDeleteWarningInfo, LargeDeleteDecision } from './types';
-
-const SYNC_LOGS_NOTE_PATH = '.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md';
-const LIVE_LOG_FOLDER = '_OneDriveSyncLogs';
-const LIVE_LOG_HEADER = `> [!warning] OneDrive sync debug log
-> This folder is **excluded from sync** — each device keeps its own. To share a specific day's log, move that file out of this folder.
-
-`;
-
-function liveLogNotePath(date: Date = new Date()): string {
-	const yyyy = date.getFullYear();
-	const mm = String(date.getMonth() + 1).padStart(2, '0');
-	const dd = String(date.getDate()).padStart(2, '0');
-	return `${LIVE_LOG_FOLDER}/${yyyy}-${mm}-${dd}.md`;
-}
 
 /**
  * Main plugin class
@@ -663,35 +654,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 * Create/update a readable vault note with recent plugin logs and open it.
 	 */
 	private async openLogsNote(): Promise<void> {
-		const lines = logger.getRecentLogs();
-		if (lines.length === 0) {
-			new Notice('No sync logs available yet.');
-			return;
-		}
-
-		const notePath = SYNC_LOGS_NOTE_PATH;
-		const content = `# OneDrive Sync Logs
-
-Last updated: ${new Date().toISOString()}
-
-\`\`\`
-${lines.join('\n')}
-\`\`\`
-`;
-
-		let logFile: TFile;
-		const existing = this.app.vault.getAbstractFileByPath(notePath);
-		if (existing instanceof TFile) {
-			await this.app.vault.modify(existing, content);
-			logFile = existing;
-		} else if (!existing) {
-			logFile = await this.app.vault.create(notePath, content);
-		} else {
-			new Notice(`Cannot write logs to ${notePath} because that path is a folder.`);
-			return;
-		}
-
-		await this.app.workspace.getLeaf(false).openFile(logFile);
+		await openPluginLogsNote({
+			vault: this.app.vault as Parameters<typeof openPluginLogsNote>[0]['vault'],
+			workspace: this.app.workspace as Parameters<typeof openPluginLogsNote>[0]['workspace'],
+			getRecentLogs: () => logger.getRecentLogs(),
+			notify: (message) => {
+				new Notice(message);
+			},
+		});
 	}
 
 	/**
@@ -767,28 +737,15 @@ ${lines.join('\n')}
 	 * re-add ourselves if missing.
 	 */
 	private async ensureSelfInCommunityPluginsList(): Promise<void> {
-		const path = '.obsidian/community-plugins.json';
-		const adapter = this.app.vault.adapter;
 		const id = this.manifest?.id;
-		if (!id) return;
-		try {
-			let list: string[] = [];
-			if (await adapter.exists(path)) {
-				const raw = await adapter.read(path);
-				try {
-					const parsed = JSON.parse(raw);
-					if (Array.isArray(parsed)) list = parsed.filter((x) => typeof x === 'string');
-				} catch {
-					logger.warn(`community-plugins.json is malformed; rewriting with just ${id}`);
-				}
-			}
-			if (list.includes(id)) return;
-			list.push(id);
-			await adapter.write(path, JSON.stringify(list, null, 2));
-			logger.info(`Self-healed: added ${id} back to community-plugins.json`);
-		} catch (error) {
-			logger.warn('Failed to self-heal community-plugins.json:', error);
+		if (!id) {
+			return;
 		}
+
+		await guardCommunityPluginsList(
+			this.app.vault.adapter as Parameters<typeof guardCommunityPluginsList>[0],
+			id
+		);
 	}
 
 	async onPluginManifestSyncChanged(enabled: boolean): Promise<void> {
@@ -897,32 +854,12 @@ ${lines.join('\n')}
 	 * device keeps its own.
 	 */
 	private applyVaultLogHook(): void {
-		if (!this.settings.enableDebugLogging) {
-			logger.setVaultLogHook(null);
-			return;
-		}
-		const adapter = this.app.vault.adapter;
-		// Serialize writes so concurrent log calls don't interleave or race
-		// on file existence checks.
-		let inFlight: Promise<void> = Promise.resolve();
-		logger.setVaultLogHook((line) => {
-			inFlight = inFlight.then(async () => {
-				try {
-					const path = liveLogNotePath();
-					const exists = await adapter.exists(path);
-					if (!exists) {
-						const folderExists = await adapter.exists(LIVE_LOG_FOLDER);
-						if (!folderExists) {
-							await adapter.mkdir(LIVE_LOG_FOLDER);
-						}
-						await adapter.write(path, LIVE_LOG_HEADER + line + '\n');
-					} else {
-						await adapter.append(path, line + '\n');
-					}
-				} catch {
-					// Swallow — never let log mirroring break the plugin.
-				}
-			});
+		applyPluginVaultLogHook({
+			enabled: this.settings.enableDebugLogging,
+			adapter: this.app.vault.adapter as Parameters<typeof applyPluginVaultLogHook>[0]['adapter'],
+			setVaultLogHook: (hook) => {
+				logger.setVaultLogHook(hook);
+			},
 		});
 	}
 

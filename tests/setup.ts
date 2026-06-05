@@ -39,7 +39,7 @@ export const mockApp = {
 export const mockPlugin = {
 	app: mockApp,
 	manifest: {
-		id: 'obsidian-onedrive',
+		id: 'onedrive-sync',
 		name: 'OneDrive Sync',
 		version: '0.1.0',
 	},

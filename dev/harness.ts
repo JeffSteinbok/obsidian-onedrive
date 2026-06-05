@@ -18,7 +18,7 @@ const mockPlugin = {
 		syncAppSettings: false,
 		syncPluginManifests: false,
 	},
-	async saveSettings() { console.log('Settings saved:', JSON.stringify(this.settings, null, 2)); },
+	async saveSettings() { console.log('Settings saved (keys:', Object.keys(this.settings).join(', '), ')'); },
 	async authenticate() { console.log('Authenticate called'); },
 	disconnect() {
 		this.settings.connectedUser = null;

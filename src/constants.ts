@@ -58,6 +58,6 @@ export const ONEDRIVE_PATHS = {
 // Plugin metadata
 export const PLUGIN_INFO = {
 	NAME: 'OneDrive Sync',
-	ID: 'obsidian-onedrive',
+	ID: 'onedrive-sync',
 	VERSION: '0.1.0',
 };
