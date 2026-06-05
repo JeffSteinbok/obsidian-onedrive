@@ -252,8 +252,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	syncInterval: 5, // Poll every 5 minutes
 	conflictResolution: ConflictResolutionStrategy.LAST_WRITE_WINS,
 	startupSyncDelay: 10, // 10 seconds default
-	syncAppSettings: false,
-	syncPluginManifests: false,
+	syncAppSettings: true,
+	syncPluginManifests: true,
 	syncState: undefined,
 	conflictQueue: undefined,
 

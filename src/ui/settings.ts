@@ -59,16 +59,10 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		const versionStr = version ? ` — v${version}` : '';
 		authorEl.innerHTML = `by <strong>Jeff Steinbok</strong>${versionStr} — <a href="https://github.com/jeffsteinbok/obsidian-onedrive" target="_blank">GitHub</a>`;
 
-		// Authentication section
+		// Sections in logical order
 		this.displayAuthSection(containerEl);
-
-		// Access mode section
-		this.displayAccessModeSection(containerEl);
-
-		// Sync configuration section
+		this.displaySyncFolderSection(containerEl);
 		this.displaySyncSection(containerEl);
-
-		// Advanced section
 		this.displayAdvancedSection(containerEl);
 	}
 
@@ -77,6 +71,30 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 */
 	private displayAuthSection(containerEl: HTMLElement): void {
 		containerEl.createEl('h3', { text: 'Authentication' });
+
+		// Access mode — first setting in this section
+		const isConnected = !!this.plugin.settings.connectedUser;
+		const modeDesc = this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS
+			? 'Sync to any folder, share with others. Requires more permissions.'
+			: 'Secure isolated folder at /Apps/ObsidianOneDrive/. No configuration needed.';
+		const descWithWarning = isConnected
+			? modeDesc + ' Changing access mode requires disconnecting and reconnecting.'
+			: modeDesc;
+
+		new Setting(containerEl)
+			.setName('OneDrive access mode')
+			.setDesc(descWithWarning)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption(OneDriveAccessMode.APP_FOLDER, 'App Folder (Recommended)')
+					.addOption(OneDriveAccessMode.FULL_ACCESS, 'Full Access (Advanced)')
+					.setValue(this.plugin.settings.accessMode)
+					.onChange(async (value) => {
+						this.plugin.settings.accessMode = value as OneDriveAccessMode;
+						await this.plugin.saveSettings();
+						this.display();
+					})
+			);
 
 		// Connection status
 		const statusSetting = new Setting(containerEl).setName('Connection status');
@@ -121,56 +139,21 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Display access mode section
+	 * Display sync folder section (only for full access mode)
 	 */
-	private displayAccessModeSection(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: 'Access Mode' });
-
+	private displaySyncFolderSection(containerEl: HTMLElement): void {
 		const isConnected = !!this.plugin.settings.connectedUser;
 
-		// Warning text right below heading
-		if (isConnected) {
-			const warningEl = containerEl.createEl('p');
-			warningEl.style.color = 'var(--text-error)';
-			warningEl.style.fontSize = '12px';
-			warningEl.style.fontStyle = 'italic';
-			warningEl.style.margin = '0 0 8px 0';
-			warningEl.textContent = 'Changing access mode requires disconnecting and reconnecting.';
-		}
-
-		// Access mode selector
-		const accessGroup = containerEl.createDiv();
-
-		new Setting(accessGroup)
-			.setName('OneDrive access mode')
-			.setDesc('Choose between secure app folder or full OneDrive access')
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption(OneDriveAccessMode.APP_FOLDER, 'App Folder (Recommended)')
-					.addOption(OneDriveAccessMode.FULL_ACCESS, 'Full Access (Advanced)')
-					.setValue(this.plugin.settings.accessMode)
-					.onChange(async (value) => {
-						this.plugin.settings.accessMode = value as OneDriveAccessMode;
-						await this.plugin.saveSettings();
-						this.display(); // Refresh to show/hide options
-					})
-			);
-
-		// Determine if sync is ready (folder selected or app-folder mode)
-		const isSyncReady =
-			isConnected &&
-			(this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER ||
-				!!this.plugin.settings.remotePath);
-
 		if (this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS) {
+			containerEl.createEl('h3', { text: 'Sync Folder' });
+
 			if (isConnected) {
-				// Show folder picker (browse button + current selection)
 				const currentPath = this.plugin.settings.remotePath || '(not selected)';
 				const isShared = !!this.plugin.settings.remoteDriveId;
 				const desc = isShared ? `${currentPath} (shared folder)` : currentPath;
 
-				const folderSetting = new Setting(accessGroup)
-					.setName('Sync folder')
+				new Setting(containerEl)
+					.setName('Remote folder')
 					.setDesc(desc)
 					.addButton((btn) =>
 						btn.setButtonText('Browse...').onClick(() => {
@@ -180,50 +163,37 @@ export class OneDriveSettingTab extends PluginSettingTab {
 									this.plugin.listFoldersForPicker(path, sharedDriveId, sharedItemId, relPath),
 								async (selection: FolderSelection) => {
 									await this.plugin.onRemoteFolderChanged(selection);
-									this.display(); // Refresh to show new selection
+									this.display();
 								}
 							);
 							modal.open();
 						})
 					);
-
-				// Sync Now button — only when a folder is selected
-				if (this.plugin.settings.remotePath) {
-					folderSetting.addButton((btn) =>
-						btn
-							.setButtonText('Sync Now')
-							.setCta()
-							.onClick(async () => {
-								await this.plugin.triggerManualSync();
-							})
-					);
-				}
 			} else {
-				// Not connected — just show a note
-				const noteEl = accessGroup.createEl('p', { cls: 'setting-item-description' });
-				noteEl.style.margin = '0 0 12px 0';
-				noteEl.textContent = 'Connect to OneDrive first, then select a sync folder.';
+				new Setting(containerEl)
+					.setName('Remote folder')
+					.setDesc('Connect to OneDrive first, then select a sync folder.');
 			}
+		}
 
-			const descEl = containerEl.createEl('p', { cls: 'setting-item-description' });
-			descEl.style.margin = '0 0 12px 0';
-			descEl.innerHTML = `Sync to any folder, share with others. Requires more permissions.`;
-		} else {
-			const descEl = containerEl.createEl('p', { cls: 'setting-item-description' });
-			descEl.style.margin = '0 0 12px 0';
-			descEl.innerHTML = `Secure isolated folder at <code>/Apps/ObsidianOneDrive/</code>. No configuration needed, but can't sync to existing folders.`;
+		// Sync Now button
+		if (isConnected) {
+			const isSyncReady =
+				this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER ||
+				!!this.plugin.settings.remotePath;
 
-			// Sync Now for app-folder mode
-			if (isConnected) {
-				new Setting(accessGroup).addButton((btn) =>
-					btn
-						.setButtonText('Sync Now')
-						.setCta()
-						.onClick(async () => {
-							await this.plugin.triggerManualSync();
-						})
-				);
-			}
+			new Setting(containerEl).addButton((btn) => {
+				btn
+					.setButtonText('Sync Now')
+					.setCta()
+					.onClick(async () => {
+						await this.plugin.triggerManualSync();
+					});
+				if (!isSyncReady) {
+					btn.setDisabled(true);
+					btn.setTooltip('Select a sync folder first');
+				}
+			});
 		}
 	}
 

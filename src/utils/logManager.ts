@@ -85,6 +85,11 @@ export async function openLogsNote({
 		await vault.modify(existing, content);
 		logFile = existing;
 	} else if (!existing) {
+		// Ensure the parent directory exists (may not after a plugin ID rename)
+		const parentDir = SYNC_LOGS_NOTE_PATH.substring(0, SYNC_LOGS_NOTE_PATH.lastIndexOf('/'));
+		if (!(await vault.adapter.exists(parentDir))) {
+			await vault.adapter.mkdir(parentDir);
+		}
 		logFile = await vault.create(SYNC_LOGS_NOTE_PATH, content);
 	} else {
 		notify(`Cannot write logs to ${SYNC_LOGS_NOTE_PATH} because that path is a folder.`);
