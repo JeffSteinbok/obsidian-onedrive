@@ -61,9 +61,9 @@ jobs:
 
       - name: Commit and tag
         run: |
-          git add package.json manifest.json versions.json
-          git commit -m "Bump version to v${{ steps.bump.outputs.version }}"
-          git tag "v${{ steps.bump.outputs.version }}"
+          git add package.json package-lock.json manifest.json versions.json
+          git commit -m "Bump version to ${{ steps.bump.outputs.version }}"
+          git tag "${{ steps.bump.outputs.version }}"
           git push origin HEAD:${{ github.ref_name }}
           git push origin --tags
 
@@ -73,8 +73,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.bump.outputs.version }}
-          name: v${{ steps.bump.outputs.version }}
+          tag_name: ${{ steps.bump.outputs.version }}
+          name: ${{ steps.bump.outputs.version }}
           draft: true
           generate_release_notes: true
           files: |
