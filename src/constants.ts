@@ -27,7 +27,7 @@ export const OAUTH_SCOPES_FULL_ACCESS = [
 ];
 
 // Default OneDrive client ID (registered Azure AD app)
-export const DEFAULT_ONEDRIVE_CLIENT_ID = 'e1fd7a20-7fae-4b7d-a807-ad73f18135f0';
+export const DEFAULT_ONEDRIVE_CLIENT_ID = '49ec1ec3-7237-4b7b-89e0-aeb6565fc70b';
 
 // Sync configuration
 export const SYNC_CONFIG = {

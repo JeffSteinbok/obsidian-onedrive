@@ -316,15 +316,21 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 			// Initialize sync engine
 			const isShared = this.oneDriveClient.isSharedDrive();
-			// For shared drives, upload paths are relative to the shared folder (no prefix needed).
-			// For non-shared, prepend the remote path.
-			const remoteRoot = isShared ? '' : this.settings.remotePath || ONEDRIVE_PATHS.APP_FOLDER;
+			const isAppFolder = this.settings.accessMode === OneDriveAccessMode.APP_FOLDER;
+			// For shared drives and app folder mode, upload paths are relative to the
+			// root (buildEndpoint handles the base). For full access, prepend remotePath.
+			const remoteRoot = (isShared || isAppFolder) ? '' : this.settings.remotePath || '';
 			// For path stripping of delta responses, use the FULL path on the
 			// remote drive down to the vault folder — not just the shared root.
 			// e.g. "/Documents/ObsidianVaults/JeffBrain" not just "/Documents"
-			const remoteRootOnDrive = isShared
-				? this.getFullRemoteDrivePath()
-				: undefined;
+			let remoteRootOnDrive: string | undefined;
+			if (isShared) {
+				remoteRootOnDrive = this.getFullRemoteDrivePath();
+			} else if (isAppFolder) {
+				// Discover the actual app folder path — the name is set by Azure app
+				// registration and may differ from the hardcoded constant.
+				remoteRootOnDrive = await this.oneDriveClient.resolveAppFolderPath();
+			}
 
 			this.syncEngine = new SyncEngine(
 				this.app,

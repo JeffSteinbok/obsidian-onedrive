@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => {
 			userPrincipalName: 'test@test.com',
 		}),
 		resolveSharedFolderPath: vi.fn(),
+		resolveAppFolderPath: vi.fn().mockResolvedValue('/Apps/ObsidianOneDrive'),
 		listFoldersForPicker: vi.fn(),
 	};
 

@@ -69,7 +69,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		const isConnected = !!this.plugin.settings.connectedUser;
 		const modeDesc = this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS
 			? 'Sync to any folder, share with others. Requires more permissions.'
-			: 'Secure isolated folder at /Apps/ObsidianOneDrive/. No configuration needed.';
+			: 'Secure isolated app folder in OneDrive. No configuration needed.';
 		const descWithWarning = isConnected
 			? modeDesc + ' Changing access mode requires disconnecting and reconnecting.'
 			: modeDesc;
@@ -320,7 +320,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
 			new Setting(containerEl)
 				.setName('Remote path')
-				.setDesc(`Files sync to: /Apps/ObsidianOneDrive`);
+				.setDesc('Files sync to a dedicated app folder in OneDrive/Apps/');
 		}
 
 		// Reset sync token

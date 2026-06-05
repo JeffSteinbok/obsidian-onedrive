@@ -8,7 +8,8 @@ import { OneDriveAuthProvider } from '../auth/authProvider';
 import { OneDriveItem, OneDriveUser, OneDriveError, OneDriveAccessMode, DeltaResponse } from '../types';
 import { logger } from '../utils/logger';
 import { retryWithBackoff } from '../utils/retry';
-import { encodePathForGraph } from '../utils/pathUtils';
+import { encodePathForGraph, stripGraphPrefix } from '../utils/pathUtils';
+import { ONEDRIVE_PATHS } from '../constants';
 
 interface GraphCollectionResponse<T> {
 	value: T[];
@@ -202,6 +203,24 @@ export class OneDriveClient {
 			throw new OneDriveError(
 				`Failed to get user info: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
+		}
+	}
+
+	/**
+	 * Resolve the actual on-disk path of the app folder (e.g. "/Apps/ObsidianOneDrive").
+	 * The folder name is determined by the Azure app registration display name and may
+	 * differ from the hardcoded constant — call this at init time to discover the real path.
+	 */
+	async resolveAppFolderPath(): Promise<string> {
+		try {
+			const item = await this.getGraph<OneDriveItem>('/me/drive/special/approot');
+			const parentPath = item.parentReference?.path
+				? stripGraphPrefix(item.parentReference.path)
+				: '/Apps';
+			return `${parentPath}/${item.name}`;
+		} catch (error) {
+			logger.warn('Could not resolve app folder path, using default', error);
+			return ONEDRIVE_PATHS.APP_FOLDER;
 		}
 	}
 
@@ -508,7 +527,13 @@ export class OneDriveClient {
 			if (error.statusCode === 404) return true;
 			if (error.code === 'itemNotFound') return true;
 		}
-		if (error instanceof Error && /itemNotFound|404/i.test(error.message)) {
+		// Graph SDK throws GraphError with statusCode/code properties but not as OneDriveError
+		if (error && typeof error === 'object') {
+			const err = error as Record<string, unknown>;
+			if (err.statusCode === 404) return true;
+			if (err.code === 'itemNotFound') return true;
+		}
+		if (error instanceof Error && /itemNotFound|404|resource could not be found/i.test(error.message)) {
 			return true;
 		}
 		return false;

@@ -451,6 +451,17 @@ describe('OneDriveClient', () => {
 			expect(mockClient.api).toHaveBeenCalledWith(`/drives/drive-123/items/item-456:/${encoded}:/delta`);
 		});
 
+		it('treats GraphError 404 on subPath as empty when no deltaLink (first sync)', async () => {
+			// Graph SDK throws GraphError with statusCode/code properties, not OneDriveError
+			const graphError = new Error('The resource could not be found.') as unknown as Record<string, unknown>;
+			graphError.statusCode = 404;
+			graphError.code = 'itemNotFound';
+			mockApiGet.mockRejectedValueOnce(graphError);
+
+			const result = await client.getDelta(undefined, '', '.obsidian');
+			expect(result).toEqual({ items: [], deltaLink: '' });
+		});
+
 		it('uses root delta for shared-drive when both relativePath and subPath are empty', async () => {
 			client.setRemoteDrive('drive-123', 'item-456', 'Shared', '');
 			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });
