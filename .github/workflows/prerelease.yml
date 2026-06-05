@@ -1,0 +1,124 @@
+name: Beta Pre-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Beta version bump type'
+        required: true
+        type: choice
+        options:
+          - beta
+          - minor-beta
+          - major-beta
+        default: beta
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npx vitest run
+
+  prerelease:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+      - name: Bump beta version
+        id: bump
+        run: |
+          BUMP_TYPE="${{ github.event.inputs.bump_type }}"
+
+          # Read current beta version from manifest-beta.json
+          CURRENT=$(node -p "require('./manifest-beta.json').version")
+          echo "Current beta version: $CURRENT"
+
+          # Parse the current version components
+          # Expected format: X.Y.Z-beta.N or X.Y.Z (if first beta)
+          STABLE_VERSION=$(node -p "require('./manifest.json').version")
+
+          if [[ "$BUMP_TYPE" == "minor-beta" ]]; then
+            # Bump minor from stable, start beta.0
+            NEW_VERSION=$(node -p "
+              const [major, minor] = '$STABLE_VERSION'.split('.');
+              major + '.' + (parseInt(minor)+1) + '.0-beta.0'
+            ")
+          elif [[ "$BUMP_TYPE" == "major-beta" ]]; then
+            # Bump major from stable, start beta.0
+            NEW_VERSION=$(node -p "
+              const [major] = '$STABLE_VERSION'.split('.');
+              (parseInt(major)+1) + '.0.0-beta.0'
+            ")
+          else
+            # Increment beta number, or start beta.0 from next patch
+            NEW_VERSION=$(node -p "
+              const v = '$CURRENT';
+              const betaMatch = v.match(/^(.+)-beta\.(\d+)$/);
+              if (betaMatch) {
+                betaMatch[1] + '-beta.' + (parseInt(betaMatch[2])+1);
+              } else {
+                const [major, minor, patch] = v.split('.');
+                major + '.' + minor + '.' + (parseInt(patch)+1) + '-beta.0';
+              }
+            ")
+          fi
+
+          echo "New beta version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # Update manifest-beta.json only
+          node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('manifest-beta.json', 'utf8'));
+            m.version = '$NEW_VERSION';
+            fs.writeFileSync('manifest-beta.json', JSON.stringify(m, null, '\t') + '\n');
+          "
+
+      - name: Commit and tag
+        run: |
+          git add manifest-beta.json
+          git commit -m "Beta pre-release ${{ steps.bump.outputs.version }}"
+          git tag "${{ steps.bump.outputs.version }}"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin --tags
+
+      - name: Build
+        run: npm run build
+
+      - name: Create GitHub Pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.version }}
+          name: "Beta ${{ steps.bump.outputs.version }}"
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            main.js
+            manifest-beta.json
+            styles.css
