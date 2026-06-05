@@ -3,8 +3,7 @@
  * Respects debug mode settings and provides consistent log formatting
  *
  * This file is the console abstraction layer — all other code must use
- * logger.* instead of console.* directly. Console calls here are
- * intentional and annotated with per-line eslint-disable comments.
+ * logger.* instead of console.* directly.
  */
 
 import { PLUGIN_INFO } from '../constants';
@@ -79,7 +78,7 @@ class Logger {
 		if (this.shouldLog(LogLevel.DEBUG)) {
 			const formatted = this.formatMessage('DEBUG', message);
 			const line = formatted + this.formatExtraArgs(args);
-			console.debug(formatted, ...args); // eslint-disable-line no-console
+			console.debug(formatted, ...args);
 			this.addToBuffer(line);
 		}
 	}
@@ -88,7 +87,7 @@ class Logger {
 		if (this.shouldLog(LogLevel.INFO)) {
 			const formatted = this.formatMessage('INFO', message);
 			const line = formatted + this.formatExtraArgs(args);
-			console.info(formatted, ...args); // eslint-disable-line no-console
+			console.info(formatted, ...args);
 			this.addToBuffer(line);
 		}
 	}
@@ -97,7 +96,7 @@ class Logger {
 		if (this.shouldLog(LogLevel.WARN)) {
 			const formatted = this.formatMessage('WARN', message);
 			const line = formatted + this.formatExtraArgs(args);
-			console.warn(formatted, ...args); // eslint-disable-line no-console
+			console.warn(formatted, ...args);
 			this.addToBuffer(line);
 		}
 	}
@@ -106,7 +105,7 @@ class Logger {
 		if (this.shouldLog(LogLevel.ERROR)) {
 			const formatted = this.formatMessage('ERROR', message);
 			const line = formatted + this.formatExtraArgs(args);
-			console.error(formatted, ...args); // eslint-disable-line no-console
+			console.error(formatted, ...args);
 			this.addToBuffer(line);
 		}
 	}
@@ -118,14 +117,14 @@ class Logger {
 		if (!this.shouldLog(level)) return;
 
 		const sanitized = data ? this.sanitizeData(data) : undefined;
-		const logMethod = // eslint-disable-line no-console
+		const logMethod =
 			level === LogLevel.DEBUG
-				? console.debug // eslint-disable-line no-console
+				? console.debug
 				: level === LogLevel.INFO
-					? console.info // eslint-disable-line no-console
+					? console.info
 					: level === LogLevel.WARN
-						? console.warn // eslint-disable-line no-console
-						: console.error; // eslint-disable-line no-console
+						? console.warn
+						: console.error;
 
 		const formatted = this.formatMessage(LogLevel[level], message);
 		logMethod(formatted, sanitized);
