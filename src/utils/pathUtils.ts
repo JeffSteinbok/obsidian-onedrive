@@ -139,42 +139,68 @@ export function stripGraphPrefix(path: string): string {
 	return result;
 }
 
-const SYNCABLE_OBSIDIAN_APP_SETTINGS = new Set([
-	'.obsidian/app.json',
-	'.obsidian/appearance.json',
-	'.obsidian/hotkeys.json',
-]);
-
-const SYNCABLE_OBSIDIAN_PLUGIN_MANIFESTS = new Set([
-	'.obsidian/community-plugins.json',
-	'.obsidian/core-plugins.json',
-]);
-
-function isInstalledPluginManifestPath(path: string): boolean {
-	return /^\.obsidian\/plugins\/[^/]+\/manifest\.json$/.test(path);
-}
-
-function isInstalledPluginBinaryPath(path: string): boolean {
-	return /^\.obsidian\/plugins\/[^/]+\/(main\.js|styles\.css)$/.test(path);
-}
-
 const LOG_NOTE_FOLDER = '_OneDriveSyncLogs/';
-const OWN_PLUGIN_FOLDER = '.obsidian/plugins/onedrive-sync/';
-// Exclude the old plugin folder too, so upgrades don't sync stale auth/state
-const OLD_PLUGIN_FOLDER = '.obsidian/plugins/obsidian-onedrive/';
 
-// `workspace.json` and its per-device variants (`workspace-<host>.json`,
-// `workspace-<host>-N.json`, plus the mobile/legacy `workspace-mobile.json`)
-// hold local UI state — open tabs, pane layout, cursor positions. They change
-// constantly on every device and produce nothing but conflict noise when
-// synced. Obsidian Sync excludes them by default; we do the same.
-const WORKSPACE_STATE_PATTERN = /^\.obsidian\/workspace(-[^/]+)?\.json$/;
+function normalizeConfigDir(configDir: string): string {
+	const normalized = normalizePath(configDir).replace(/\/+$/g, '');
+	return normalized || '.obsidian';
+}
+
+function buildConfigPath(configDir: string, ...segments: string[]): string {
+	return joinPath(normalizeConfigDir(configDir), ...segments);
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getSyncableObsidianAppSettings(configDir: string): Set<string> {
+	return new Set([
+		buildConfigPath(configDir, 'app.json'),
+		buildConfigPath(configDir, 'appearance.json'),
+		buildConfigPath(configDir, 'hotkeys.json'),
+	]);
+}
+
+function getSyncableObsidianPluginManifests(configDir: string): Set<string> {
+	return new Set([
+		buildConfigPath(configDir, 'community-plugins.json'),
+		buildConfigPath(configDir, 'core-plugins.json'),
+	]);
+}
+
+function isInstalledPluginManifestPath(path: string, configDir: string): boolean {
+	const normalizedConfigDir = escapeRegExp(normalizeConfigDir(configDir));
+	return new RegExp(`^${normalizedConfigDir}/plugins/[^/]+/manifest\\.json$`).test(path);
+}
+
+function isInstalledPluginBinaryPath(path: string, configDir: string): boolean {
+	const normalizedConfigDir = escapeRegExp(normalizeConfigDir(configDir));
+	return new RegExp(`^${normalizedConfigDir}/plugins/[^/]+/(main\\.js|styles\\.css)$`).test(path);
+}
+
+function getWorkspaceStatePattern(configDir: string): RegExp {
+	const normalizedConfigDir = escapeRegExp(normalizeConfigDir(configDir));
+	return new RegExp(`^${normalizedConfigDir}/workspace(-[^/]+)?\\.json$`);
+}
 
 /**
  * Check whether a vault path should be synced.
  */
-export function shouldSyncVaultPath(path: string, syncPluginManifests = false, syncAppSettings = false): boolean {
+export function shouldSyncVaultPath(
+	path: string,
+	syncPluginManifests = false,
+	syncAppSettings = false,
+	configDir = '.obsidian'
+): boolean {
 	const normalized = normalizePath(path);
+	const normalizedConfigDir = normalizeConfigDir(configDir);
+	const configDirPrefix = `${normalizedConfigDir}/`;
+	const syncableObsidianAppSettings = getSyncableObsidianAppSettings(normalizedConfigDir);
+	const syncableObsidianPluginManifests = getSyncableObsidianPluginManifests(normalizedConfigDir);
+	const ownPluginFolder = buildConfigPath(normalizedConfigDir, 'plugins', 'onedrive-sync');
+	// Exclude the old plugin folder too, so upgrades don't sync stale auth/state
+	const oldPluginFolder = buildConfigPath(normalizedConfigDir, 'plugins', 'obsidian-onedrive');
 
 	// Plugin debug log notes live in a dedicated folder so each device keeps its
 	// own. The leading underscore is on the folder, so users who want to share a
@@ -186,25 +212,25 @@ export function shouldSyncVaultPath(path: string, syncPluginManifests = false, s
 	// Never sync the OneDrive plugin's own folder. Auth state in data.json must
 	// stay device-local, and syncing main.js across devices would let an older
 	// install on one device silently downgrade a newer install on another.
-	if (normalized === OWN_PLUGIN_FOLDER.slice(0, -1) || normalized.startsWith(OWN_PLUGIN_FOLDER)) {
+	if (normalized === ownPluginFolder || normalized.startsWith(`${ownPluginFolder}/`)) {
 		return false;
 	}
 
 	// Also exclude the old plugin folder (pre-rename) so upgrades don't sync stale data
-	if (normalized === OLD_PLUGIN_FOLDER.slice(0, -1) || normalized.startsWith(OLD_PLUGIN_FOLDER)) {
+	if (normalized === oldPluginFolder || normalized.startsWith(`${oldPluginFolder}/`)) {
 		return false;
 	}
 
 	// Never sync Obsidian's per-device workspace state.
-	if (WORKSPACE_STATE_PATTERN.test(normalized)) {
+	if (getWorkspaceStatePattern(normalizedConfigDir).test(normalized)) {
 		return false;
 	}
 
-	if (!normalized.startsWith('.obsidian/')) {
+	if (!normalized.startsWith(configDirPrefix)) {
 		return true;
 	}
 
-	if (syncAppSettings && SYNCABLE_OBSIDIAN_APP_SETTINGS.has(normalized)) {
+	if (syncAppSettings && syncableObsidianAppSettings.has(normalized)) {
 		return true;
 	}
 
@@ -213,9 +239,9 @@ export function shouldSyncVaultPath(path: string, syncPluginManifests = false, s
 	}
 
 	return (
-		SYNCABLE_OBSIDIAN_PLUGIN_MANIFESTS.has(normalized) ||
-		isInstalledPluginManifestPath(normalized) ||
-		isInstalledPluginBinaryPath(normalized)
+		syncableObsidianPluginManifests.has(normalized) ||
+		isInstalledPluginManifestPath(normalized, normalizedConfigDir) ||
+		isInstalledPluginBinaryPath(normalized, normalizedConfigDir)
 	);
 }
 

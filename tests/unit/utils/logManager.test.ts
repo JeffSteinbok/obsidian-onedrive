@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
 	LIVE_LOG_FOLDER,
 	LIVE_LOG_HEADER,
-	SYNC_LOGS_NOTE_PATH,
+	getSyncLogsNotePath,
 	applyVaultLogHook,
 	buildSyncLogsNoteContent,
 	liveLogNotePath,
@@ -66,7 +66,7 @@ line two
 
 		it('creates a new logs note and opens it', async () => {
 			const createdFile = new TFile();
-			createdFile.path = SYNC_LOGS_NOTE_PATH;
+			createdFile.path = getSyncLogsNotePath();
 			const openFile = vi.fn().mockResolvedValue(undefined);
 			const vault = {
 				adapter: {
@@ -90,7 +90,7 @@ line two
 			});
 
 			expect(vault.create).toHaveBeenCalledWith(
-				SYNC_LOGS_NOTE_PATH,
+				getSyncLogsNotePath(),
 				`# OneDrive Sync Logs
 
 Last updated: 2026-06-04T12:34:56.000Z
@@ -105,7 +105,7 @@ Last updated: 2026-06-04T12:34:56.000Z
 
 		it('updates an existing logs note', async () => {
 			const existingFile = new TFile();
-			existingFile.path = SYNC_LOGS_NOTE_PATH;
+			existingFile.path = getSyncLogsNotePath();
 			const openFile = vi.fn().mockResolvedValue(undefined);
 			const vault = {
 				adapter: {} as any,
@@ -137,7 +137,7 @@ Last updated: 2026-06-04T12:34:56.000Z
 			const notify = vi.fn();
 			const vault = {
 				adapter: {} as any,
-				getAbstractFileByPath: vi.fn().mockReturnValue({ path: SYNC_LOGS_NOTE_PATH }),
+				getAbstractFileByPath: vi.fn().mockReturnValue({ path: getSyncLogsNotePath() }),
 				modify: vi.fn(),
 				create: vi.fn(),
 			};
@@ -153,7 +153,7 @@ Last updated: 2026-06-04T12:34:56.000Z
 			});
 
 			expect(notify).toHaveBeenCalledWith(
-				`Cannot write logs to ${SYNC_LOGS_NOTE_PATH} because that path is a folder.`
+				`Cannot write logs to ${getSyncLogsNotePath()} because that path is a folder.`
 			);
 			expect(vault.modify).not.toHaveBeenCalled();
 			expect(vault.create).not.toHaveBeenCalled();

@@ -3,11 +3,23 @@
  */
 
 import { Client } from '@microsoft/microsoft-graph-client';
+import { requestUrl } from 'obsidian';
 import { OneDriveAuthProvider } from '../auth/authProvider';
 import { OneDriveItem, OneDriveUser, OneDriveError, OneDriveAccessMode, DeltaResponse } from '../types';
 import { logger } from '../utils/logger';
 import { retryWithBackoff } from '../utils/retry';
 import { encodePathForGraph } from '../utils/pathUtils';
+
+interface GraphCollectionResponse<T> {
+	value: T[];
+}
+
+interface GraphDeltaApiResponse<T> extends GraphCollectionResponse<T> {
+	'@odata.nextLink'?: string;
+	'@odata.deltaLink'?: string;
+}
+
+type GraphUserResponse = Pick<OneDriveUser, 'id' | 'displayName' | 'mail' | 'userPrincipalName'>;
 
 /**
  * OneDrive client for interacting with Microsoft Graph API
@@ -103,6 +115,14 @@ export class OneDriveClient {
 		return `/me/drive/items/${itemId}`;
 	}
 
+	private async getGraph<T>(endpoint: string): Promise<T> {
+		return retryWithBackoff<T>(() => this.client.api(endpoint).get() as Promise<T>);
+	}
+
+	private async postGraph<T>(endpoint: string, body: unknown): Promise<T> {
+		return retryWithBackoff<T>(() => this.client.api(endpoint).post(body) as Promise<T>);
+	}
+
 	/**
 	 * Resolve the actual path of a shared folder on its home drive.
 	 * Call after selecting a shared folder to get its full path for delta path stripping.
@@ -111,11 +131,7 @@ export class OneDriveClient {
 		logger.debug('Resolving shared folder path:', { driveId, itemId });
 
 		try {
-			const response = await retryWithBackoff(() =>
-				this.client.api(`/drives/${driveId}/items/${itemId}`).get()
-			);
-
-			const item = response as OneDriveItem;
+			const item = await this.getGraph<OneDriveItem>(`/drives/${driveId}/items/${itemId}`);
 			// Build the full path from parentReference.path + name
 			// parentReference.path may be "/drive/root:" or "/drives/{id}/root:/some/path"
 			let parentPath = item.parentReference?.path || '';
@@ -152,7 +168,7 @@ export class OneDriveClient {
 		logger.debug('Fetching user info');
 
 		try {
-			const response = await retryWithBackoff(() => this.client.api('/me').get());
+			const response = await this.getGraph<GraphUserResponse>('/me');
 
 			return {
 				id: response.id,
@@ -176,11 +192,7 @@ export class OneDriveClient {
 
 		try {
 			const endpoint = this.buildEndpoint(path);
-			const response = await retryWithBackoff(() =>
-				this.client.api(endpoint).get()
-			);
-
-			return response as OneDriveItem;
+			return await this.getGraph<OneDriveItem>(endpoint);
 		} catch (error) {
 			logger.error(`Failed to get item at path ${path}:`, error);
 			throw new OneDriveError(
@@ -197,9 +209,9 @@ export class OneDriveClient {
 
 		try {
 			const apiPath = this.buildEndpoint(folderPath, 'children');
-			const response = await retryWithBackoff(() => this.client.api(apiPath).get());
+			const response = await this.getGraph<GraphCollectionResponse<OneDriveItem>>(apiPath);
 
-			return response.value as OneDriveItem[];
+			return response.value;
 		} catch (error) {
 			logger.error(`Failed to list folder ${folderPath}:`, error);
 			throw new OneDriveError(
@@ -244,8 +256,8 @@ export class OneDriveClient {
 				}
 			}
 
-			const response = await retryWithBackoff(() => this.client.api(apiPath).get());
-			const items = response.value as OneDriveItem[];
+			const response = await this.getGraph<GraphCollectionResponse<OneDriveItem>>(apiPath);
+			const items = response.value;
 
 			// Return only folders (including shared/mounted shortcuts)
 			return items.filter((item) => item.folder || item.remoteItem?.folder);
@@ -289,15 +301,11 @@ export class OneDriveClient {
 		try {
 			const apiPath = this.buildEndpoint(folderPath, 'children');
 
-			const response = await retryWithBackoff(() =>
-				this.client.api(apiPath).post({
-					name: folderName,
-					folder: {},
-					'@microsoft.graph.conflictBehavior': 'fail',
-				})
-			);
-
-			return response as OneDriveItem;
+			return await this.postGraph<OneDriveItem>(apiPath, {
+				name: folderName,
+				folder: {},
+				'@microsoft.graph.conflictBehavior': 'fail',
+			});
 		} catch (error) {
 			// Ignore if folder already exists
 			if (error instanceof Error && error.message.includes('nameAlreadyExists')) {
@@ -337,9 +345,7 @@ export class OneDriveClient {
 
 		try {
 			// Get file metadata first to get download URL
-			const item: OneDriveItem = await retryWithBackoff(() =>
-				this.client.api(this.getItemEndpoint(itemId)).get()
-			);
+			const item = await this.getGraph<OneDriveItem>(this.getItemEndpoint(itemId));
 
 			if (!item['@microsoft.graph.downloadUrl']) {
 				throw new Error('No download URL available');
@@ -348,14 +354,18 @@ export class OneDriveClient {
 			// Download using the direct URL (already has auth in URL)
 			const downloadUrl = item['@microsoft.graph.downloadUrl'];
 
-			// Use fetch for binary download (no auth header needed - it's in the URL)
-			const response = await fetch(downloadUrl);
+			// Use requestUrl for binary download (no auth header needed - it's in the URL)
+			const response = await requestUrl({
+				url: downloadUrl,
+				method: 'GET',
+				throw: false,
+			});
 
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+			if (response.status < 200 || response.status >= 300) {
+				throw new Error(`HTTP ${response.status}: ${response.text || 'Request failed'}`);
 			}
 
-			return await response.arrayBuffer();
+			return response.arrayBuffer;
 		} catch (error) {
 			logger.error(`Failed to download file ${itemId}:`, error);
 			throw new OneDriveError(
@@ -427,12 +437,10 @@ export class OneDriveClient {
 
 			// Page through all results
 			while (nextUrl) {
-				const response = await retryWithBackoff(() =>
-					this.client.api(nextUrl).get()
-				);
+				const response = await this.getGraph<GraphDeltaApiResponse<OneDriveItem>>(nextUrl);
 
-				if (response.value) {
-					allItems.push(...(response.value as OneDriveItem[]));
+				if (response.value.length > 0) {
+					allItems.push(...response.value);
 				}
 
 				if (response['@odata.nextLink']) {

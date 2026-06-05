@@ -69,6 +69,7 @@ export interface OneDriveItem {
 			path?: string;
 		};
 	};
+	__resolvedVaultPath?: string;
 }
 
 export interface OneDriveUploadSession {

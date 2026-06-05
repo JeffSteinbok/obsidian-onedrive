@@ -21,7 +21,7 @@ describe('ConflictQueue', () => {
 			vi.fn().mockResolvedValue(undefined),
 			stateManager
 		);
-		queue = new ConflictQueue(mockApp as never, stateManager, eventManager);
+		queue = new ConflictQueue(mockApp as never, stateManager, eventManager, mockApp.vault.configDir);
 
 		// Default mock behaviors
 		mockApp.vault.adapter.exists.mockResolvedValue(false);
@@ -197,7 +197,7 @@ describe('ConflictQueue', () => {
 			expect(saved.entries).toHaveLength(2);
 
 			// Create a new queue and load from saved data
-			const newQueue = new ConflictQueue(mockApp as never, stateManager, eventManager);
+			const newQueue = new ConflictQueue(mockApp as never, stateManager, eventManager, mockApp.vault.configDir);
 			newQueue.load(saved);
 
 			expect(newQueue.count).toBe(2);

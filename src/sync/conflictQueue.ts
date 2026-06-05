@@ -7,11 +7,14 @@
 import { App, TFile } from 'obsidian';
 import { ConflictEntry, ConflictResolution, PersistedConflictQueue } from '../types';
 import { logger } from '../utils/logger';
-import { createConflictFileName, isTextExtension } from '../utils/pathUtils';
+import { createConflictFileName, isTextExtension, normalizePath } from '../utils/pathUtils';
 import { EventManager } from './eventManager';
 import { SyncStateManager } from './syncState';
 
-const CONFLICTS_DIR = '.obsidian/plugins/onedrive-sync/conflicts';
+function getConflictsDir(configDir = '.obsidian'): string {
+	const normalizedConfigDir = normalizePath(configDir).replace(/\/+$/g, '') || '.obsidian';
+	return `${normalizedConfigDir}/plugins/onedrive-sync/conflicts`;
+}
 
 export class ConflictQueue {
 	private entries: Map<string, ConflictEntry> = new Map();
@@ -19,7 +22,8 @@ export class ConflictQueue {
 	constructor(
 		private app: App,
 		private stateManager: SyncStateManager,
-		private eventManager: EventManager
+		private eventManager: EventManager,
+		private configDir = '.obsidian'
 	) {}
 
 	/**
@@ -79,7 +83,7 @@ export class ConflictQueue {
 
 		// Store content as sidecar files
 		const adapter = this.app.vault.adapter;
-		const dir = `${CONFLICTS_DIR}/${id}`;
+		const dir = `${getConflictsDir(this.configDir)}/${id}`;
 		await adapter.mkdir(dir);
 		await adapter.writeBinary(`${dir}/current`, localContent);
 		await adapter.writeBinary(`${dir}/incoming`, remoteContent);
@@ -93,14 +97,14 @@ export class ConflictQueue {
 	 * Read the "current" (local) content for a conflict
 	 */
 	async readCurrentContent(id: string): Promise<ArrayBuffer> {
-		return this.app.vault.adapter.readBinary(`${CONFLICTS_DIR}/${id}/current`);
+		return this.app.vault.adapter.readBinary(`${getConflictsDir(this.configDir)}/${id}/current`);
 	}
 
 	/**
 	 * Read the "incoming" (remote) content for a conflict
 	 */
 	async readIncomingContent(id: string): Promise<ArrayBuffer> {
-		return this.app.vault.adapter.readBinary(`${CONFLICTS_DIR}/${id}/incoming`);
+		return this.app.vault.adapter.readBinary(`${getConflictsDir(this.configDir)}/${id}/incoming`);
 	}
 
 	/**
@@ -237,7 +241,7 @@ export class ConflictQueue {
 	 */
 	private async removeContentFiles(id: string): Promise<void> {
 		const adapter = this.app.vault.adapter;
-		const dir = `${CONFLICTS_DIR}/${id}`;
+		const dir = `${getConflictsDir(this.configDir)}/${id}`;
 		try {
 			if (await adapter.exists(`${dir}/current`)) await adapter.remove(`${dir}/current`);
 			if (await adapter.exists(`${dir}/incoming`)) await adapter.remove(`${dir}/incoming`);

@@ -181,6 +181,7 @@ import { DEFAULT_SETTINGS, OneDriveAccessMode } from '../../src/types';
 
 const createApp = () => ({
 	vault: {
+		configDir: '.obsidian',
 		adapter: {
 			getBasePath: vi.fn().mockReturnValue('/mock/vault'),
 			exists: vi.fn().mockResolvedValue(true),

@@ -129,7 +129,7 @@ describe('SyncEngine', () => {
 
 		mockApp.vault.getAbstractFileByPath.mockReset();
 		mockApp.vault.readBinary.mockReset().mockResolvedValue(new ArrayBuffer(10));
-		mockApp.vault.delete.mockReset().mockResolvedValue(undefined);
+		mockApp.fileManager.trashFile.mockReset().mockResolvedValue(undefined);
 		mockApp.vault.adapter.exists.mockReset().mockResolvedValue(true);
 		mockApp.vault.adapter.read.mockReset().mockRejectedValue(new Error('missing .syncIgnore'));
 		mockApp.vault.adapter.mkdir.mockReset().mockResolvedValue(undefined);
@@ -320,7 +320,7 @@ describe('SyncEngine', () => {
 			'/remote/root',
 			undefined,
 			undefined,
-			(path) => shouldSyncVaultPath(path, true)
+			(path) => shouldSyncVaultPath(path, true, false, mockApp.vault.configDir)
 		);
 		const downloadedFile = makeTFile('.obsidian/plugins/calendar/manifest.json', 10, Date.now());
 		mockClient.getDelta.mockResolvedValue({
@@ -368,7 +368,7 @@ describe('SyncEngine', () => {
 
 		await syncEngine.performSync();
 
-		expect(mockApp.vault.delete).toHaveBeenCalledWith(localFile);
+		expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(localFile);
 		expect(mockEventManager.markOwnWrites).toHaveBeenCalledWith(['old.md']);
 		expect(stateManager.getFileState('old.md')).toBeUndefined();
 	});
@@ -594,7 +594,7 @@ describe('SyncEngine', () => {
 			'/remote/root',
 			undefined,
 			undefined,
-			(path) => shouldSyncVaultPath(path, true)
+			(path) => shouldSyncVaultPath(path, true, false, mockApp.vault.configDir)
 		);
 		mockClient.getDelta
 			.mockResolvedValueOnce({
@@ -642,7 +642,7 @@ describe('SyncEngine', () => {
 			undefined,
 			undefined,
 			// syncPluginManifests=false, syncAppSettings=true
-			(path) => shouldSyncVaultPath(path, false, true)
+			(path) => shouldSyncVaultPath(path, false, true, mockApp.vault.configDir)
 		);
 		mockClient.getDelta
 			.mockResolvedValueOnce({ items: [], deltaLink: 'main-delta-new' })
@@ -916,7 +916,7 @@ describe('SyncEngine large-delete circuit breaker', () => {
 		await engine.performSync();
 
 		expect(handler).not.toHaveBeenCalled();
-		expect(mockApp.vault.delete).toHaveBeenCalled();
+		expect(mockApp.fileManager.trashFile).toHaveBeenCalled();
 		expect(stateManager.getDeltaLink()).toBe('next-delta');
 	});
 
@@ -928,7 +928,7 @@ describe('SyncEngine large-delete circuit breaker', () => {
 		await engine.performSync();
 
 		expect(handler).not.toHaveBeenCalled();
-		expect(mockApp.vault.delete).toHaveBeenCalled();
+		expect(mockApp.fileManager.trashFile).toHaveBeenCalled();
 	});
 
 	it('asks the handler when delete count meets the threshold and proceeds on "proceed"', async () => {
@@ -943,7 +943,7 @@ describe('SyncEngine large-delete circuit breaker', () => {
 		expect(info.localDeleteCount).toBe(7);
 		expect(info.remoteDeleteCount).toBe(0);
 		expect(info.sampleLocalDeletes).toHaveLength(7);
-		expect(mockApp.vault.delete).toHaveBeenCalledTimes(7);
+		expect(mockApp.fileManager.trashFile).toHaveBeenCalledTimes(7);
 		expect(stateManager.getDeltaLink()).toBe('next-delta');
 	});
 
@@ -955,7 +955,7 @@ describe('SyncEngine large-delete circuit breaker', () => {
 		await engine.performSync();
 
 		expect(handler).toHaveBeenCalledTimes(1);
-		expect(mockApp.vault.delete).not.toHaveBeenCalled();
+		expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
 		// Cursor still points at the pre-sync value so the user gets re-prompted next time.
 		expect(stateManager.getDeltaLink()).toBe('prev-delta');
 	});
@@ -967,7 +967,7 @@ describe('SyncEngine large-delete circuit breaker', () => {
 
 		await engine.performSync();
 
-		expect(mockApp.vault.delete).not.toHaveBeenCalled();
+		expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
 		expect(stateManager.getDeltaLink()).toBe('prev-delta');
 	});
 
@@ -1238,7 +1238,7 @@ describe('SyncEngine remote-delete via id-only delta entries', () => {
 		await engine.performSync();
 
 		// The file should have been deleted locally via Obsidian's vault API.
-		expect(mockApp.vault.delete).toHaveBeenCalledWith(file);
+		expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(file);
 		// And its tracked state should be gone so future syncs don't trip on it.
 		expect(stateManager.getFileState(targetPath)).toBeUndefined();
 	});
@@ -1340,7 +1340,7 @@ describe('SyncEngine remote folder-delete expansion', () => {
 		await engine.performSync();
 
 		// Both descendant files should have been deleted locally.
-		const deletedPaths = (mockApp.vault.delete as Mock).mock.calls.map(
+		const deletedPaths = (mockApp.fileManager.trashFile as Mock).mock.calls.map(
 			(c: any[]) => (c[0] as { path: string }).path
 		);
 		expect(deletedPaths).toContain(descendants[0].path);
@@ -1417,7 +1417,7 @@ describe('SyncEngine reconcile from cloud', () => {
 		await engine.reconcileFromCloud();
 
 		// D.md (local-only) should have been deleted via vault.delete
-		const deletedPaths = (mockApp.vault.delete as Mock).mock.calls.map(
+		const deletedPaths = (mockApp.fileManager.trashFile as Mock).mock.calls.map(
 			(c: any[]) => (c[0] as { path: string }).path
 		);
 		expect(deletedPaths).toContain('D.md');
@@ -1460,7 +1460,7 @@ describe('SyncEngine reconcile from cloud', () => {
 			'/remote/root',
 			undefined,
 			undefined,
-			(p) => shouldSyncVaultPath(p),
+			(p) => shouldSyncVaultPath(p, false, false, mockApp.vault.configDir),
 			() => 5, // threshold 5
 			handler
 		);
@@ -1469,7 +1469,7 @@ describe('SyncEngine reconcile from cloud', () => {
 
 		expect(handler).toHaveBeenCalledTimes(1);
 		// No deletes should have happened.
-		expect((mockApp.vault.delete as Mock).mock.calls.length).toBe(0);
+		expect((mockApp.fileManager.trashFile as Mock).mock.calls.length).toBe(0);
 		// Cursor should NOT have been advanced when user cancelled.
 		expect(mockClient.getDelta).not.toHaveBeenCalled();
 	});

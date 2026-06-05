@@ -1,12 +1,10 @@
+/* eslint no-console: "off" -- Logger is the console abstraction layer; direct console access is intentional */
 /**
  * Structured logging utility
  * Respects debug mode settings and provides consistent log formatting
- * Optionally writes to a file for external monitoring (tail -f)
  */
 
 import { PLUGIN_INFO } from '../constants';
-import * as fs from 'fs';
-import * as path from 'path';
 
 export enum LogLevel {
 	DEBUG = 0,
@@ -18,7 +16,6 @@ export enum LogLevel {
 class Logger {
 	private enableDebug = false;
 	private minLevel = LogLevel.INFO;
-	private logFilePath: string | null = null;
 	private recentLogs: string[] = [];
 	private vaultLogHook: ((line: string) => void) | null = null;
 	private static readonly MAX_RECENT_LOGS = 500;
@@ -35,32 +32,6 @@ class Logger {
 	 */
 	setVaultLogHook(hook: ((line: string) => void) | null): void {
 		this.vaultLogHook = hook;
-	}
-
-	/**
-	 * Enable file logging — call with the vault path to write logs to
-	 * <vault>/.obsidian/plugins/onedrive-sync/sync.log
-	 */
-	enableFileLogging(vaultPath: string): void {
-		try {
-			const logDir = path.join(vaultPath, '.obsidian', 'plugins', 'onedrive-sync');
-			this.logFilePath = path.join(logDir, 'sync.log');
-			// Ensure directory exists
-			if (!fs.existsSync(logDir)) {
-				fs.mkdirSync(logDir, { recursive: true });
-			}
-			// Truncate on startup so the file doesn't grow forever
-			fs.writeFileSync(this.logFilePath, '');
-			this.info(`File logging enabled: ${this.logFilePath}`);
-		} catch (e) {
-			// eslint-disable-next-line no-console
-			console.error('Failed to enable file logging:', e);
-			this.logFilePath = null;
-		}
-	}
-
-	disableFileLogging(): void {
-		this.logFilePath = null;
 	}
 
 	private shouldLog(level: LogLevel): boolean {
@@ -101,23 +72,12 @@ class Logger {
 		return this.recentLogs.slice(-boundedLimit);
 	}
 
-	private writeToFile(line: string): void {
-		if (!this.logFilePath) return;
-		try {
-			fs.appendFileSync(this.logFilePath, line + '\n');
-		} catch {
-			// silently ignore write errors
-		}
-	}
-
 	debug(message: string, ...args: unknown[]) {
 		if (this.shouldLog(LogLevel.DEBUG)) {
 			const formatted = this.formatMessage('DEBUG', message);
 			const line = formatted + this.formatExtraArgs(args);
-			// eslint-disable-next-line no-console
 			console.debug(formatted, ...args);
 			this.addToBuffer(line);
-			this.writeToFile(line);
 		}
 	}
 
@@ -125,10 +85,8 @@ class Logger {
 		if (this.shouldLog(LogLevel.INFO)) {
 			const formatted = this.formatMessage('INFO', message);
 			const line = formatted + this.formatExtraArgs(args);
-			// eslint-disable-next-line no-console
 			console.info(formatted, ...args);
 			this.addToBuffer(line);
-			this.writeToFile(line);
 		}
 	}
 
@@ -136,10 +94,8 @@ class Logger {
 		if (this.shouldLog(LogLevel.WARN)) {
 			const formatted = this.formatMessage('WARN', message);
 			const line = formatted + this.formatExtraArgs(args);
-			// eslint-disable-next-line no-console
 			console.warn(formatted, ...args);
 			this.addToBuffer(line);
-			this.writeToFile(line);
 		}
 	}
 
@@ -147,10 +103,8 @@ class Logger {
 		if (this.shouldLog(LogLevel.ERROR)) {
 			const formatted = this.formatMessage('ERROR', message);
 			const line = formatted + this.formatExtraArgs(args);
-			// eslint-disable-next-line no-console
 			console.error(formatted, ...args);
 			this.addToBuffer(line);
-			this.writeToFile(line);
 		}
 	}
 
@@ -161,7 +115,6 @@ class Logger {
 		if (!this.shouldLog(level)) return;
 
 		const sanitized = data ? this.sanitizeData(data) : undefined;
-		/* eslint-disable no-console */
 		const logMethod =
 			level === LogLevel.DEBUG
 				? console.debug
@@ -175,8 +128,6 @@ class Logger {
 		logMethod(formatted, sanitized);
 		const line = formatted + this.formatExtraArgs(sanitized ? [sanitized] : []);
 		this.addToBuffer(line);
-		this.writeToFile(line);
-		/* eslint-enable no-console */
 	}
 
 	/**

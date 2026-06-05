@@ -5,6 +5,8 @@
 
 import { Modal, App, Setting } from 'obsidian';
 
+const timerApi = typeof window !== 'undefined' ? window : globalThis;
+
 export class DeviceCodeModal extends Modal {
 	private userCode: string;
 	private verificationUri: string;
@@ -47,13 +49,10 @@ export class DeviceCodeModal extends Modal {
 
 		const codeStep = steps.createEl('li');
 		codeStep.appendText('Enter this code: ');
-		const codeSpan = codeStep.createEl('strong', {
+		codeStep.createEl('strong', {
 			text: this.userCode,
-			cls: 'onedrive-user-code',
+			cls: 'onedrive-user-code onedrive-sync-auth-user-code',
 		});
-		codeSpan.style.fontSize = '1.5em';
-		codeSpan.style.color = 'var(--text-accent)';
-		codeSpan.style.letterSpacing = '0.1em';
 
 		steps.createEl('li', { text: 'Sign in with your Microsoft account' });
 		steps.createEl('li', { text: 'Grant permissions when prompted' });
@@ -65,9 +64,9 @@ export class DeviceCodeModal extends Modal {
 			.setDesc(this.verificationUri)
 			.addButton((button) =>
 				button.setButtonText('Copy URL').onClick(() => {
-					navigator.clipboard.writeText(this.verificationUri);
+					void navigator.clipboard.writeText(this.verificationUri);
 					button.setButtonText('Copied!');
-					setTimeout(() => button.setButtonText('Copy URL'), 2000);
+					timerApi.setTimeout(() => button.setButtonText('Copy URL'), 2000);
 				})
 			);
 
@@ -77,9 +76,9 @@ export class DeviceCodeModal extends Modal {
 			.setDesc(this.userCode)
 			.addButton((button) =>
 				button.setButtonText('Copy Code').onClick(() => {
-					navigator.clipboard.writeText(this.userCode);
+					void navigator.clipboard.writeText(this.userCode);
 					button.setButtonText('Copied!');
-					setTimeout(() => button.setButtonText('Copy Code'), 2000);
+					timerApi.setTimeout(() => button.setButtonText('Copy Code'), 2000);
 				})
 			);
 
@@ -94,11 +93,9 @@ export class DeviceCodeModal extends Modal {
 		);
 
 		// Completion buttons
-		const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-		buttonContainer.style.display = 'flex';
-		buttonContainer.style.justifyContent = 'flex-end';
-		buttonContainer.style.gap = '10px';
-		buttonContainer.style.marginTop = '20px';
+		const buttonContainer = contentEl.createDiv({
+			cls: 'modal-button-container onedrive-sync-auth-actions',
+		});
 
 		const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
 		cancelButton.addEventListener('click', () => {

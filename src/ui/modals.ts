@@ -59,10 +59,9 @@ export class ConflictResolutionModal extends Modal {
 		});
 
 		// Buttons
-		const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-		buttonContainer.style.display = 'flex';
-		buttonContainer.style.justifyContent = 'space-around';
-		buttonContainer.style.marginTop = '20px';
+		const buttonContainer = contentEl.createDiv({
+			cls: 'modal-button-container onedrive-sync-conflict-modal-actions',
+		});
 
 		const localButton = buttonContainer.createEl('button', {
 			text: 'Keep Local',
@@ -124,18 +123,13 @@ export class SyncProgressModal extends Modal {
 		this.progressText = contentEl.createEl('p', { text: 'Preparing sync...' });
 
 		// Progress bar
-		const progressContainer = contentEl.createDiv({ cls: 'progress-container' });
-		progressContainer.style.width = '100%';
-		progressContainer.style.height = '20px';
-		progressContainer.style.backgroundColor = 'var(--background-secondary)';
-		progressContainer.style.borderRadius = '10px';
-		progressContainer.style.overflow = 'hidden';
+		const progressContainer = contentEl.createDiv({
+			cls: 'progress-container onedrive-sync-progress-container',
+		});
 
-		this.progressBar = progressContainer.createDiv({ cls: 'progress-bar' });
-		this.progressBar.style.height = '100%';
-		this.progressBar.style.backgroundColor = 'var(--interactive-accent)';
-		this.progressBar.style.width = '0%';
-		this.progressBar.style.transition = 'width 0.3s ease';
+		this.progressBar = progressContainer.createDiv({
+			cls: 'progress-bar onedrive-sync-progress-bar onedrive-sync-progress-bar-width-0',
+		});
 	}
 
 	onClose() {
@@ -149,8 +143,16 @@ export class SyncProgressModal extends Modal {
 	updateProgress(current: number, total: number, message?: string) {
 		const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
 
-		this.progressBar.style.width = `${percentage}%`;
+		this.setProgressBarWidth(percentage);
 		this.progressText.setText(message || `Syncing: ${current} of ${total} files (${percentage}%)`);
+	}
+
+	private setProgressBarWidth(percentage: number): void {
+		const clamped = Math.max(0, Math.min(100, percentage));
+		for (let i = 0; i <= 100; i++) {
+			this.progressBar.removeClass(`onedrive-sync-progress-bar-width-${i}`);
+		}
+		this.progressBar.addClass(`onedrive-sync-progress-bar-width-${clamped}`);
 	}
 }
 
@@ -182,15 +184,9 @@ export class ErrorModal extends Modal {
 
 		// Error details (if available)
 		if (this.errorDetails) {
-			const detailsDiv = contentEl.createDiv({ cls: 'error-details' });
-			detailsDiv.style.marginTop = '20px';
-			detailsDiv.style.padding = '10px';
-			detailsDiv.style.backgroundColor = 'var(--background-secondary)';
-			detailsDiv.style.borderRadius = '5px';
-			detailsDiv.style.fontSize = '0.9em';
-			detailsDiv.style.fontFamily = 'monospace';
-			detailsDiv.style.whiteSpace = 'pre-wrap';
-			detailsDiv.style.overflowX = 'auto';
+			const detailsDiv = contentEl.createDiv({
+				cls: 'error-details onedrive-sync-error-details',
+			});
 
 			detailsDiv.createEl('strong', { text: 'Details:' });
 			detailsDiv.createEl('br');
@@ -294,7 +290,7 @@ export class LargeDeleteWarningModal extends Modal {
 				})
 			)
 			.addButton((b) =>
-				b.setButtonText('Proceed (this sync only)').setWarning().onClick(() => {
+				b.setButtonText('Proceed (this sync only)').setDestructive().onClick(() => {
 					this.decision = 'proceed';
 					this.close();
 				})

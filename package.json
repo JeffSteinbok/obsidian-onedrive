@@ -33,7 +33,6 @@
 		"@typescript-eslint/parser": "^7.0.0",
 		"@vitest/coverage-v8": "^4.1.8",
 		"@vitest/ui": "^4.1.8",
-		"builtin-modules": "^3.3.0",
 		"esbuild": "^0.20.0",
 		"eslint": "^8.56.0",
 		"husky": "^9.0.0",

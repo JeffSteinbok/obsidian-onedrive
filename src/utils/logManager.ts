@@ -3,8 +3,13 @@
  */
 
 import { TFile } from 'obsidian';
+import { normalizePath } from './pathUtils';
 
-export const SYNC_LOGS_NOTE_PATH = '.obsidian/plugins/onedrive-sync/OneDrive Sync Logs.md';
+export function getSyncLogsNotePath(configDir = '.obsidian'): string {
+	const normalizedConfigDir = normalizePath(configDir).replace(/\/+$/g, '') || '.obsidian';
+	return `${normalizedConfigDir}/plugins/onedrive-sync/OneDrive Sync Logs.md`;
+}
+
 export const LIVE_LOG_FOLDER = '_OneDriveSyncLogs';
 export const LIVE_LOG_HEADER = `> [!warning] OneDrive sync debug log
 > This folder is **excluded from sync** — each device keeps its own. To share a specific day's log, move that file out of this folder.
@@ -19,31 +24,32 @@ export interface LogNoteVault {
 }
 
 export interface LogNoteWorkspace {
-	getLeaf(newLeaf: boolean): {
+	getLeaf(this: void, newLeaf: boolean): {
 		openFile(file: TFile): Promise<void>;
 	};
 }
 
 export interface VaultLogAdapter {
-	exists(path: string): Promise<boolean>;
-	mkdir(path: string): Promise<void>;
-	write(path: string, data: string): Promise<void>;
-	append(path: string, data: string): Promise<void>;
+	exists(this: void, path: string): Promise<boolean>;
+	mkdir(this: void, path: string): Promise<void>;
+	write(this: void, path: string, data: string): Promise<void>;
+	append(this: void, path: string, data: string): Promise<void>;
 }
 
 export interface OpenLogsNoteParams {
 	vault: LogNoteVault;
 	workspace: LogNoteWorkspace;
-	getRecentLogs(): string[];
-	notify(message: string): void;
+	configDir?: string;
+	getRecentLogs(this: void): string[];
+	notify(this: void, message: string): void;
 	now?: Date;
 }
 
 export interface ApplyVaultLogHookParams {
 	enabled: boolean;
 	adapter: VaultLogAdapter;
-	setVaultLogHook(hook: ((line: string) => void) | null): void;
-	now?: () => Date;
+	setVaultLogHook(this: void, hook: ((line: string) => void) | null): void;
+	now?: (this: void) => Date;
 }
 
 export function liveLogNotePath(date: Date = new Date()): string {
@@ -67,6 +73,7 @@ ${lines.join('\n')}
 export async function openLogsNote({
 	vault,
 	workspace,
+	configDir = '.obsidian',
 	getRecentLogs,
 	notify,
 	now = new Date(),
@@ -78,21 +85,22 @@ export async function openLogsNote({
 	}
 
 	const content = buildSyncLogsNoteContent(lines, now);
+	const syncLogsNotePath = getSyncLogsNotePath(configDir);
 
 	let logFile: TFile;
-	const existing = vault.getAbstractFileByPath(SYNC_LOGS_NOTE_PATH);
+	const existing = vault.getAbstractFileByPath(syncLogsNotePath);
 	if (existing instanceof TFile) {
 		await vault.modify(existing, content);
 		logFile = existing;
 	} else if (!existing) {
 		// Ensure the parent directory exists (may not after a plugin ID rename)
-		const parentDir = SYNC_LOGS_NOTE_PATH.substring(0, SYNC_LOGS_NOTE_PATH.lastIndexOf('/'));
+		const parentDir = syncLogsNotePath.substring(0, syncLogsNotePath.lastIndexOf('/'));
 		if (!(await vault.adapter.exists(parentDir))) {
 			await vault.adapter.mkdir(parentDir);
 		}
-		logFile = await vault.create(SYNC_LOGS_NOTE_PATH, content);
+		logFile = await vault.create(syncLogsNotePath, content);
 	} else {
-		notify(`Cannot write logs to ${SYNC_LOGS_NOTE_PATH} because that path is a folder.`);
+		notify(`Cannot write logs to ${syncLogsNotePath} because that path is a folder.`);
 		return;
 	}
 

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import {
-	COMMUNITY_PLUGINS_LIST_PATH,
+	getCommunityPluginsListPath,
 	ensureSelfInCommunityPluginsList,
 } from '../../../src/utils/pluginListGuard';
 
@@ -20,10 +20,10 @@ describe('pluginListGuard', () => {
 			info: vi.fn(),
 		};
 
-		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', log);
+		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', '.obsidian', log);
 
 		expect(adapter.write).toHaveBeenCalledWith(
-			COMMUNITY_PLUGINS_LIST_PATH,
+			getCommunityPluginsListPath(),
 			JSON.stringify(['onedrive-sync'], null, 2)
 		);
 		expect(log.info).toHaveBeenCalledWith(
@@ -42,7 +42,7 @@ describe('pluginListGuard', () => {
 			info: vi.fn(),
 		};
 
-		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', log);
+		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', '.obsidian', log);
 
 		expect(adapter.write).not.toHaveBeenCalled();
 		expect(log.info).not.toHaveBeenCalled();
@@ -59,10 +59,10 @@ describe('pluginListGuard', () => {
 			info: vi.fn(),
 		};
 
-		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', log);
+		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', '.obsidian', log);
 
 		expect(adapter.write).toHaveBeenCalledWith(
-			COMMUNITY_PLUGINS_LIST_PATH,
+			getCommunityPluginsListPath(),
 			JSON.stringify(['calendar', 'onedrive-sync'], null, 2)
 		);
 	});
@@ -78,13 +78,13 @@ describe('pluginListGuard', () => {
 			info: vi.fn(),
 		};
 
-		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', log);
+		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', '.obsidian', log);
 
 		expect(log.warn).toHaveBeenCalledWith(
 			'community-plugins.json is malformed; rewriting with just onedrive-sync'
 		);
 		expect(adapter.write).toHaveBeenCalledWith(
-			COMMUNITY_PLUGINS_LIST_PATH,
+			getCommunityPluginsListPath(),
 			JSON.stringify(['onedrive-sync'], null, 2)
 		);
 	});
@@ -101,7 +101,7 @@ describe('pluginListGuard', () => {
 			info: vi.fn(),
 		};
 
-		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', log);
+		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', '.obsidian', log);
 
 		expect(log.warn).toHaveBeenCalledWith('Failed to self-heal community-plugins.json:', error);
 	});

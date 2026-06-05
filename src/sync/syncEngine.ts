@@ -56,7 +56,8 @@ export class SyncEngine {
 		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path),
 		private getLargeDeleteThreshold: () => number = () => 0,
 		private largeDeleteWarningHandler?: LargeDeleteWarningHandler,
-		private onProgress?: (message: string | undefined) => void
+		private onProgress?: (message: string | undefined) => void,
+		private configDir = '.obsidian'
 	) {
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -65,7 +66,7 @@ export class SyncEngine {
 	}
 
 	private isObsidianPath(path: string): boolean {
-		return normalizePath(path).startsWith('.obsidian/');
+		return normalizePath(path).startsWith(`${normalizePath(this.configDir).replace(/\/+$/g, '')}/`);
 	}
 
 	/**
@@ -129,8 +130,8 @@ export class SyncEngine {
 			// sync is enabled. Probe both representative paths so the gate doesn't
 			// silently miss the syncAppSettings-only case.
 			const shouldSyncObsidianScope =
-				this.shouldSyncPath('.obsidian/community-plugins.json') ||
-				this.shouldSyncPath('.obsidian/app.json');
+				this.shouldSyncPath(`${this.configDir}/community-plugins.json`) ||
+				this.shouldSyncPath(`${this.configDir}/app.json`);
 			const isFirstSync = this.stateManager.isFirstSync();
 			logger.info(`Delta query: isFirstSync=${isFirstSync}, hasDeltaLink=${!!deltaLink}`);
 			const deltaResponse = await this.oneDriveClient.getDelta(deltaLink, this.remoteRoot);
@@ -139,7 +140,7 @@ export class SyncEngine {
 				progress('fetching .obsidian changes...');
 			}
 			const obsidianDeltaResponse = shouldSyncObsidianScope
-				? await this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot, '.obsidian')
+				? await this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot, this.configDir)
 				: undefined;
 
 			progress('planning...');
@@ -184,14 +185,16 @@ export class SyncEngine {
 					for (const { path, state } of descendants) {
 						synthesizedDeletes.push({
 							id: state.oneDriveId || `synthesized:${path}`,
-							name: undefined as unknown as string,
+							name: '',
 							deleted: { state: 'deleted' },
-							file: {} as any,
-							parentReference: { path: '' } as any,
+							file: { mimeType: '' },
+							parentReference: { id: '', path: '' },
+							lastModifiedDateTime: '',
+							createdDateTime: '',
 							// Stash the resolved path so remotePathToVaultPath
 							// short-circuits without needing to consult state.
 							__resolvedVaultPath: path,
-						} as unknown as OneDriveItem);
+						});
 					}
 					this.stateManager.removeFolderState(item.id);
 				} else {
@@ -846,7 +849,7 @@ export class SyncEngine {
 		if (file) {
 			this.eventManager.markOwnWrites([filePath]);
 			try {
-				await this.app.vault.delete(file);
+				await this.app.fileManager.trashFile(file);
 			} catch (error) {
 				this.eventManager.removeOwnWrite(filePath);
 				throw error;
@@ -905,7 +908,7 @@ export class SyncEngine {
 			// are device-local and must not be pruned by reconcile.
 			if (!this.shouldSyncPath(folder.path)) continue;
 			try {
-				await this.app.vault.delete(folder);
+				await this.app.fileManager.trashFile(folder);
 				deleted++;
 				logger.debug(`Reconcile: pruned empty folder ${folder.path}`);
 			} catch (error) {
@@ -925,7 +928,7 @@ export class SyncEngine {
 			if (!Array.isArray(children)) return;
 			if (children.length > 0) return;
 			try {
-				await this.app.vault.delete(folder);
+				await this.app.fileManager.trashFile(folder as TFolder);
 				logger.debug(`Pruned empty folder ${current}`);
 			} catch (error) {
 				logger.warn(`Failed to prune empty folder ${current}:`, error);
@@ -956,7 +959,7 @@ export class SyncEngine {
 		// Short-circuit for synthesized items where we already know the path
 		// (used by folder-delete expansion to avoid an unnecessary state lookup
 		// per child).
-		const stashed = (item as unknown as { __resolvedVaultPath?: string }).__resolvedVaultPath;
+		const stashed = item.__resolvedVaultPath;
 		if (stashed) return stashed;
 
 		let fullPath: string;
@@ -1208,13 +1211,13 @@ export class SyncEngine {
 				const newDelta = await this.oneDriveClient.getDelta(undefined, this.remoteRoot);
 				this.stateManager.setDeltaLink(newDelta.deltaLink);
 				const shouldSyncObsidianScope =
-					this.shouldSyncPath('.obsidian/community-plugins.json') ||
-					this.shouldSyncPath('.obsidian/app.json');
+					this.shouldSyncPath(`${this.configDir}/community-plugins.json`) ||
+					this.shouldSyncPath(`${this.configDir}/app.json`);
 				if (shouldSyncObsidianScope) {
 					const newObs = await this.oneDriveClient.getDelta(
 						undefined,
 						this.remoteRoot,
-						'.obsidian'
+						this.configDir
 					);
 					this.stateManager.setObsidianDeltaLink(newObs.deltaLink);
 				}

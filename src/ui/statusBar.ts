@@ -24,8 +24,7 @@ export class StatusBarManager {
 
 	constructor(statusBarItem: HTMLElement, private onSyncClick?: () => void) {
 		this.statusBarItem = statusBarItem;
-		this.statusBarItem.addClass('onedrive-status-bar');
-		this.statusBarItem.style.cursor = 'pointer';
+		this.statusBarItem.addClass('onedrive-status-bar', 'onedrive-sync-clickable');
 		this.statusBarItem.addEventListener('click', () => {
 			if (this.onSyncClick && this.currentStatus !== SyncStatus.SYNCING) {
 				this.onSyncClick();

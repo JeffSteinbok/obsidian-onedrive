@@ -9,6 +9,7 @@ import { TFile } from 'obsidian';
 // Mock Obsidian API
 export const mockApp = {
 	vault: {
+		configDir: '.obsidian',
 		adapter: {
 			list: vi.fn(),
 			read: vi.fn(),
@@ -30,6 +31,9 @@ export const mockApp = {
 		getRoot: vi.fn().mockReturnValue({ path: '', children: [] }),
 		readBinary: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
 		delete: vi.fn().mockResolvedValue(undefined),
+	},
+	fileManager: {
+		trashFile: vi.fn().mockResolvedValue(undefined),
 	},
 	workspace: {
 		on: vi.fn(),

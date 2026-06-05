@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import '../../setup';
+import { mockRequestUrl } from '../../setup';
 
 const { mockApiGet, mockApiPost, mockApiDelete, mockApiBuilder, mockClient } = vi.hoisted(() => {
 	const mockApiGet = vi.fn();
@@ -16,8 +16,6 @@ const { mockApiGet, mockApiPost, mockApiDelete, mockApiBuilder, mockClient } = v
 
 	return { mockApiGet, mockApiPost, mockApiDelete, mockApiBuilder, mockClient };
 });
-
-const mockFetch = vi.fn();
 
 vi.mock('@microsoft/microsoft-graph-client', () => ({
 	Client: {
@@ -46,9 +44,8 @@ describe('OneDriveClient', () => {
 		mockApiGet.mockReset();
 		mockApiPost.mockReset();
 		mockApiDelete.mockReset();
-		mockFetch.mockReset();
+		mockRequestUrl.mockReset();
 		mockClient.api.mockReturnValue(mockApiBuilder);
-		vi.stubGlobal('fetch', mockFetch);
 		client = new OneDriveClient(mockAuthProvider as any, OneDriveAccessMode.APP_FOLDER);
 	});
 
@@ -289,14 +286,19 @@ describe('OneDriveClient', () => {
 				name: 'file.md',
 				'@microsoft.graph.downloadUrl': 'https://download.example/file',
 			});
-			mockFetch.mockResolvedValue({
-				ok: true,
-				arrayBuffer: () => Promise.resolve(buffer),
+			mockRequestUrl.mockResolvedValue({
+				status: 200,
+				text: '',
+				arrayBuffer: buffer,
 			});
 
 			await expect(client.downloadFile('item-123')).resolves.toBe(buffer);
 			expect(mockClient.api).toHaveBeenCalledWith('/me/drive/items/item-123');
-			expect(mockFetch).toHaveBeenCalledWith('https://download.example/file');
+			expect(mockRequestUrl).toHaveBeenCalledWith({
+				url: 'https://download.example/file',
+				method: 'GET',
+				throw: false,
+			});
 		});
 
 		it('throws when no download URL is available', async () => {
@@ -312,7 +314,7 @@ describe('OneDriveClient', () => {
 				name: 'file.md',
 				'@microsoft.graph.downloadUrl': 'https://download.example/file',
 			});
-			mockFetch.mockResolvedValue({ ok: false, status: 500, statusText: 'Server Error' });
+			mockRequestUrl.mockResolvedValue({ status: 500, text: 'Server Error' });
 
 			await expect(client.downloadFile('item-123')).rejects.toBeInstanceOf(OneDriveError);
 			await expect(client.downloadFile('item-123')).rejects.toThrow('Failed to download file: HTTP 500: Server Error');

@@ -2,7 +2,7 @@
  * Settings tab for the OneDrive plugin
  */
 
-import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, type PluginManifest } from 'obsidian';
 import {
 	PluginSettings,
 	ConflictResolutionStrategy,
@@ -15,7 +15,7 @@ import { FolderBrowserModal, FolderSelection } from './folderBrowserModal';
 // Forward declaration for the plugin type
 interface OneDrivePlugin {
 	settings: PluginSettings;
-	manifest: { version: string };
+	manifest: PluginManifest;
 	saveSettings(): Promise<void>;
 	onAppSettingsSyncChanged(enabled: boolean): Promise<void>;
 	onPluginManifestSyncChanged(enabled: boolean): Promise<void>;
@@ -48,16 +48,20 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		const heading = containerEl.createEl('h2', { text: 'OneDrive Sync Settings' });
-		const authorEl = heading.createEl('div');
-		authorEl.style.fontSize = '14px';
-		authorEl.style.fontWeight = 'normal';
-		authorEl.style.color = 'var(--text-muted)';
-		authorEl.style.marginTop = '4px';
-		authorEl.style.marginBottom = '8px';
-		const version = (this.plugin as any).manifest?.version || '';
+		new Setting(containerEl).setName('OneDrive Sync Settings').setHeading();
+		const authorEl = containerEl.createDiv({
+			cls: 'setting-item-description onedrive-sync-settings-author',
+		});
+		const version = this.plugin.manifest.version || '';
 		const versionStr = version ? ` — v${version}` : '';
-		authorEl.innerHTML = `by <strong>Jeff Steinbok</strong>${versionStr} — <a href="https://github.com/jeffsteinbok/obsidian-onedrive" target="_blank">GitHub</a>`;
+		authorEl.appendText('by ');
+		authorEl.createEl('strong', { text: 'Jeff Steinbok' });
+		authorEl.appendText(`${versionStr} — `);
+		authorEl.createEl('a', {
+			text: 'GitHub',
+			href: 'https://github.com/jeffsteinbok/obsidian-onedrive',
+			attr: { target: '_blank' },
+		});
 
 		// Sections in logical order
 		this.displayAuthSection(containerEl);
@@ -70,7 +74,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 * Display authentication section
 	 */
 	private displayAuthSection(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: 'Authentication' });
+		new Setting(containerEl).setName('Authentication').setHeading();
 
 		// Access mode — first setting in this section
 		const isConnected = !!this.plugin.settings.connectedUser;
@@ -108,7 +112,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			statusSetting.addButton((button) =>
 				button
 					.setButtonText('Disconnect')
-					.setWarning()
+					.setDestructive()
 					.onClick(async () => {
 						this.plugin.disconnect();
 						new Notice('Disconnected from OneDrive');
@@ -145,7 +149,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		const isConnected = !!this.plugin.settings.connectedUser;
 
 		if (this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS) {
-			containerEl.createEl('h3', { text: 'Sync Folder' });
+			new Setting(containerEl).setName('Sync Folder').setHeading();
 
 			if (isConnected) {
 				const currentPath = this.plugin.settings.remotePath || '(not selected)';
@@ -178,18 +182,17 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 		// Sync Now button
 		if (isConnected) {
-			const isSyncReady =
-				this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER ||
-				!!this.plugin.settings.remotePath;
-
 			new Setting(containerEl).addButton((btn) => {
 				btn
 					.setButtonText('Sync Now')
 					.setCta()
-					.onClick(async () => {
-						await this.plugin.triggerManualSync();
+					.onClick(() => {
+						void this.plugin.triggerManualSync();
 					});
-				if (!isSyncReady) {
+				if (
+					this.plugin.settings.accessMode !== OneDriveAccessMode.APP_FOLDER &&
+					!this.plugin.settings.remotePath
+				) {
 					btn.setDisabled(true);
 					btn.setTooltip('Select a sync folder first');
 				}
@@ -201,7 +204,9 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 * Display sync configuration section
 	 */
 	private displaySyncSection(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: 'Sync Configuration' });
+		new Setting(containerEl).setName('Sync Configuration').setHeading();
+
+		const { configDir } = this.app.vault;
 
 		// Sync interval
 		new Setting(containerEl)
@@ -264,7 +269,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Sync app settings')
 			.setDesc(
-				'Sync .obsidian/app.json, .obsidian/appearance.json, and .obsidian/hotkeys.json to keep appearance and hotkeys consistent across devices.'
+				`Sync ${configDir}/app.json, ${configDir}/appearance.json, and ${configDir}/hotkeys.json to keep appearance and hotkeys consistent across devices.`
 			)
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncAppSettings).onChange(async (value) => {
@@ -275,7 +280,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Sync plugins')
 			.setDesc(
-				'Sync .obsidian/community-plugins.json, .obsidian/core-plugins.json, plugin manifests, and plugin binaries (main.js, styles.css). Does not sync plugin data files.'
+				`Sync ${configDir}/community-plugins.json, ${configDir}/core-plugins.json, plugin manifests, and plugin binaries (main.js, styles.css). Does not sync plugin data files.`
 			)
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncPluginManifests).onChange(async (value) => {
@@ -288,7 +293,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 * Display advanced section
 	 */
 	private displayAdvancedSection(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: 'Advanced' });
+		new Setting(containerEl).setName('Advanced').setHeading();
 
 		// Debug logging
 		new Setting(containerEl)
@@ -336,7 +341,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addButton((button) =>
 				button
 					.setButtonText('Reset sync token')
-					.setWarning()
+					.setDestructive()
 					.onClick(async () => {
 						await this.plugin.resetSyncToken();
 					})
@@ -352,7 +357,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addButton((button) =>
 				button
 					.setButtonText('Reconcile from cloud')
-					.setWarning()
+					.setDestructive()
 					.onClick(async () => {
 						await this.plugin.reconcileFromCloud();
 					})
@@ -384,9 +389,16 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						})
 				);
 
-			const helpDiv = containerEl.createDiv({ cls: 'setting-item-description' });
-			helpDiv.style.marginTop = '4px';
-			helpDiv.innerHTML = `See <a href="https://github.com/jeffsteinbok/obsidian-onedrive#custom-client-id" target="_blank">Custom Client ID setup guide</a> in the README.`;
+			const helpDiv = containerEl.createDiv({
+				cls: 'setting-item-description onedrive-sync-settings-help',
+			});
+			helpDiv.appendText('See ');
+			helpDiv.createEl('a', {
+				text: 'Custom Client ID setup guide',
+				href: 'https://github.com/jeffsteinbok/obsidian-onedrive#custom-client-id',
+				attr: { target: '_blank' },
+			});
+			helpDiv.appendText(' in the README.');
 		}
 	}
 }

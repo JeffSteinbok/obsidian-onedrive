@@ -59,11 +59,9 @@ export class ChunkUploader {
 			const graphClient = this.client.getClient();
 			const apiPath = this.client.buildEndpoint(filePath, 'content');
 
-			const response = await retryWithBackoff(() =>
-				graphClient.api(apiPath).putStream(content)
+			return await retryWithBackoff<OneDriveItem>(() =>
+				graphClient.api(apiPath).putStream(content) as Promise<OneDriveItem>
 			);
-
-			return response as OneDriveItem;
 		} catch (error) {
 			logger.error('Failed to upload small file:', error);
 			throw new OneDriveError(
@@ -125,15 +123,13 @@ export class ChunkUploader {
 			const graphClient = this.client.getClient();
 			const apiPath = this.client.buildEndpoint(filePath, 'createUploadSession');
 
-			const response = await retryWithBackoff(() =>
+			return await retryWithBackoff<OneDriveUploadSession>(() =>
 				graphClient.api(apiPath).post({
 					item: {
 						'@microsoft.graph.conflictBehavior': 'replace',
 					},
-				})
+				}) as Promise<OneDriveUploadSession>
 			);
-
-			return response as OneDriveUploadSession;
 		} catch (error) {
 			logger.error('Failed to create upload session:', error);
 			throw new OneDriveError(
@@ -191,7 +187,7 @@ export class ChunkUploader {
 				throw new OneDriveError(`Failed to get final item: HTTP ${response.status}`);
 			}
 
-			return response.json as OneDriveItem;
+			return response.json as unknown as OneDriveItem;
 		} catch (error) {
 			logger.error('Failed to get final item:', error);
 			throw new OneDriveError(

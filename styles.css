@@ -1,0 +1,671 @@
+.onedrive-sync-settings-author {
+	font-size: 14px;
+	font-weight: normal;
+	color: var(--text-muted);
+	margin-top: 4px;
+	margin-bottom: 8px;
+}
+
+.onedrive-sync-settings-help {
+	margin-top: 4px;
+}
+
+.onedrive-sync-auth-user-code {
+	font-size: 1.5em;
+	color: var(--text-accent);
+	letter-spacing: 0.1em;
+}
+
+.onedrive-sync-auth-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	margin-top: 20px;
+}
+
+.onedrive-sync-folder-browser-body {
+	min-height: 200px;
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+.onedrive-sync-folder-breadcrumb {
+	margin-bottom: 8px;
+	font-size: 13px;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 2px;
+}
+
+.onedrive-sync-folder-breadcrumb-link {
+	cursor: pointer;
+	color: var(--text-accent);
+}
+
+.onedrive-sync-folder-browser-select-row {
+	margin-bottom: 12px;
+}
+
+.onedrive-sync-folder-browser-note {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.onedrive-sync-folder-browser-empty {
+	padding: 8px 0;
+}
+
+.onedrive-sync-folder-row {
+	display: flex;
+	align-items: center;
+	padding: 6px 8px;
+	cursor: pointer;
+	border-radius: 4px;
+}
+
+.onedrive-sync-folder-row:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.onedrive-sync-folder-row-meta {
+	margin-left: auto;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.onedrive-sync-folder-browser-error {
+	color: var(--text-error);
+}
+
+.onedrive-sync-conflict-modal-actions {
+	display: flex;
+	justify-content: space-around;
+	margin-top: 20px;
+}
+
+.onedrive-sync-progress-container {
+	width: 100%;
+	height: 20px;
+	background-color: var(--background-secondary);
+	border-radius: 10px;
+	overflow: hidden;
+}
+
+.onedrive-sync-progress-bar {
+	height: 100%;
+	background-color: var(--interactive-accent);
+	transition: width 0.3s ease;
+}
+
+.onedrive-sync-progress-bar-width-0 {
+	width: 0%;
+}
+
+.onedrive-sync-progress-bar-width-1 {
+	width: 1%;
+}
+
+.onedrive-sync-progress-bar-width-2 {
+	width: 2%;
+}
+
+.onedrive-sync-progress-bar-width-3 {
+	width: 3%;
+}
+
+.onedrive-sync-progress-bar-width-4 {
+	width: 4%;
+}
+
+.onedrive-sync-progress-bar-width-5 {
+	width: 5%;
+}
+
+.onedrive-sync-progress-bar-width-6 {
+	width: 6%;
+}
+
+.onedrive-sync-progress-bar-width-7 {
+	width: 7%;
+}
+
+.onedrive-sync-progress-bar-width-8 {
+	width: 8%;
+}
+
+.onedrive-sync-progress-bar-width-9 {
+	width: 9%;
+}
+
+.onedrive-sync-progress-bar-width-10 {
+	width: 10%;
+}
+
+.onedrive-sync-progress-bar-width-11 {
+	width: 11%;
+}
+
+.onedrive-sync-progress-bar-width-12 {
+	width: 12%;
+}
+
+.onedrive-sync-progress-bar-width-13 {
+	width: 13%;
+}
+
+.onedrive-sync-progress-bar-width-14 {
+	width: 14%;
+}
+
+.onedrive-sync-progress-bar-width-15 {
+	width: 15%;
+}
+
+.onedrive-sync-progress-bar-width-16 {
+	width: 16%;
+}
+
+.onedrive-sync-progress-bar-width-17 {
+	width: 17%;
+}
+
+.onedrive-sync-progress-bar-width-18 {
+	width: 18%;
+}
+
+.onedrive-sync-progress-bar-width-19 {
+	width: 19%;
+}
+
+.onedrive-sync-progress-bar-width-20 {
+	width: 20%;
+}
+
+.onedrive-sync-progress-bar-width-21 {
+	width: 21%;
+}
+
+.onedrive-sync-progress-bar-width-22 {
+	width: 22%;
+}
+
+.onedrive-sync-progress-bar-width-23 {
+	width: 23%;
+}
+
+.onedrive-sync-progress-bar-width-24 {
+	width: 24%;
+}
+
+.onedrive-sync-progress-bar-width-25 {
+	width: 25%;
+}
+
+.onedrive-sync-progress-bar-width-26 {
+	width: 26%;
+}
+
+.onedrive-sync-progress-bar-width-27 {
+	width: 27%;
+}
+
+.onedrive-sync-progress-bar-width-28 {
+	width: 28%;
+}
+
+.onedrive-sync-progress-bar-width-29 {
+	width: 29%;
+}
+
+.onedrive-sync-progress-bar-width-30 {
+	width: 30%;
+}
+
+.onedrive-sync-progress-bar-width-31 {
+	width: 31%;
+}
+
+.onedrive-sync-progress-bar-width-32 {
+	width: 32%;
+}
+
+.onedrive-sync-progress-bar-width-33 {
+	width: 33%;
+}
+
+.onedrive-sync-progress-bar-width-34 {
+	width: 34%;
+}
+
+.onedrive-sync-progress-bar-width-35 {
+	width: 35%;
+}
+
+.onedrive-sync-progress-bar-width-36 {
+	width: 36%;
+}
+
+.onedrive-sync-progress-bar-width-37 {
+	width: 37%;
+}
+
+.onedrive-sync-progress-bar-width-38 {
+	width: 38%;
+}
+
+.onedrive-sync-progress-bar-width-39 {
+	width: 39%;
+}
+
+.onedrive-sync-progress-bar-width-40 {
+	width: 40%;
+}
+
+.onedrive-sync-progress-bar-width-41 {
+	width: 41%;
+}
+
+.onedrive-sync-progress-bar-width-42 {
+	width: 42%;
+}
+
+.onedrive-sync-progress-bar-width-43 {
+	width: 43%;
+}
+
+.onedrive-sync-progress-bar-width-44 {
+	width: 44%;
+}
+
+.onedrive-sync-progress-bar-width-45 {
+	width: 45%;
+}
+
+.onedrive-sync-progress-bar-width-46 {
+	width: 46%;
+}
+
+.onedrive-sync-progress-bar-width-47 {
+	width: 47%;
+}
+
+.onedrive-sync-progress-bar-width-48 {
+	width: 48%;
+}
+
+.onedrive-sync-progress-bar-width-49 {
+	width: 49%;
+}
+
+.onedrive-sync-progress-bar-width-50 {
+	width: 50%;
+}
+
+.onedrive-sync-progress-bar-width-51 {
+	width: 51%;
+}
+
+.onedrive-sync-progress-bar-width-52 {
+	width: 52%;
+}
+
+.onedrive-sync-progress-bar-width-53 {
+	width: 53%;
+}
+
+.onedrive-sync-progress-bar-width-54 {
+	width: 54%;
+}
+
+.onedrive-sync-progress-bar-width-55 {
+	width: 55%;
+}
+
+.onedrive-sync-progress-bar-width-56 {
+	width: 56%;
+}
+
+.onedrive-sync-progress-bar-width-57 {
+	width: 57%;
+}
+
+.onedrive-sync-progress-bar-width-58 {
+	width: 58%;
+}
+
+.onedrive-sync-progress-bar-width-59 {
+	width: 59%;
+}
+
+.onedrive-sync-progress-bar-width-60 {
+	width: 60%;
+}
+
+.onedrive-sync-progress-bar-width-61 {
+	width: 61%;
+}
+
+.onedrive-sync-progress-bar-width-62 {
+	width: 62%;
+}
+
+.onedrive-sync-progress-bar-width-63 {
+	width: 63%;
+}
+
+.onedrive-sync-progress-bar-width-64 {
+	width: 64%;
+}
+
+.onedrive-sync-progress-bar-width-65 {
+	width: 65%;
+}
+
+.onedrive-sync-progress-bar-width-66 {
+	width: 66%;
+}
+
+.onedrive-sync-progress-bar-width-67 {
+	width: 67%;
+}
+
+.onedrive-sync-progress-bar-width-68 {
+	width: 68%;
+}
+
+.onedrive-sync-progress-bar-width-69 {
+	width: 69%;
+}
+
+.onedrive-sync-progress-bar-width-70 {
+	width: 70%;
+}
+
+.onedrive-sync-progress-bar-width-71 {
+	width: 71%;
+}
+
+.onedrive-sync-progress-bar-width-72 {
+	width: 72%;
+}
+
+.onedrive-sync-progress-bar-width-73 {
+	width: 73%;
+}
+
+.onedrive-sync-progress-bar-width-74 {
+	width: 74%;
+}
+
+.onedrive-sync-progress-bar-width-75 {
+	width: 75%;
+}
+
+.onedrive-sync-progress-bar-width-76 {
+	width: 76%;
+}
+
+.onedrive-sync-progress-bar-width-77 {
+	width: 77%;
+}
+
+.onedrive-sync-progress-bar-width-78 {
+	width: 78%;
+}
+
+.onedrive-sync-progress-bar-width-79 {
+	width: 79%;
+}
+
+.onedrive-sync-progress-bar-width-80 {
+	width: 80%;
+}
+
+.onedrive-sync-progress-bar-width-81 {
+	width: 81%;
+}
+
+.onedrive-sync-progress-bar-width-82 {
+	width: 82%;
+}
+
+.onedrive-sync-progress-bar-width-83 {
+	width: 83%;
+}
+
+.onedrive-sync-progress-bar-width-84 {
+	width: 84%;
+}
+
+.onedrive-sync-progress-bar-width-85 {
+	width: 85%;
+}
+
+.onedrive-sync-progress-bar-width-86 {
+	width: 86%;
+}
+
+.onedrive-sync-progress-bar-width-87 {
+	width: 87%;
+}
+
+.onedrive-sync-progress-bar-width-88 {
+	width: 88%;
+}
+
+.onedrive-sync-progress-bar-width-89 {
+	width: 89%;
+}
+
+.onedrive-sync-progress-bar-width-90 {
+	width: 90%;
+}
+
+.onedrive-sync-progress-bar-width-91 {
+	width: 91%;
+}
+
+.onedrive-sync-progress-bar-width-92 {
+	width: 92%;
+}
+
+.onedrive-sync-progress-bar-width-93 {
+	width: 93%;
+}
+
+.onedrive-sync-progress-bar-width-94 {
+	width: 94%;
+}
+
+.onedrive-sync-progress-bar-width-95 {
+	width: 95%;
+}
+
+.onedrive-sync-progress-bar-width-96 {
+	width: 96%;
+}
+
+.onedrive-sync-progress-bar-width-97 {
+	width: 97%;
+}
+
+.onedrive-sync-progress-bar-width-98 {
+	width: 98%;
+}
+
+.onedrive-sync-progress-bar-width-99 {
+	width: 99%;
+}
+
+.onedrive-sync-progress-bar-width-100 {
+	width: 100%;
+}
+
+.onedrive-sync-error-details {
+	margin-top: 20px;
+	padding: 10px;
+	background-color: var(--background-secondary);
+	border-radius: 5px;
+	font-size: 0.9em;
+	font-family: monospace;
+	white-space: pre-wrap;
+	overflow-x: auto;
+}
+
+.onedrive-sync-clickable {
+	cursor: pointer;
+}
+
+.onedrive-sync-conflict-header {
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.onedrive-sync-conflict-header h4 {
+	margin: 0 0 4px;
+}
+
+.onedrive-sync-conflict-subtitle {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	margin: 0 0 8px;
+}
+
+.onedrive-sync-conflict-empty {
+	padding: 32px 16px;
+	text-align: center;
+}
+
+.onedrive-sync-conflict-empty-text {
+	color: var(--text-muted);
+}
+
+.onedrive-sync-conflict-bulk-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.onedrive-sync-conflict-list {
+	padding: 8px 16px;
+}
+
+.onedrive-sync-conflict-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 12px;
+	margin-bottom: 12px;
+	background: var(--background-secondary);
+}
+
+.onedrive-sync-conflict-file-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+
+.onedrive-sync-conflict-file-path {
+	font-weight: 600;
+	font-size: 0.95em;
+	word-break: break-all;
+}
+
+.onedrive-sync-conflict-meta {
+	display: flex;
+	gap: 16px;
+	margin-bottom: 8px;
+	font-size: 0.85em;
+}
+
+.onedrive-sync-conflict-meta-side {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	color: var(--text-muted);
+}
+
+.onedrive-sync-conflict-meta-side strong {
+	color: var(--text-normal);
+}
+
+.onedrive-sync-conflict-diff {
+	margin: 8px 0;
+	max-height: 300px;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+}
+
+.onedrive-sync-conflict-diff pre {
+	margin: 0;
+	padding: 8px;
+	font-size: 0.82em;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+}
+
+.onedrive-sync-diff-added {
+	display: block;
+	background: var(--background-modifier-success);
+	color: var(--text-success);
+}
+
+.onedrive-sync-diff-removed {
+	display: block;
+	background: var(--background-modifier-error);
+	color: var(--text-error);
+}
+
+.onedrive-sync-diff-unchanged {
+	display: block;
+	color: var(--text-muted);
+}
+
+.onedrive-sync-conflict-binary {
+	padding: 8px;
+	color: var(--text-muted);
+	font-size: 0.9em;
+}
+
+.onedrive-sync-conflict-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+	flex-wrap: wrap;
+}
+
+.onedrive-sync-conflict-btn {
+	padding: 4px 12px;
+	border-radius: 4px;
+	font-size: 0.85em;
+	cursor: pointer;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+}
+
+.onedrive-sync-conflict-btn:hover {
+	background: var(--interactive-hover);
+}
+
+.onedrive-sync-conflict-btn-current {
+	border-color: var(--interactive-accent);
+}
+
+.onedrive-sync-conflict-btn-incoming {
+	border-color: var(--text-success);
+}
+
+.onedrive-sync-conflict-btn-both {
+	border-color: var(--text-muted);
+}
+
+.onedrive-sync-conflict-diff-error {
+	padding: 8px;
+	color: var(--text-muted);
+}

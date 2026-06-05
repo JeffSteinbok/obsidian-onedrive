@@ -274,40 +274,49 @@ describe('pathUtils', () => {
 			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json')).toBe(false);
 		});
 
+		it('respects a custom vault config directory', () => {
+			expect(shouldSyncVaultPath('.config/app.json', false, true, '.config')).toBe(true);
+			expect(shouldSyncVaultPath('.config/plugins/calendar/main.js', true, false, '.config')).toBe(
+				true
+			);
+			expect(shouldSyncVaultPath('.config/workspace.json', true, true, '.config')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/app.json', false, true, '.config')).toBe(true);
+		});
+
 		it('should sync app settings files when syncAppSettings is enabled', () => {
-			expect(shouldSyncVaultPath('.obsidian/app.json', false, true)).toBe(true);
-			expect(shouldSyncVaultPath('.obsidian/appearance.json', false, true)).toBe(true);
-			expect(shouldSyncVaultPath('.obsidian/hotkeys.json', false, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/app.json', false, true, '.obsidian')).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/appearance.json', false, true, '.obsidian')).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/hotkeys.json', false, true, '.obsidian')).toBe(true);
 		});
 
 		it('should exclude non-allowlisted .obsidian files even when syncAppSettings is enabled', () => {
-			expect(shouldSyncVaultPath('.obsidian/workspace.json', false, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', false, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/workspace.json', false, true, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', false, true, '.obsidian')).toBe(false);
 		});
 
 		it('should allow selected plugin manifest files when syncPluginManifests is opted in', () => {
-			expect(shouldSyncVaultPath('.obsidian/community-plugins.json', true)).toBe(true);
-			expect(shouldSyncVaultPath('.obsidian/core-plugins.json', true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/community-plugins.json', true, false, '.obsidian')).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/core-plugins.json', true, false, '.obsidian')).toBe(true);
 		});
 
 		it('should sync plugin binaries when syncPluginManifests is opted in', () => {
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json', true)).toBe(true);
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true)).toBe(true);
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/styles.css', true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json', true, false, '.obsidian')).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true, false, '.obsidian')).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/styles.css', true, false, '.obsidian')).toBe(true);
 		});
 
 		it('should exclude plugin data files when syncPluginManifests is opted in', () => {
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/subdir/manifest.json', true)).toBe(
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', true, false, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/subdir/manifest.json', true, false, '.obsidian')).toBe(
 				false
 			);
 		});
 
 		it('should sync app settings and plugin files simultaneously when both are enabled', () => {
-			expect(shouldSyncVaultPath('.obsidian/app.json', true, true)).toBe(true);
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true, true)).toBe(true);
-			expect(shouldSyncVaultPath('.obsidian/workspace.json', true, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/app.json', true, true, '.obsidian')).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true, true, '.obsidian')).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/workspace.json', true, true, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/data.json', true, true, '.obsidian')).toBe(false);
 		});
 
 		it('always excludes the per-device debug log folder from sync', () => {
@@ -324,24 +333,24 @@ describe('pathUtils', () => {
 
 		it('never syncs the OneDrive plugin\'s own folder, even with plugin sync enabled', () => {
 			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync')).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/main.js', true, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/manifest.json', true, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/data.json', true, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/styles.css', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/main.js', true, true, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/manifest.json', true, true, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/data.json', true, true, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/styles.css', true, true, '.obsidian')).toBe(false);
 			// Old plugin folder should also be excluded (migration safety)
 			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive')).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/main.js', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/main.js', true, true, '.obsidian')).toBe(false);
 			// Other plugins are unaffected.
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true, false, '.obsidian')).toBe(true);
 		});
 
 		it('never syncs Obsidian per-device workspace state files', () => {
-			expect(shouldSyncVaultPath('.obsidian/workspace.json', true, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/workspace-mobile.json', true, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/workspace-JEFFSTEISL7.json', true, true)).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/workspace-JEFFOFFICE3-6.json', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/workspace.json', true, true, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/workspace-mobile.json', true, true, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/workspace-JEFFSTEISL7.json', true, true, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/workspace-JEFFOFFICE3-6.json', true, true, '.obsidian')).toBe(false);
 			// Other .obsidian files still follow the normal rules.
-			expect(shouldSyncVaultPath('.obsidian/app.json', false, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/app.json', false, true, '.obsidian')).toBe(true);
 		});
 	});
 });

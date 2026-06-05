@@ -53,8 +53,11 @@ export class TAbstractFile {
 export type EventRef = unknown;
 
 export function setIcon(_el: HTMLElement, _icon: string) {}
-export function requestUrl(_options: unknown): Promise<unknown> {
-	return Promise.resolve({});
+export function requestUrl(options: unknown): Promise<unknown> {
+	const mockedRequestUrl = (globalThis as typeof globalThis & {
+		requestUrl?: (requestOptions: unknown) => Promise<unknown>;
+	}).requestUrl;
+	return mockedRequestUrl ? mockedRequestUrl(options) : Promise.resolve({});
 }
 export function normalizePath(path: string): string {
 	return path;

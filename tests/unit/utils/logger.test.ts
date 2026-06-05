@@ -1,14 +1,4 @@
-import path from 'path';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-
-const fsMocks = vi.hoisted(() => ({
-	existsSync: vi.fn(),
-	mkdirSync: vi.fn(),
-	writeFileSync: vi.fn(),
-	appendFileSync: vi.fn(),
-}));
-
-vi.mock('fs', () => fsMocks);
 
 type LoggerModule = typeof import('../../../src/utils/logger');
 
@@ -26,11 +16,6 @@ beforeEach(async () => {
 	vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 	vi.spyOn(console, 'error').mockImplementation(() => undefined);
 	vi.spyOn(console, 'debug').mockImplementation(() => undefined);
-
-	fsMocks.existsSync.mockReturnValue(true);
-	fsMocks.mkdirSync.mockReturnValue(undefined);
-	fsMocks.writeFileSync.mockReturnValue(undefined);
-	fsMocks.appendFileSync.mockReturnValue(undefined);
 
 	const module = await import('../../../src/utils/logger');
 	logger = module.logger;
@@ -151,33 +136,5 @@ describe('logger', () => {
 		logger.setVaultLogHook(null);
 		logger.info('second line');
 		expect(hook).toHaveBeenCalledTimes(1);
-	});
-
-	it('enableFileLogging creates the log path and subsequent logs append to the file', () => {
-		const vaultPath = 'C:\\vault';
-		const logDir = path.join(vaultPath, '.obsidian', 'plugins', 'onedrive-sync');
-		const logFilePath = path.join(logDir, 'sync.log');
-		fsMocks.existsSync.mockReturnValue(false);
-
-		logger.enableFileLogging(vaultPath);
-		logger.info('written to file');
-
-		expect(fsMocks.existsSync).toHaveBeenCalledWith(logDir);
-		expect(fsMocks.mkdirSync).toHaveBeenCalledWith(logDir, { recursive: true });
-		expect(fsMocks.writeFileSync).toHaveBeenCalledWith(logFilePath, '');
-		expect(fsMocks.appendFileSync).toHaveBeenCalledWith(
-			logFilePath,
-			expect.stringContaining('[INFO] written to file\n')
-		);
-	});
-
-	it('silently catches file append errors', () => {
-		fsMocks.appendFileSync.mockImplementation(() => {
-			throw new Error('disk full');
-		});
-
-		logger.enableFileLogging('C:\\vault');
-		expect(() => logger.info('still logs')).not.toThrow();
-		expect(console.error).not.toHaveBeenCalledWith('Failed to enable file logging:', expect.anything());
 	});
 });

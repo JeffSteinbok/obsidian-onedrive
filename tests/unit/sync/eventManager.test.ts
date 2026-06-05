@@ -147,7 +147,7 @@ describe('EventManager', () => {
 
 		it('allows selected plugin manifest files when opted in', () => {
 			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
-				shouldSyncVaultPath(path, true)
+				shouldSyncVaultPath(path, true, false, mockApp.vault.configDir)
 			);
 			eventManager.startListening();
 
@@ -160,7 +160,7 @@ describe('EventManager', () => {
 
 		it('allows installed plugin manifest files when opted in', () => {
 			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
-				shouldSyncVaultPath(path, true)
+				shouldSyncVaultPath(path, true, false, mockApp.vault.configDir)
 			);
 			eventManager.startListening();
 
@@ -173,7 +173,7 @@ describe('EventManager', () => {
 
 		it('syncs plugin binaries when plugin sync is opted in', () => {
 			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
-				shouldSyncVaultPath(path, true)
+				shouldSyncVaultPath(path, true, false, mockApp.vault.configDir)
 			);
 			eventManager.startListening();
 
@@ -186,7 +186,7 @@ describe('EventManager', () => {
 
 		it('keeps plugin data files excluded when plugin sync is opted in', () => {
 			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
-				shouldSyncVaultPath(path, true)
+				shouldSyncVaultPath(path, true, false, mockApp.vault.configDir)
 			);
 			eventManager.startListening();
 

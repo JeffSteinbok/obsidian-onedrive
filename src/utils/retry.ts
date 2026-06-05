@@ -5,6 +5,18 @@
 import { logger } from './logger';
 import { isRetryableError, getRetryDelay } from './errors';
 
+type DecoratedAsyncMethod = (this: object, ...args: unknown[]) => Promise<unknown>;
+
+function getDecoratedMethod(descriptor: PropertyDescriptor): DecoratedAsyncMethod {
+	if (typeof descriptor.value !== 'function') {
+		throw new Error('Decorator can only be applied to methods');
+	}
+
+	return descriptor.value as DecoratedAsyncMethod;
+}
+
+const timerApi = typeof window !== 'undefined' ? window : globalThis;
+
 export interface RetryOptions {
 	maxAttempts?: number;
 	initialDelay?: number; // milliseconds
@@ -81,7 +93,7 @@ export async function retryWithBackoff<T>(
  * Sleep for specified milliseconds
  */
 export function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+	return new Promise((resolve) => timerApi.setTimeout(resolve, ms));
 }
 
 /**
@@ -89,10 +101,10 @@ export function sleep(ms: number): Promise<void> {
  */
 export function retry(options: RetryOptions = {}) {
 	return function (target: unknown, propertyKey: string, descriptor: PropertyDescriptor) {
-		const originalMethod = descriptor.value;
+		const originalMethod = getDecoratedMethod(descriptor);
 
-		descriptor.value = async function (this: unknown, ...args: unknown[]) {
-			return retryWithBackoff(() => originalMethod.apply(this, args), options);
+		descriptor.value = async function (this: object, ...args: unknown[]) {
+			return retryWithBackoff(() => Reflect.apply(originalMethod, this, args), options);
 		};
 
 		return descriptor;

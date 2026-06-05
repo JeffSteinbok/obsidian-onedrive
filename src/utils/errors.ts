@@ -7,6 +7,23 @@ import { Notice } from 'obsidian';
 import { AuthenticationError, RateLimitError, OneDriveError } from '../types';
 import { logger } from './logger';
 
+type DecoratedAsyncMethod = (this: object, ...args: unknown[]) => Promise<unknown>;
+
+interface ParsedHttpErrorBody {
+	error?: string;
+	error_description?: string;
+	message?: string;
+	retry_after?: number;
+}
+
+function getDecoratedMethod(descriptor: PropertyDescriptor): DecoratedAsyncMethod {
+	if (typeof descriptor.value !== 'function') {
+		throw new Error('Decorator can only be applied to methods');
+	}
+
+	return descriptor.value as DecoratedAsyncMethod;
+}
+
 /**
  * Decorator to handle sync errors gracefully
  * Inspired by Home Assistant's @handle_backup_errors pattern
@@ -16,11 +33,11 @@ export function handleSyncErrors(
 	propertyKey: string,
 	descriptor: PropertyDescriptor
 ) {
-	const originalMethod = descriptor.value;
+	const originalMethod = getDecoratedMethod(descriptor);
 
-	descriptor.value = async function (this: unknown, ...args: unknown[]) {
+	descriptor.value = async function (this: object, ...args: unknown[]) {
 		try {
-			return await originalMethod.apply(this, args);
+			return await Reflect.apply(originalMethod, this, args);
 		} catch (error) {
 			if (error instanceof AuthenticationError) {
 				logger.error('Authentication error during sync:', error);
@@ -54,11 +71,11 @@ export function handleAuthErrors(
 	propertyKey: string,
 	descriptor: PropertyDescriptor
 ) {
-	const originalMethod = descriptor.value;
+	const originalMethod = getDecoratedMethod(descriptor);
 
-	descriptor.value = async function (this: unknown, ...args: unknown[]) {
+	descriptor.value = async function (this: object, ...args: unknown[]) {
 		try {
-			return await originalMethod.apply(this, args);
+			return await Reflect.apply(originalMethod, this, args);
 		} catch (error) {
 			if (error instanceof Error) {
 				logger.error(`Authentication error in ${propertyKey}:`, error);
@@ -87,7 +104,7 @@ export function handleAuthErrors(
  */
 export function parseHttpError(status: number, body: string): Error {
 	try {
-		const json = JSON.parse(body);
+		const json = JSON.parse(body) as ParsedHttpErrorBody;
 		const errorCode = json.error || json.error_description || 'unknown_error';
 		const errorMessage = json.error_description || json.message || 'Unknown error occurred';
 

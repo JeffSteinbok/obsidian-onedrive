@@ -21,6 +21,11 @@ import { logger } from '../utils/logger';
 import { parseHttpError } from '../utils/errors';
 import { sleep } from '../utils/retry';
 
+interface OAuthErrorResponse {
+	error?: string;
+	error_description?: string;
+}
+
 export class DeviceCodeFlowClient {
 	private cancelled = false;
 
@@ -65,7 +70,7 @@ export class DeviceCodeFlowClient {
 				throw parseHttpError(response.status, response.text);
 			}
 
-			const data: DeviceCodeResponse = response.json;
+			const data = response.json as unknown as DeviceCodeResponse;
 
 			logger.debug(`Device code received (expires_in=${data.expires_in}, uri=${data.verification_uri})`);
 
@@ -116,14 +121,14 @@ export class DeviceCodeFlowClient {
 				});
 
 				if (response.status === 200) {
-					const data: TokenResponse = response.json;
+					const data = response.json as unknown as TokenResponse;
 					logger.info('Token obtained successfully');
 					return data;
 				}
 
 				// Handle error responses (including 400s from Obsidian's requestUrl)
-				const errorData = response.json;
-				const errorCode = errorData?.error;
+				const errorData = response.json as unknown as OAuthErrorResponse;
+				const errorCode = errorData.error;
 
 				if (errorCode === 'authorization_pending') {
 					// User hasn't completed auth yet, continue polling
@@ -182,7 +187,7 @@ export class DeviceCodeFlowClient {
 				throw parseHttpError(response.status, response.text);
 			}
 
-			const data: TokenResponse = response.json;
+			const data = response.json as unknown as TokenResponse;
 			logger.info('Token refreshed successfully');
 			return data;
 		} catch (error) {

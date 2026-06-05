@@ -12,13 +12,15 @@ import { logger } from '../utils/logger';
 import { SYNC_CONFIG } from '../constants';
 import { shouldSyncVaultPath } from '../utils/pathUtils';
 
+const timerApi = typeof window !== 'undefined' ? window : globalThis;
+
 /**
  * Manages vault event listeners and sync scheduling
  */
 export class EventManager {
 	private eventRefs: EventRef[] = [];
-	private throttleTimer?: NodeJS.Timeout;
-	private syncTimer?: number;
+	private throttleTimer?: ReturnType<typeof globalThis.setTimeout>;
+	private syncTimer?: ReturnType<typeof globalThis.setInterval>;
 	private isSyncing = false;
 	private dirtyFiles: Map<string, LocalChange> = new Map();
 	// Paths we wrote during sync — events for these are our own writes, not user edits
@@ -154,12 +156,12 @@ export class EventManager {
 	private scheduleSync(): void {
 		if (this.isSyncing) return;
 
-		if (this.throttleTimer) {
-			clearTimeout(this.throttleTimer);
+		if (this.throttleTimer !== undefined) {
+			timerApi.clearTimeout(this.throttleTimer);
 		}
 
-		this.throttleTimer = setTimeout(() => {
-			this.executeSync();
+		this.throttleTimer = timerApi.setTimeout(() => {
+			void this.executeSync();
 		}, SYNC_CONFIG.EVENT_THROTTLE_MS);
 	}
 
@@ -177,9 +179,9 @@ export class EventManager {
 		const intervalMs = intervalMinutes * 60 * 1000;
 		logger.info(`Starting periodic sync every ${intervalMinutes} minutes`);
 
-		this.syncTimer = window.setInterval(() => {
+		this.syncTimer = timerApi.setInterval(() => {
 			if (!this.isSyncing) {
-				this.executeSync();
+				void this.executeSync();
 			}
 		}, intervalMs);
 	}
@@ -189,7 +191,7 @@ export class EventManager {
 	 */
 	stopPeriodicSync(): void {
 		if (this.syncTimer !== undefined) {
-			window.clearInterval(this.syncTimer);
+			timerApi.clearInterval(this.syncTimer);
 			this.syncTimer = undefined;
 		}
 	}
@@ -202,8 +204,8 @@ export class EventManager {
 
 		this.stopPeriodicSync();
 
-		if (this.throttleTimer) {
-			clearTimeout(this.throttleTimer);
+		if (this.throttleTimer !== undefined) {
+			timerApi.clearTimeout(this.throttleTimer);
 			this.throttleTimer = undefined;
 		}
 

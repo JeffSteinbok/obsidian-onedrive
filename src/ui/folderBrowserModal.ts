@@ -57,10 +57,9 @@ export class FolderBrowserModal extends Modal {
 
 		contentEl.createEl('h3', { text: 'Select OneDrive Folder' });
 
-		this.contentEl_body = contentEl.createDiv({ cls: 'folder-browser-body' });
-		this.contentEl_body.style.minHeight = '200px';
-		this.contentEl_body.style.maxHeight = '400px';
-		this.contentEl_body.style.overflowY = 'auto';
+		this.contentEl_body = contentEl.createDiv({
+			cls: 'folder-browser-body onedrive-sync-folder-browser-body',
+		});
 
 		this.loadFolder();
 	}
@@ -90,19 +89,15 @@ export class FolderBrowserModal extends Modal {
 		body.empty();
 
 		// Breadcrumb
-		const breadcrumb = body.createDiv({ cls: 'folder-breadcrumb' });
-		breadcrumb.style.marginBottom = '8px';
-		breadcrumb.style.fontSize = '13px';
-		breadcrumb.style.color = 'var(--text-muted)';
-		breadcrumb.style.display = 'flex';
-		breadcrumb.style.alignItems = 'center';
-		breadcrumb.style.flexWrap = 'wrap';
-		breadcrumb.style.gap = '2px';
+		const breadcrumb = body.createDiv({
+			cls: 'folder-breadcrumb onedrive-sync-folder-breadcrumb',
+		});
 
 		// Root link
-		const rootLink = breadcrumb.createEl('span', { text: '📁 OneDrive' });
-		rootLink.style.cursor = 'pointer';
-		rootLink.style.color = 'var(--text-accent)';
+		const rootLink = breadcrumb.createEl('span', {
+			text: '📁 OneDrive',
+			cls: 'onedrive-sync-folder-breadcrumb-link',
+		});
 		rootLink.onclick = () => {
 			this.currentPath = [];
 			this.sharedDriveId = undefined;
@@ -115,8 +110,7 @@ export class FolderBrowserModal extends Modal {
 			breadcrumb.createEl('span', { text: ' / ' });
 			const seg = breadcrumb.createEl('span', { text: this.currentPath[i] });
 			if (i < this.currentPath.length - 1) {
-				seg.style.cursor = 'pointer';
-				seg.style.color = 'var(--text-accent)';
+				seg.addClass('onedrive-sync-folder-breadcrumb-link');
 				const depth = i;
 				seg.onclick = () => {
 					this.currentPath = this.currentPath.slice(0, depth + 1);
@@ -132,8 +126,7 @@ export class FolderBrowserModal extends Modal {
 
 		// Select button for current folder
 		if (this.currentPath.length > 0) {
-			const selectRow = body.createDiv();
-			selectRow.style.marginBottom = '12px';
+			const selectRow = body.createDiv({ cls: 'onedrive-sync-folder-browser-select-row' });
 			new Setting(selectRow)
 				.setName(`Select "/${this.currentPath.join('/')}"`)
 				.addButton((btn) =>
@@ -152,9 +145,10 @@ export class FolderBrowserModal extends Modal {
 		}
 
 		// Loading indicator
-		const loadingEl = body.createDiv({ text: 'Loading folders...' });
-		loadingEl.style.color = 'var(--text-muted)';
-		loadingEl.style.fontStyle = 'italic';
+		const loadingEl = body.createDiv({
+			text: 'Loading folders...',
+			cls: 'onedrive-sync-folder-browser-note',
+		});
 
 		try {
 			let folders: OneDriveItem[];
@@ -175,10 +169,10 @@ export class FolderBrowserModal extends Modal {
 			loadingEl.remove();
 
 			if (folders.length === 0) {
-				const emptyEl = body.createDiv({ text: 'No subfolders' });
-				emptyEl.style.color = 'var(--text-muted)';
-				emptyEl.style.fontStyle = 'italic';
-				emptyEl.style.padding = '8px 0';
+				body.createDiv({
+					text: 'No subfolders',
+					cls: 'onedrive-sync-folder-browser-note onedrive-sync-folder-browser-empty',
+				});
 			}
 
 			for (const folder of folders) {
@@ -186,23 +180,14 @@ export class FolderBrowserModal extends Modal {
 				const name = folder.name;
 				const childCount = folder.folder?.childCount ?? folder.remoteItem?.folder?.childCount ?? 0;
 
-				const row = body.createDiv({ cls: 'folder-row' });
-				row.style.display = 'flex';
-				row.style.alignItems = 'center';
-				row.style.padding = '6px 8px';
-				row.style.cursor = 'pointer';
-				row.style.borderRadius = '4px';
-
-				row.onmouseenter = () => { row.style.backgroundColor = 'var(--background-modifier-hover)'; };
-				row.onmouseleave = () => { row.style.backgroundColor = ''; };
+				const row = body.createDiv({
+					cls: 'folder-row onedrive-sync-folder-row',
+				});
 
 				const icon = isShared ? '🔗' : '📁';
 				row.createEl('span', { text: `${icon} ${name}` });
 
-				const meta = row.createEl('span');
-				meta.style.marginLeft = 'auto';
-				meta.style.fontSize = '12px';
-				meta.style.color = 'var(--text-muted)';
+				const meta = row.createEl('span', { cls: 'onedrive-sync-folder-row-meta' });
 				const parts: string[] = [];
 				if (isShared) parts.push('shared');
 				if (childCount > 0) parts.push(`${childCount} items`);
@@ -221,10 +206,10 @@ export class FolderBrowserModal extends Modal {
 			}
 		} catch (error) {
 			loadingEl.remove();
-			const errorEl = body.createDiv({
+			body.createDiv({
 				text: `Error loading folders: ${error instanceof Error ? error.message : 'Unknown error'}`,
+				cls: 'onedrive-sync-folder-browser-error',
 			});
-			errorEl.style.color = 'var(--text-error)';
 		}
 
 		this.loading = false;

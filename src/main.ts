@@ -11,8 +11,12 @@ import { shouldSyncVaultPath } from './utils/pathUtils';
 import {
 	applyVaultLogHook as applyPluginVaultLogHook,
 	openLogsNote as openPluginLogsNote,
+	type VaultLogAdapter,
 } from './utils/logManager';
-import { ensureSelfInCommunityPluginsList as guardCommunityPluginsList } from './utils/pluginListGuard';
+import {
+	ensureSelfInCommunityPluginsList as guardCommunityPluginsList,
+	type CommunityPluginsAdapter,
+} from './utils/pluginListGuard';
 
 // Auth
 import { TokenStorage } from './auth/tokenStorage';
@@ -40,6 +44,26 @@ import { LargeDeleteWarningModal } from './ui/modals';
 
 import { LargeDeleteWarningInfo, LargeDeleteDecision } from './types';
 
+const timerApi = typeof window !== 'undefined' ? window : globalThis;
+
+function isCommunityPluginsAdapter(adapter: unknown): adapter is CommunityPluginsAdapter {
+	if (!adapter || typeof adapter !== 'object') {
+		return false;
+	}
+
+	const candidate = adapter as Record<string, unknown>;
+	return ['exists', 'read', 'write'].every((key) => typeof candidate[key] === 'function');
+}
+
+function isVaultLogAdapter(adapter: unknown): adapter is VaultLogAdapter {
+	if (!adapter || typeof adapter !== 'object') {
+		return false;
+	}
+
+	const candidate = adapter as Record<string, unknown>;
+	return ['exists', 'mkdir', 'write', 'append'].every((key) => typeof candidate[key] === 'function');
+}
+
 /**
  * Main plugin class
  */
@@ -62,8 +86,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private statusBarManager?: StatusBarManager;
 
 	async onload() {
-		// eslint-disable-next-line no-console
-		console.log('Loading OneDrive Sync plugin');
+		logger.info('Loading OneDrive Sync plugin');
 
 		// Load settings
 		await this.loadSettings();
@@ -86,11 +109,6 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		// Configure logger
 		logger.setDebugMode(this.settings.enableDebugLogging);
-		// Enable file logging so we can `tail -f` from terminal
-		const vaultPath = (this.app.vault.adapter as any).getBasePath?.();
-		if (vaultPath) {
-			logger.enableFileLogging(vaultPath);
-		}
 		// Mirror logs to a vault-root note when debug logging is on
 		this.applyVaultLogHook();
 
@@ -192,7 +210,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Add status bar item
 		const statusBarItem = this.addStatusBarItem();
 		this.statusBarManager = new StatusBarManager(statusBarItem, () => {
-			this.triggerManualSync();
+			void this.triggerManualSync();
 		});
 		this.updateStatusBar();
 
@@ -211,8 +229,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.settings.startupSyncDelay > 0 &&
 			this.isSyncConfigured()
 		) {
-			setTimeout(async () => {
-				await this.triggerManualSync();
+			timerApi.setTimeout(() => {
+				void this.triggerManualSync();
 			}, this.settings.startupSyncDelay * 1000);
 		}
 
@@ -220,8 +238,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	}
 
 	onunload() {
-		// eslint-disable-next-line no-console
-		console.log('Unloading OneDrive Sync plugin');
+		logger.info('Unloading OneDrive Sync plugin');
 
 		// Stop event manager
 		if (this.eventManager) {
@@ -273,11 +290,22 @@ export default class OneDriveSyncPlugin extends Plugin {
 					await this.performSync();
 				},
 				this.syncStateManager,
-				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings)
+				(path) =>
+					shouldSyncVaultPath(
+						path,
+						this.settings.syncPluginManifests,
+						this.settings.syncAppSettings,
+						this.app.vault.configDir
+					)
 			);
 
 			// Initialize conflict queue
-			this.conflictQueue = new ConflictQueue(this.app, this.syncStateManager, this.eventManager);
+			this.conflictQueue = new ConflictQueue(
+				this.app,
+				this.syncStateManager,
+				this.eventManager,
+				this.app.vault.configDir
+			);
 			this.conflictQueue.load(this.settings.conflictQueue);
 
 			// Initialize sync engine
@@ -300,10 +328,17 @@ export default class OneDriveSyncPlugin extends Plugin {
 				remoteRoot,
 				remoteRootOnDrive,
 				this.conflictQueue,
-				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings),
+				(path) =>
+					shouldSyncVaultPath(
+						path,
+						this.settings.syncPluginManifests,
+						this.settings.syncAppSettings,
+						this.app.vault.configDir
+					),
 				() => this.settings.largeDeleteThreshold ?? 0,
 				(info) => this.handleLargeDeleteWarning(info),
-				(msg) => this.statusBarManager?.setProgress(msg)
+				(msg) => this.statusBarManager?.setProgress(msg),
+				this.app.vault.configDir
 			);
 
 			// Get user info to display in settings
@@ -507,7 +542,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			// Update conflict count and reveal view if there are new conflicts
 			this.updateConflictCount();
 			if (this.conflictQueue && this.conflictQueue.count > 0) {
-				this.activateConflictView();
+				void this.activateConflictView();
 			}
 
 			// Save sync state
@@ -657,6 +692,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		await openPluginLogsNote({
 			vault: this.app.vault as Parameters<typeof openPluginLogsNote>[0]['vault'],
 			workspace: this.app.workspace as Parameters<typeof openPluginLogsNote>[0]['workspace'],
+			configDir: this.app.vault.configDir,
 			getRecentLogs: () => logger.getRecentLogs(),
 			notify: (message) => {
 				new Notice(message);
@@ -677,10 +713,21 @@ export default class OneDriveSyncPlugin extends Plugin {
 					this.app,
 					async () => {},
 					this.syncStateManager,
-					(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests)
+					(path) =>
+						shouldSyncVaultPath(
+							path,
+							this.settings.syncPluginManifests,
+							false,
+							this.app.vault.configDir
+						)
 				);
 			}
-			this.conflictQueue = new ConflictQueue(this.app, this.syncStateManager, this.eventManager);
+			this.conflictQueue = new ConflictQueue(
+				this.app,
+				this.syncStateManager,
+				this.eventManager,
+				this.app.vault.configDir
+			);
 			this.conflictQueue.load(this.settings.conflictQueue);
 		}
 
@@ -742,10 +789,13 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return;
 		}
 
-		await guardCommunityPluginsList(
-			this.app.vault.adapter as Parameters<typeof guardCommunityPluginsList>[0],
-			id
-		);
+		const { adapter } = this.app.vault;
+		if (!isCommunityPluginsAdapter(adapter)) {
+			logger.warn('Vault adapter does not support community plugin self-healing');
+			return;
+		}
+
+		await guardCommunityPluginsList(adapter, id, this.app.vault.configDir);
 	}
 
 	async onPluginManifestSyncChanged(enabled: boolean): Promise<void> {
@@ -854,9 +904,15 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 * device keeps its own.
 	 */
 	private applyVaultLogHook(): void {
+		const { adapter } = this.app.vault;
+		if (!isVaultLogAdapter(adapter)) {
+			logger.setVaultLogHook(null);
+			return;
+		}
+
 		applyPluginVaultLogHook({
 			enabled: this.settings.enableDebugLogging,
-			adapter: this.app.vault.adapter as Parameters<typeof applyPluginVaultLogHook>[0]['adapter'],
+			adapter,
 			setVaultLogHook: (hook) => {
 				logger.setVaultLogHook(hook);
 			},
@@ -878,7 +934,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			const modal = new LargeDeleteWarningModal(this.app, info, (decision) => {
 				if (decision === 'disable') {
 					// Defer so the modal closes cleanly before unloading the plugin.
-					setTimeout(() => {
+					timerApi.setTimeout(() => {
 						try {
 							const plugins = (this.app as unknown as {
 								plugins?: { disablePlugin?: (id: string) => Promise<void> | void };

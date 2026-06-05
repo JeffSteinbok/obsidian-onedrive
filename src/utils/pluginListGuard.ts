@@ -3,8 +3,12 @@
  */
 
 import { logger } from './logger';
+import { normalizePath } from './pathUtils';
 
-export const COMMUNITY_PLUGINS_LIST_PATH = '.obsidian/community-plugins.json';
+export function getCommunityPluginsListPath(configDir = '.obsidian'): string {
+	const normalizedConfigDir = normalizePath(configDir).replace(/\/+$/g, '') || '.obsidian';
+	return `${normalizedConfigDir}/community-plugins.json`;
+}
 
 export interface CommunityPluginsAdapter {
 	exists(path: string): Promise<boolean>;
@@ -15,23 +19,28 @@ export interface CommunityPluginsAdapter {
 export async function ensureSelfInCommunityPluginsList(
 	adapter: CommunityPluginsAdapter,
 	pluginId: string,
+	configDirOrLog: string | Pick<typeof logger, 'warn' | 'info'> = '.obsidian',
 	log: Pick<typeof logger, 'warn' | 'info'> = logger
 ): Promise<void> {
 	if (!pluginId) {
 		return;
 	}
 
+	const configDir = typeof configDirOrLog === 'string' ? configDirOrLog : '.obsidian';
+	const effectiveLog = typeof configDirOrLog === 'string' ? log : configDirOrLog;
+	const communityPluginsListPath = getCommunityPluginsListPath(configDir);
+
 	try {
 		let list: string[] = [];
-		if (await adapter.exists(COMMUNITY_PLUGINS_LIST_PATH)) {
-			const raw = await adapter.read(COMMUNITY_PLUGINS_LIST_PATH);
+		if (await adapter.exists(communityPluginsListPath)) {
+			const raw = await adapter.read(communityPluginsListPath);
 			try {
-				const parsed = JSON.parse(raw);
+				const parsed = JSON.parse(raw) as unknown;
 				if (Array.isArray(parsed)) {
 					list = parsed.filter((item): item is string => typeof item === 'string');
 				}
 			} catch {
-				log.warn(`community-plugins.json is malformed; rewriting with just ${pluginId}`);
+				effectiveLog.warn(`community-plugins.json is malformed; rewriting with just ${pluginId}`);
 			}
 		}
 
@@ -40,9 +49,9 @@ export async function ensureSelfInCommunityPluginsList(
 		}
 
 		list.push(pluginId);
-		await adapter.write(COMMUNITY_PLUGINS_LIST_PATH, JSON.stringify(list, null, 2));
-		log.info(`Self-healed: added ${pluginId} back to community-plugins.json`);
+		await adapter.write(communityPluginsListPath, JSON.stringify(list, null, 2));
+		effectiveLog.info(`Self-healed: added ${pluginId} back to community-plugins.json`);
 	} catch (error) {
-		log.warn('Failed to self-heal community-plugins.json:', error);
+		effectiveLog.warn('Failed to self-heal community-plugins.json:', error);
 	}
 }

@@ -55,78 +55,80 @@ export class ConflictView extends ItemView {
 		const entries = this.conflictQueue.getAll();
 
 		// Header
-		const header = container.createDiv({ cls: 'onedrive-conflict-header' });
+		const header = container.createDiv({ cls: 'onedrive-sync-conflict-header' });
 		header.createEl('h4', { text: 'Sync Conflicts' });
 
 		if (entries.length === 0) {
-			const empty = container.createDiv({ cls: 'onedrive-conflict-empty' });
+			const empty = container.createDiv({ cls: 'onedrive-sync-conflict-empty' });
 			empty.createEl('p', {
 				text: 'No conflicts to resolve.',
-				cls: 'onedrive-conflict-empty-text',
+				cls: 'onedrive-sync-conflict-empty-text',
 			});
 			return;
 		}
 
 		header.createEl('p', {
 			text: `${entries.length} file${entries.length === 1 ? '' : 's'} with conflicts`,
-			cls: 'onedrive-conflict-subtitle',
+			cls: 'onedrive-sync-conflict-subtitle',
 		});
 
 		// Bulk actions
-		const bulkActions = header.createDiv({ cls: 'onedrive-conflict-bulk-actions' });
+		const bulkActions = header.createDiv({ cls: 'onedrive-sync-conflict-bulk-actions' });
 
 		const acceptAllCurrent = bulkActions.createEl('button', {
 			text: 'Accept All Current',
-			cls: 'onedrive-conflict-btn onedrive-conflict-btn-current',
+			cls: 'onedrive-sync-conflict-btn onedrive-sync-conflict-btn-current',
 		});
-		acceptAllCurrent.addEventListener('click', async () => {
-			await this.conflictQueue.resolveAll(ConflictResolution.ACCEPT_CURRENT);
-			await this.onSaveSettings();
-			await this.renderView();
+		acceptAllCurrent.addEventListener('click', () => {
+			void (async () => {
+				await this.conflictQueue.resolveAll(ConflictResolution.ACCEPT_CURRENT);
+				await this.onSaveSettings();
+				await this.renderView();
+			})();
 		});
 
 		const acceptAllIncoming = bulkActions.createEl('button', {
 			text: 'Accept All Incoming',
-			cls: 'onedrive-conflict-btn onedrive-conflict-btn-incoming',
+			cls: 'onedrive-sync-conflict-btn onedrive-sync-conflict-btn-incoming',
 		});
-		acceptAllIncoming.addEventListener('click', async () => {
-			await this.conflictQueue.resolveAll(ConflictResolution.ACCEPT_INCOMING);
-			await this.onSaveSettings();
-			await this.renderView();
+		acceptAllIncoming.addEventListener('click', () => {
+			void (async () => {
+				await this.conflictQueue.resolveAll(ConflictResolution.ACCEPT_INCOMING);
+				await this.onSaveSettings();
+				await this.renderView();
+			})();
 		});
 
 		// Conflict entries
-		const list = container.createDiv({ cls: 'onedrive-conflict-list' });
+		const list = container.createDiv({ cls: 'onedrive-sync-conflict-list' });
 		for (const entry of entries) {
 			await this.renderConflictEntry(list, entry);
 		}
 
-		// Add styles
-		this.addStyles(container);
 	}
 
 	/**
 	 * Render a single conflict entry
 	 */
 	private async renderConflictEntry(container: HTMLElement, entry: ConflictEntry): Promise<void> {
-		const card = container.createDiv({ cls: 'onedrive-conflict-card' });
+		const card = container.createDiv({ cls: 'onedrive-sync-conflict-card' });
 
 		// File info header
-		const fileHeader = card.createDiv({ cls: 'onedrive-conflict-file-header' });
-		const iconEl = fileHeader.createSpan({ cls: 'onedrive-conflict-file-icon' });
+		const fileHeader = card.createDiv({ cls: 'onedrive-sync-conflict-file-header' });
+		const iconEl = fileHeader.createSpan({ cls: 'onedrive-sync-conflict-file-icon' });
 		setIcon(iconEl, 'file-text');
-		fileHeader.createSpan({ text: entry.path, cls: 'onedrive-conflict-file-path' });
+		fileHeader.createSpan({ text: entry.path, cls: 'onedrive-sync-conflict-file-path' });
 
 		// Metadata
-		const meta = card.createDiv({ cls: 'onedrive-conflict-meta' });
-		const currentMeta = meta.createDiv({ cls: 'onedrive-conflict-meta-side' });
+		const meta = card.createDiv({ cls: 'onedrive-sync-conflict-meta' });
+		const currentMeta = meta.createDiv({ cls: 'onedrive-sync-conflict-meta-side' });
 		currentMeta.createEl('strong', { text: 'Current (local)' });
 		currentMeta.createEl('span', {
 			text: `Modified: ${new Date(entry.localModifiedTime).toLocaleString()}`,
 		});
 		currentMeta.createEl('span', { text: `Size: ${this.formatSize(entry.localSize)}` });
 
-		const incomingMeta = meta.createDiv({ cls: 'onedrive-conflict-meta-side' });
+		const incomingMeta = meta.createDiv({ cls: 'onedrive-sync-conflict-meta-side' });
 		incomingMeta.createEl('strong', { text: 'Incoming (remote)' });
 		incomingMeta.createEl('span', {
 			text: `Modified: ${new Date(entry.remoteModifiedTime).toLocaleString()}`,
@@ -137,41 +139,47 @@ export class ConflictView extends ItemView {
 		if (entry.isTextFile) {
 			await this.renderDiff(card, entry);
 		} else {
-			const binaryNote = card.createDiv({ cls: 'onedrive-conflict-binary' });
+			const binaryNote = card.createDiv({ cls: 'onedrive-sync-conflict-binary' });
 			binaryNote.createEl('em', { text: 'Binary file — diff not available' });
 		}
 
 		// Actions
-		const actions = card.createDiv({ cls: 'onedrive-conflict-actions' });
+		const actions = card.createDiv({ cls: 'onedrive-sync-conflict-actions' });
 
 		const acceptCurrent = actions.createEl('button', {
 			text: 'Accept Current Change',
-			cls: 'onedrive-conflict-btn onedrive-conflict-btn-current',
+			cls: 'onedrive-sync-conflict-btn onedrive-sync-conflict-btn-current',
 		});
-		acceptCurrent.addEventListener('click', async () => {
-			await this.conflictQueue.resolve(entry.id, ConflictResolution.ACCEPT_CURRENT);
-			await this.onSaveSettings();
-			await this.renderView();
+		acceptCurrent.addEventListener('click', () => {
+			void (async () => {
+				await this.conflictQueue.resolve(entry.id, ConflictResolution.ACCEPT_CURRENT);
+				await this.onSaveSettings();
+				await this.renderView();
+			})();
 		});
 
 		const acceptIncoming = actions.createEl('button', {
 			text: 'Accept Incoming Change',
-			cls: 'onedrive-conflict-btn onedrive-conflict-btn-incoming',
+			cls: 'onedrive-sync-conflict-btn onedrive-sync-conflict-btn-incoming',
 		});
-		acceptIncoming.addEventListener('click', async () => {
-			await this.conflictQueue.resolve(entry.id, ConflictResolution.ACCEPT_INCOMING);
-			await this.onSaveSettings();
-			await this.renderView();
+		acceptIncoming.addEventListener('click', () => {
+			void (async () => {
+				await this.conflictQueue.resolve(entry.id, ConflictResolution.ACCEPT_INCOMING);
+				await this.onSaveSettings();
+				await this.renderView();
+			})();
 		});
 
 		const acceptBoth = actions.createEl('button', {
 			text: 'Accept Both Changes',
-			cls: 'onedrive-conflict-btn onedrive-conflict-btn-both',
+			cls: 'onedrive-sync-conflict-btn onedrive-sync-conflict-btn-both',
 		});
-		acceptBoth.addEventListener('click', async () => {
-			await this.conflictQueue.resolve(entry.id, ConflictResolution.ACCEPT_BOTH);
-			await this.onSaveSettings();
-			await this.renderView();
+		acceptBoth.addEventListener('click', () => {
+			void (async () => {
+				await this.conflictQueue.resolve(entry.id, ConflictResolution.ACCEPT_BOTH);
+				await this.onSaveSettings();
+				await this.renderView();
+			})();
 		});
 	}
 
@@ -189,19 +197,19 @@ export class ConflictView extends ItemView {
 
 			const diffResult = diffLines(localText, remoteText);
 
-			const diffContainer = container.createDiv({ cls: 'onedrive-conflict-diff' });
+			const diffContainer = container.createDiv({ cls: 'onedrive-sync-conflict-diff' });
 			const pre = diffContainer.createEl('pre');
 
 			for (const part of diffResult) {
 				const span = pre.createEl('span');
 				if (part.added) {
-					span.addClass('onedrive-diff-added');
+					span.addClass('onedrive-sync-diff-added');
 					span.textContent = this.prefixLines(part.value, '+ ');
 				} else if (part.removed) {
-					span.addClass('onedrive-diff-removed');
+					span.addClass('onedrive-sync-diff-removed');
 					span.textContent = this.prefixLines(part.value, '- ');
 				} else {
-					span.addClass('onedrive-diff-unchanged');
+					span.addClass('onedrive-sync-diff-unchanged');
 					// Show context — truncate long unchanged sections
 					const lines = part.value.split('\n');
 					if (lines.length > 6) {
@@ -216,8 +224,8 @@ export class ConflictView extends ItemView {
 					}
 				}
 			}
-		} catch (error) {
-			const errorDiv = container.createDiv({ cls: 'onedrive-conflict-diff-error' });
+		} catch {
+			const errorDiv = container.createDiv({ cls: 'onedrive-sync-conflict-diff-error' });
 			errorDiv.createEl('em', { text: 'Could not load diff' });
 		}
 	}
@@ -235,143 +243,4 @@ export class ConflictView extends ItemView {
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
-	/**
-	 * Inject scoped styles into the view container
-	 */
-	private addStyles(container: HTMLElement): void {
-		// Only add once
-		if (container.querySelector('style[data-onedrive-conflict]')) return;
-
-		const style = document.createElement('style');
-		style.setAttribute('data-onedrive-conflict', 'true');
-		style.textContent = `
-			.onedrive-conflict-header {
-				padding: 12px 16px;
-				border-bottom: 1px solid var(--background-modifier-border);
-			}
-			.onedrive-conflict-header h4 {
-				margin: 0 0 4px 0;
-			}
-			.onedrive-conflict-subtitle {
-				color: var(--text-muted);
-				font-size: 0.9em;
-				margin: 0 0 8px 0;
-			}
-			.onedrive-conflict-empty {
-				padding: 32px 16px;
-				text-align: center;
-			}
-			.onedrive-conflict-empty-text {
-				color: var(--text-muted);
-			}
-			.onedrive-conflict-bulk-actions {
-				display: flex;
-				gap: 8px;
-				margin-top: 8px;
-			}
-			.onedrive-conflict-list {
-				padding: 8px 16px;
-			}
-			.onedrive-conflict-card {
-				border: 1px solid var(--background-modifier-border);
-				border-radius: 8px;
-				padding: 12px;
-				margin-bottom: 12px;
-				background: var(--background-secondary);
-			}
-			.onedrive-conflict-file-header {
-				display: flex;
-				align-items: center;
-				gap: 6px;
-				margin-bottom: 8px;
-			}
-			.onedrive-conflict-file-path {
-				font-weight: 600;
-				font-size: 0.95em;
-				word-break: break-all;
-			}
-			.onedrive-conflict-meta {
-				display: flex;
-				gap: 16px;
-				margin-bottom: 8px;
-				font-size: 0.85em;
-			}
-			.onedrive-conflict-meta-side {
-				display: flex;
-				flex-direction: column;
-				gap: 2px;
-				color: var(--text-muted);
-			}
-			.onedrive-conflict-meta-side strong {
-				color: var(--text-normal);
-			}
-			.onedrive-conflict-diff {
-				margin: 8px 0;
-				max-height: 300px;
-				overflow-y: auto;
-				border: 1px solid var(--background-modifier-border);
-				border-radius: 4px;
-				background: var(--background-primary);
-			}
-			.onedrive-conflict-diff pre {
-				margin: 0;
-				padding: 8px;
-				font-size: 0.82em;
-				line-height: 1.5;
-				white-space: pre-wrap;
-				word-wrap: break-word;
-			}
-			.onedrive-diff-added {
-				background: var(--background-modifier-success);
-				color: var(--text-success);
-				display: block;
-			}
-			.onedrive-diff-removed {
-				background: var(--background-modifier-error);
-				color: var(--text-error);
-				display: block;
-			}
-			.onedrive-diff-unchanged {
-				color: var(--text-muted);
-				display: block;
-			}
-			.onedrive-conflict-binary {
-				padding: 8px;
-				color: var(--text-muted);
-				font-size: 0.9em;
-			}
-			.onedrive-conflict-actions {
-				display: flex;
-				gap: 8px;
-				margin-top: 8px;
-				flex-wrap: wrap;
-			}
-			.onedrive-conflict-btn {
-				padding: 4px 12px;
-				border-radius: 4px;
-				font-size: 0.85em;
-				cursor: pointer;
-				border: 1px solid var(--background-modifier-border);
-				background: var(--interactive-normal);
-				color: var(--text-normal);
-			}
-			.onedrive-conflict-btn:hover {
-				background: var(--interactive-hover);
-			}
-			.onedrive-conflict-btn-current {
-				border-color: var(--interactive-accent);
-			}
-			.onedrive-conflict-btn-incoming {
-				border-color: var(--text-success);
-			}
-			.onedrive-conflict-btn-both {
-				border-color: var(--text-muted);
-			}
-			.onedrive-conflict-diff-error {
-				padding: 8px;
-				color: var(--text-muted);
-			}
-		`;
-		container.appendChild(style);
-	}
 }
