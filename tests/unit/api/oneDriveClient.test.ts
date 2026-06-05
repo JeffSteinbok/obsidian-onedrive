@@ -105,6 +105,32 @@ describe('OneDriveClient', () => {
 			const encoded = encodePathForGraph('nested/path');
 			expect(client.buildEndpoint('/nested/path/')).toBe(`/me/drive/special/approot:/${encoded}`);
 		});
+
+		// Shared drive with relative path (vault deeper in shared folder)
+		it('prepends relativePathInShared for shared drive endpoints', () => {
+			client.setRemoteDrive('drive-123', 'item-456', 'Shared', 'Vaults/MyVault');
+			const encoded = encodePathForGraph('Vaults/MyVault/notes/test.md');
+			expect(client.buildEndpoint('notes/test.md')).toBe(`/drives/drive-123/items/item-456:/${encoded}`);
+		});
+
+		it('prepends relativePathInShared for shared drive root with suffix', () => {
+			client.setRemoteDrive('drive-123', 'item-456', 'Shared', 'Vaults/MyVault');
+			const encoded = encodePathForGraph('Vaults/MyVault');
+			expect(client.buildEndpoint('', 'children')).toBe(`/drives/drive-123/items/item-456:/${encoded}:/children`);
+		});
+
+		it('does not prepend relativePathInShared when it is empty', () => {
+			client.setRemoteDrive('drive-123', 'item-456', 'Shared', '');
+			expect(client.buildEndpoint('')).toBe('/drives/drive-123/items/item-456');
+			const encoded = encodePathForGraph('notes/test.md');
+			expect(client.buildEndpoint('notes/test.md')).toBe(`/drives/drive-123/items/item-456:/${encoded}`);
+		});
+
+		it('prepends relativePathInShared with suffix for nested path', () => {
+			client.setRemoteDrive('drive-123', 'item-456', 'Shared', 'Vaults/MyVault');
+			const encoded = encodePathForGraph('Vaults/MyVault/notes/test.md');
+			expect(client.buildEndpoint('notes/test.md', 'content')).toBe(`/drives/drive-123/items/item-456:/${encoded}:/content`);
+		});
 	});
 
 	describe('getItemEndpoint', () => {
@@ -395,6 +421,42 @@ describe('OneDriveClient', () => {
 
 			await expect(client.getDelta('https://delta.example/token')).rejects.toBeInstanceOf(OneDriveError);
 			await expect(client.getDelta('https://delta.example/token')).rejects.toThrow('Failed to get delta: network down');
+		});
+
+		// Shared drive with vault nested inside the shared folder
+		it('scopes shared-drive delta to vault subfolder when relativePathInShared is set', async () => {
+			client.setRemoteDrive('drive-123', 'item-456', 'Shared', 'Vaults/MyVault');
+			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });
+
+			await client.getDelta();
+			const encoded = encodePathForGraph('Vaults/MyVault');
+			expect(mockClient.api).toHaveBeenCalledWith(`/drives/drive-123/items/item-456:/${encoded}:/delta`);
+		});
+
+		it('prepends relativePathInShared to subPath for shared-drive delta', async () => {
+			client.setRemoteDrive('drive-123', 'item-456', 'Shared', 'Vaults/MyVault');
+			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });
+
+			await client.getDelta(undefined, '', '.obsidian');
+			const encoded = encodePathForGraph('Vaults/MyVault/.obsidian');
+			expect(mockClient.api).toHaveBeenCalledWith(`/drives/drive-123/items/item-456:/${encoded}:/delta`);
+		});
+
+		it('uses subPath alone for shared-drive delta when relativePathInShared is empty', async () => {
+			client.setRemoteDrive('drive-123', 'item-456', 'Shared', '');
+			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });
+
+			await client.getDelta(undefined, '', '.obsidian');
+			const encoded = encodePathForGraph('.obsidian');
+			expect(mockClient.api).toHaveBeenCalledWith(`/drives/drive-123/items/item-456:/${encoded}:/delta`);
+		});
+
+		it('uses root delta for shared-drive when both relativePath and subPath are empty', async () => {
+			client.setRemoteDrive('drive-123', 'item-456', 'Shared', '');
+			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });
+
+			await client.getDelta();
+			expect(mockClient.api).toHaveBeenCalledWith('/drives/drive-123/items/item-456/delta');
 		});
 	});
 

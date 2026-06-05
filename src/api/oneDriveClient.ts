@@ -33,6 +33,11 @@ export class OneDriveClient {
 	private remoteDriveId?: string;
 	private remoteItemId?: string;
 	private remoteRootName?: string;
+	// Relative path from the shared root to the actual vault folder.
+	// Empty when the vault IS the shared root (e.g. test2).
+	// Example: "ObsidianVaults/JeffBrain" when shared root is "Jeff Documents"
+	// and vault is at "Jeff Documents/ObsidianVaults/JeffBrain".
+	private relativePathInShared = '';
 
 	constructor(authProvider: OneDriveAuthProvider, accessMode: OneDriveAccessMode = OneDriveAccessMode.APP_FOLDER) {
 		this.authProvider = authProvider;
@@ -44,13 +49,20 @@ export class OneDriveClient {
 	}
 
 	/**
-	 * Configure the client for a shared/mounted folder on a different drive
+	 * Configure the client for a shared/mounted folder on a different drive.
+	 *
+	 * @param driveId  - The remote drive ID (owner's drive)
+	 * @param itemId   - The item ID of the shared root folder on that drive
+	 * @param rootName - Display name of the shared root folder
+	 * @param relativePath - Path from the shared root to the vault folder
+	 *                       (empty string when the vault IS the shared root)
 	 */
-	setRemoteDrive(driveId: string, itemId: string, rootName: string): void {
+	setRemoteDrive(driveId: string, itemId: string, rootName: string, relativePath = ''): void {
 		this.remoteDriveId = driveId;
 		this.remoteItemId = itemId;
 		this.remoteRootName = rootName;
-		logger.info(`Configured shared drive: driveId=${driveId}, itemId=${itemId}, rootName=${rootName}`);
+		this.relativePathInShared = relativePath.replace(/^\/+|\/+$/g, '');
+		logger.info(`Configured shared drive: driveId=${driveId}, itemId=${itemId}, rootName=${rootName}, relativePath=${this.relativePathInShared || '(root)'}`);
 	}
 
 	/**
@@ -71,12 +83,19 @@ export class OneDriveClient {
 	buildEndpoint(rawPath: string, suffix?: string): string {
 		// Normalize: strip leading/trailing slashes
 		const cleanPath = rawPath.replace(/^\/+|\/+$/g, '');
-		const encodedPath = cleanPath ? encodePathForGraph(cleanPath) : '';
 
 		if (this.isSharedDrive()) {
 			const base = `/drives/${this.remoteDriveId}/items/${this.remoteItemId}`;
+			// Prepend the relative path from shared root to vault folder
+			// e.g. if shared root is "Jeff Documents" and vault is at
+			// "Jeff Documents/ObsidianVaults/JeffBrain", relative is
+			// "ObsidianVaults/JeffBrain"
+			const fullPath = this.relativePathInShared
+				? (cleanPath ? `${this.relativePathInShared}/${cleanPath}` : this.relativePathInShared)
+				: cleanPath;
+			const encodedPath = fullPath ? encodePathForGraph(fullPath) : '';
 			if (!encodedPath) {
-				// Root of shared folder
+				// Root of vault (which IS the shared root)
 				return suffix ? `${base}/${suffix}` : base;
 			}
 			// Nested path within shared folder
@@ -84,6 +103,8 @@ export class OneDriveClient {
 				? `${base}:/${encodedPath}:/${suffix}`
 				: `${base}:/${encodedPath}`;
 		}
+
+		const encodedPath = cleanPath ? encodePathForGraph(cleanPath) : '';
 
 		if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
 			const base = '/me/drive/special/approot';
@@ -410,8 +431,14 @@ export class OneDriveClient {
 				// Use stored delta link for incremental changes
 				nextUrl = deltaLink;
 			} else if (this.isSharedDrive()) {
-				if (cleanSubPath) {
-					const encoded = encodePathForGraph(cleanSubPath);
+				// For shared drives, prepend the relative path from the shared
+				// root to the vault folder (empty when vault IS the shared root)
+				const relPrefix = this.relativePathInShared;
+				const fullSub = relPrefix
+					? (cleanSubPath ? `${relPrefix}/${cleanSubPath}` : relPrefix)
+					: cleanSubPath;
+				if (fullSub) {
+					const encoded = encodePathForGraph(fullSub);
 					nextUrl = `/drives/${this.remoteDriveId}/items/${this.remoteItemId}:/${encoded}:/delta`;
 				} else {
 					nextUrl = `/drives/${this.remoteDriveId}/items/${this.remoteItemId}/delta`;

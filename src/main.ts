@@ -276,10 +276,16 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.settings.remoteItemId &&
 				this.settings.remoteRootName
 			) {
+				// Compute the relative path from the shared root to the vault.
+				// e.g. remotePath="/Jeff Documents/ObsidianVaults/JeffBrain",
+				//      remoteRootName="Jeff Documents"
+				//      → relativePathInShared="ObsidianVaults/JeffBrain"
+				const relativePathInShared = this.getRelativePathInShared();
 				this.oneDriveClient.setRemoteDrive(
 					this.settings.remoteDriveId,
 					this.settings.remoteItemId,
-					this.settings.remoteRootName
+					this.settings.remoteRootName,
+					relativePathInShared
 				);
 			}
 
@@ -313,9 +319,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 			// For shared drives, upload paths are relative to the shared folder (no prefix needed).
 			// For non-shared, prepend the remote path.
 			const remoteRoot = isShared ? '' : this.settings.remotePath || ONEDRIVE_PATHS.APP_FOLDER;
-			// For path stripping of delta responses, use the actual path on the remote drive
+			// For path stripping of delta responses, use the FULL path on the
+			// remote drive down to the vault folder — not just the shared root.
+			// e.g. "/Documents/ObsidianVaults/JeffBrain" not just "/Documents"
 			const remoteRootOnDrive = isShared
-				? this.settings.remoteRootPath || `/${this.settings.remoteRootName}`
+				? this.getFullRemoteDrivePath()
 				: undefined;
 
 			this.syncEngine = new SyncEngine(
@@ -594,6 +602,43 @@ export default class OneDriveSyncPlugin extends Plugin {
 			sharedItemId,
 			relativePathInShared
 		);
+	}
+
+	/**
+	 * Compute the relative path from the shared root to the vault folder.
+	 * e.g. remotePath="/Jeff Documents/ObsidianVaults/JeffBrain",
+	 *      remoteRootName="Jeff Documents"
+	 *      → "ObsidianVaults/JeffBrain"
+	 * Returns "" when the vault IS the shared root.
+	 */
+	private getRelativePathInShared(): string {
+		const remotePath = this.settings.remotePath || '';
+		const rootName = this.settings.remoteRootName || '';
+		if (!remotePath || !rootName) return '';
+
+		// remotePath looks like "/Jeff Documents/ObsidianVaults/JeffBrain"
+		// Strip the leading "/{rootName}" prefix to get the relative part
+		const prefix = `/${rootName}`;
+		const normalized = remotePath.startsWith(prefix)
+			? remotePath.substring(prefix.length)
+			: remotePath;
+		return normalized.replace(/^\/+|\/+$/g, '');
+	}
+
+	/**
+	 * Get the full path on the remote drive down to the vault folder.
+	 * Used for delta path stripping — must include the path to the shared
+	 * root (remoteRootPath) PLUS the relative path within it.
+	 *
+	 * e.g. remoteRootPath="/Documents", relative="ObsidianVaults/JeffBrain"
+	 *      → "/Documents/ObsidianVaults/JeffBrain"
+	 */
+	private getFullRemoteDrivePath(): string {
+		const basePath = this.settings.remoteRootPath || `/${this.settings.remoteRootName || ''}`;
+		const relative = this.getRelativePathInShared();
+		if (!relative) return basePath;
+		const cleanBase = basePath.replace(/\/+$/g, '');
+		return `${cleanBase}/${relative}`;
 	}
 
 	/**
