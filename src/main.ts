@@ -5,7 +5,7 @@
 
 import { Plugin, Notice, TFile } from 'obsidian';
 import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } from './types';
-import { DEFAULT_ONEDRIVE_CLIENT_ID, ONEDRIVE_PATHS } from './constants';
+import { DEFAULT_ONEDRIVE_CLIENT_ID } from './constants';
 import { logger } from './utils/logger';
 import { shouldSyncVaultPath } from './utils/pathUtils';
 import {
