@@ -11,7 +11,7 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Development](docs/DEVELOPMENT.md)
 
 > [!TIP]
-> This pairs well with the Carapace Obsidian toolset when integrating these vaults with OpenClaw, so synced vault content can plug directly into your broader tool-driven workflow.
+> **🦞 OpenClaw Users** - This pairs well with the [🦞🐚📝 Carapace Obsidian](https://github.com/JeffSteinbok/carapace-obsidian) toolset when integrating these vaults with OpenClaw, so synced vault content can plug directly into your broader tool-driven workflow.
 
 > [!IMPORTANT]
 > While I do work for Microsoft and on the OneDrive team, this plugin is in no way an official Microsoft plugin. Just a thing I needed and wanted to share. If you like it, give me a ⭐. As a friend of mine says, "I'm only in it for the subs and likes.".
