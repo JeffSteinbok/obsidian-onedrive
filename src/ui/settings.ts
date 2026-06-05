@@ -49,7 +49,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('OneDrive Sync')
 			.setDesc('by Jeff Steinbok — v' + (this.plugin.manifest.version || '') + ' — GitHub')
 			.setHeading();
 
@@ -102,7 +101,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			statusSetting.addButton((button) =>
 				button
 					.setButtonText('Disconnect')
-					.setWarning()
 					.onClick(async () => {
 						this.plugin.disconnect();
 						new Notice('Disconnected from OneDrive');
@@ -331,7 +329,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addButton((button) =>
 				button
 					.setButtonText('Reset sync token')
-					.setWarning()
 					.onClick(async () => {
 						await this.plugin.resetSyncToken();
 					})
@@ -347,7 +344,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addButton((button) =>
 				button
 					.setButtonText('Reconcile from cloud')
-					.setWarning()
 					.onClick(async () => {
 						await this.plugin.reconcileFromCloud();
 					})
