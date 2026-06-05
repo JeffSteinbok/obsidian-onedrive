@@ -15,7 +15,7 @@ function getDecoratedMethod(descriptor: PropertyDescriptor): DecoratedAsyncMetho
 	return descriptor.value as DecoratedAsyncMethod;
 }
 
-const timerApi = typeof window !== 'undefined' ? window : globalThis;
+const timerApi = typeof window !== 'undefined' ? window : globalThis as typeof window;
 
 export interface RetryOptions {
 	maxAttempts?: number;

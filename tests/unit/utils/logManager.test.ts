@@ -58,6 +58,7 @@ line two
 				workspace,
 				getRecentLogs: () => [],
 				notify,
+				configDir: '.obsidian',
 			});
 
 			expect(notify).toHaveBeenCalledWith('No sync logs available yet.');
@@ -66,7 +67,7 @@ line two
 
 		it('creates a new logs note and opens it', async () => {
 			const createdFile = new TFile();
-			createdFile.path = getSyncLogsNotePath();
+			createdFile.path = getSyncLogsNotePath('.obsidian');
 			const openFile = vi.fn().mockResolvedValue(undefined);
 			const vault = {
 				adapter: {
@@ -87,10 +88,11 @@ line two
 				getRecentLogs: () => ['[line]'],
 				notify: vi.fn(),
 				now: new Date('2026-06-04T12:34:56.000Z'),
+				configDir: '.obsidian',
 			});
 
 			expect(vault.create).toHaveBeenCalledWith(
-				getSyncLogsNotePath(),
+				getSyncLogsNotePath('.obsidian'),
 				`# OneDrive Sync Logs
 
 Last updated: 2026-06-04T12:34:56.000Z
@@ -105,7 +107,7 @@ Last updated: 2026-06-04T12:34:56.000Z
 
 		it('updates an existing logs note', async () => {
 			const existingFile = new TFile();
-			existingFile.path = getSyncLogsNotePath();
+			existingFile.path = getSyncLogsNotePath('.obsidian');
 			const openFile = vi.fn().mockResolvedValue(undefined);
 			const vault = {
 				adapter: {} as any,
@@ -123,6 +125,7 @@ Last updated: 2026-06-04T12:34:56.000Z
 				getRecentLogs: () => ['[line]'],
 				notify: vi.fn(),
 				now: new Date('2026-06-04T12:34:56.000Z'),
+				configDir: '.obsidian',
 			});
 
 			expect(vault.modify).toHaveBeenCalledWith(
@@ -137,7 +140,7 @@ Last updated: 2026-06-04T12:34:56.000Z
 			const notify = vi.fn();
 			const vault = {
 				adapter: {} as any,
-				getAbstractFileByPath: vi.fn().mockReturnValue({ path: getSyncLogsNotePath() }),
+				getAbstractFileByPath: vi.fn().mockReturnValue({ path: getSyncLogsNotePath('.obsidian') }),
 				modify: vi.fn(),
 				create: vi.fn(),
 			};
@@ -150,10 +153,11 @@ Last updated: 2026-06-04T12:34:56.000Z
 				workspace,
 				getRecentLogs: () => ['[line]'],
 				notify,
+				configDir: '.obsidian',
 			});
 
 			expect(notify).toHaveBeenCalledWith(
-				`Cannot write logs to ${getSyncLogsNotePath()} because that path is a folder.`
+				`Cannot write logs to ${getSyncLogsNotePath('.obsidian')} because that path is a folder.`
 			);
 			expect(vault.modify).not.toHaveBeenCalled();
 			expect(vault.create).not.toHaveBeenCalled();

@@ -23,7 +23,7 @@ describe('pluginListGuard', () => {
 		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', '.obsidian', log);
 
 		expect(adapter.write).toHaveBeenCalledWith(
-			getCommunityPluginsListPath(),
+			getCommunityPluginsListPath('.obsidian'),
 			JSON.stringify(['onedrive-sync'], null, 2)
 		);
 		expect(log.info).toHaveBeenCalledWith(
@@ -62,7 +62,7 @@ describe('pluginListGuard', () => {
 		await ensureSelfInCommunityPluginsList(adapter, 'onedrive-sync', '.obsidian', log);
 
 		expect(adapter.write).toHaveBeenCalledWith(
-			getCommunityPluginsListPath(),
+			getCommunityPluginsListPath('.obsidian'),
 			JSON.stringify(['calendar', 'onedrive-sync'], null, 2)
 		);
 	});
@@ -84,7 +84,7 @@ describe('pluginListGuard', () => {
 			'community-plugins.json is malformed; rewriting with just onedrive-sync'
 		);
 		expect(adapter.write).toHaveBeenCalledWith(
-			getCommunityPluginsListPath(),
+			getCommunityPluginsListPath('.obsidian'),
 			JSON.stringify(['onedrive-sync'], null, 2)
 		);
 	});

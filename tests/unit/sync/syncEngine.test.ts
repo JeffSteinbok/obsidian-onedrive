@@ -170,6 +170,7 @@ describe('SyncEngine', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager as any,
+			'.obsidian',
 			'/remote/root'
 		);
 	});
@@ -317,10 +318,11 @@ describe('SyncEngine', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager as any,
+			'.obsidian',
 			'/remote/root',
 			undefined,
 			undefined,
-			(path) => shouldSyncVaultPath(path, true, false, mockApp.vault.configDir)
+			(path) => shouldSyncVaultPath(path, true, false, '.obsidian')
 		);
 		const downloadedFile = makeTFile('.obsidian/plugins/calendar/manifest.json', 10, Date.now());
 		mockClient.getDelta.mockResolvedValue({
@@ -470,6 +472,7 @@ describe('SyncEngine', () => {
 			stateManager,
 			new ConflictResolver(ConflictResolutionStrategy.CREATE_DUPLICATE),
 			mockEventManager as any,
+			'.obsidian',
 			'/remote/root'
 		);
 
@@ -591,10 +594,11 @@ describe('SyncEngine', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager as any,
+			'.obsidian',
 			'/remote/root',
 			undefined,
 			undefined,
-			(path) => shouldSyncVaultPath(path, true, false, mockApp.vault.configDir)
+			(path) => shouldSyncVaultPath(path, true, false, '.obsidian')
 		);
 		mockClient.getDelta
 			.mockResolvedValueOnce({
@@ -638,11 +642,12 @@ describe('SyncEngine', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager as any,
+			'.obsidian',
 			'/remote/root',
 			undefined,
 			undefined,
 			// syncPluginManifests=false, syncAppSettings=true
-			(path) => shouldSyncVaultPath(path, false, true, mockApp.vault.configDir)
+			(path) => shouldSyncVaultPath(path, false, true, '.obsidian')
 		);
 		mockClient.getDelta
 			.mockResolvedValueOnce({ items: [], deltaLink: 'main-delta-new' })
@@ -875,6 +880,7 @@ describe('SyncEngine large-delete circuit breaker', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager,
+			'.obsidian',
 			'/remote/root',
 			undefined,
 			undefined,
@@ -1023,6 +1029,7 @@ describe('SyncEngine first-sync local vault enumeration', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager,
+			'.obsidian',
 			'/remote/root'
 		);
 	}
@@ -1144,6 +1151,7 @@ describe('SyncEngine progress reporting', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager,
+			'.obsidian',
 			'/remote/root',
 			undefined,
 			undefined,
@@ -1232,6 +1240,7 @@ describe('SyncEngine remote-delete via id-only delta entries', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager,
+			'.obsidian',
 			'/remote/root'
 		);
 
@@ -1334,6 +1343,7 @@ describe('SyncEngine remote folder-delete expansion', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager,
+			'.obsidian',
 			'/remote/root'
 		);
 
@@ -1411,6 +1421,7 @@ describe('SyncEngine reconcile from cloud', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager,
+			'.obsidian',
 			'/remote/root'
 		);
 
@@ -1457,10 +1468,11 @@ describe('SyncEngine reconcile from cloud', () => {
 			stateManager,
 			conflictResolver,
 			mockEventManager,
+			'.obsidian',
 			'/remote/root',
 			undefined,
 			undefined,
-			(p) => shouldSyncVaultPath(p, false, false, mockApp.vault.configDir),
+			(p) => shouldSyncVaultPath(p, false, false, '.obsidian'),
 			() => 5, // threshold 5
 			handler
 		);

@@ -11,8 +11,8 @@ import { createConflictFileName, isTextExtension, normalizePath } from '../utils
 import { EventManager } from './eventManager';
 import { SyncStateManager } from './syncState';
 
-function getConflictsDir(configDir = '.obsidian'): string {
-	const normalizedConfigDir = normalizePath(configDir).replace(/\/+$/g, '') || '.obsidian';
+function getConflictsDir(configDir: string): string {
+	const normalizedConfigDir = normalizePath(configDir).replace(/\/+$/g, '');
 	return `${normalizedConfigDir}/plugins/onedrive-sync/conflicts`;
 }
 
@@ -23,7 +23,7 @@ export class ConflictQueue {
 		private app: App,
 		private stateManager: SyncStateManager,
 		private eventManager: EventManager,
-		private configDir = '.obsidian'
+		private configDir: string
 	) {}
 
 	/**

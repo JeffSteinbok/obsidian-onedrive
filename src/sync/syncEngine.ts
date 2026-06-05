@@ -50,14 +50,14 @@ export class SyncEngine {
 		private stateManager: SyncStateManager,
 		private conflictResolver: ConflictResolver,
 		private eventManager: EventManager,
+		private configDir: string,
 		private remoteRoot: string = '',
 		remoteRootOnDrive?: string,
 		private conflictQueue?: ConflictQueue,
-		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path),
+		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path, false, false, configDir),
 		private getLargeDeleteThreshold: () => number = () => 0,
 		private largeDeleteWarningHandler?: LargeDeleteWarningHandler,
 		private onProgress?: (message: string | undefined) => void,
-		private configDir = '.obsidian'
 	) {
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -923,12 +923,10 @@ export class SyncEngine {
 		while (current && current !== '' && current !== '/') {
 			const folder = this.app.vault.getAbstractFileByPath(current);
 			if (!folder) return;
-			// Only TFolder has `children`. Bail if this is a file or untyped.
-			const children = (folder as unknown as { children?: unknown[] }).children;
-			if (!Array.isArray(children)) return;
-			if (children.length > 0) return;
+			if (!(folder instanceof TFolder)) return;
+			if (folder.children.length > 0) return;
 			try {
-				await this.app.fileManager.trashFile(folder as TFolder);
+				await this.app.fileManager.trashFile(folder);
 				logger.debug(`Pruned empty folder ${current}`);
 			} catch (error) {
 				logger.warn(`Failed to prune empty folder ${current}:`, error);

@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- Logger is the console abstraction layer */
 /**
  * Structured logging utility
  * Respects debug mode settings and provides consistent log formatting

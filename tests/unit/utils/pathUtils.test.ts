@@ -266,12 +266,12 @@ describe('pathUtils', () => {
 
 	describe('shouldSyncVaultPath', () => {
 		it('should sync non-.obsidian files by default', () => {
-			expect(shouldSyncVaultPath('notes/file.md')).toBe(true);
+			expect(shouldSyncVaultPath('notes/file.md', false, false, '.obsidian')).toBe(true);
 		});
 
 		it('should exclude .obsidian files by default', () => {
-			expect(shouldSyncVaultPath('.obsidian/workspace.json')).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/workspace.json', false, false, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/manifest.json', false, false, '.obsidian')).toBe(false);
 		});
 
 		it('respects a custom vault config directory', () => {
@@ -320,25 +320,25 @@ describe('pathUtils', () => {
 		});
 
 		it('always excludes the per-device debug log folder from sync', () => {
-			expect(shouldSyncVaultPath('_OneDriveSyncLogs')).toBe(false);
-			expect(shouldSyncVaultPath('_OneDriveSyncLogs/2026-06-04.md')).toBe(false);
-			expect(shouldSyncVaultPath('_OneDriveSyncLogs/sub/dir/note.md', true, true)).toBe(false);
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs', false, false, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs/2026-06-04.md', false, false, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs/sub/dir/note.md', true, true, '.obsidian')).toBe(false);
 			// Files that just look similar should still sync — exclusion is
 			// folder-scoped, not name-scoped, so moving a log out of the folder
 			// makes it syncable again.
-			expect(shouldSyncVaultPath('_OneDriveSyncLogs-2026-06-04.md')).toBe(true);
-			expect(shouldSyncVaultPath('_OneDriveSyncLogsBackup/foo.md')).toBe(true);
-			expect(shouldSyncVaultPath('notes/_OneDriveSyncLogs/x.md')).toBe(true);
+			expect(shouldSyncVaultPath('_OneDriveSyncLogs-2026-06-04.md', false, false, '.obsidian')).toBe(true);
+			expect(shouldSyncVaultPath('_OneDriveSyncLogsBackup/foo.md', false, false, '.obsidian')).toBe(true);
+			expect(shouldSyncVaultPath('notes/_OneDriveSyncLogs/x.md', false, false, '.obsidian')).toBe(true);
 		});
 
 		it('never syncs the OneDrive plugin\'s own folder, even with plugin sync enabled', () => {
-			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync', false, false, '.obsidian')).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/main.js', true, true, '.obsidian')).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/manifest.json', true, true, '.obsidian')).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/data.json', true, true, '.obsidian')).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/styles.css', true, true, '.obsidian')).toBe(false);
 			// Old plugin folder should also be excluded (migration safety)
-			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive', false, false, '.obsidian')).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive/main.js', true, true, '.obsidian')).toBe(false);
 			// Other plugins are unaffected.
 			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true, false, '.obsidian')).toBe(true);

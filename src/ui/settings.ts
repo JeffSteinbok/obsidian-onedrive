@@ -153,9 +153,10 @@ export class OneDriveSettingTab extends PluginSettingTab {
 								this.app,
 								(path, sharedDriveId?, sharedItemId?, relPath?) =>
 									this.plugin.listFoldersForPicker(path, sharedDriveId, sharedItemId, relPath),
-								async (selection: FolderSelection) => {
-									await this.plugin.onRemoteFolderChanged(selection);
-									this.display();
+								(selection: FolderSelection) => {
+									void this.plugin.onRemoteFolderChanged(selection).then(() => {
+										this.display();
+									});
 								}
 							);
 							modal.open();

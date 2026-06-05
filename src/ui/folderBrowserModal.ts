@@ -61,7 +61,7 @@ export class FolderBrowserModal extends Modal {
 			cls: 'folder-browser-body onedrive-sync-folder-browser-body',
 		});
 
-		this.loadFolder();
+		void this.loadFolder();
 	}
 
 	onClose() {
@@ -103,7 +103,7 @@ export class FolderBrowserModal extends Modal {
 			this.sharedDriveId = undefined;
 			this.sharedItemId = undefined;
 			this.sharedAtDepth = undefined;
-			this.loadFolder();
+			void this.loadFolder();
 		};
 
 		for (let i = 0; i < this.currentPath.length; i++) {
@@ -119,7 +119,7 @@ export class FolderBrowserModal extends Modal {
 						this.sharedItemId = undefined;
 						this.sharedAtDepth = undefined;
 					}
-					this.loadFolder();
+					void this.loadFolder();
 				};
 			}
 		}
@@ -201,7 +201,7 @@ export class FolderBrowserModal extends Modal {
 						this.sharedAtDepth = this.currentPath.length;
 					}
 					this.currentPath.push(name);
-					this.loadFolder();
+					void this.loadFolder();
 				};
 			}
 		} catch (error) {

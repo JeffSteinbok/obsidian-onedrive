@@ -44,7 +44,7 @@ import { LargeDeleteWarningModal } from './ui/modals';
 
 import { LargeDeleteWarningInfo, LargeDeleteDecision } from './types';
 
-const timerApi = typeof window !== 'undefined' ? window : globalThis;
+const timerApi = typeof window !== 'undefined' ? window : globalThis as typeof window;
 
 function isCommunityPluginsAdapter(adapter: unknown): adapter is CommunityPluginsAdapter {
 	if (!adapter || typeof adapter !== 'object') {
@@ -176,7 +176,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			id: 'show-conflicts',
 			name: 'Show sync conflicts',
 			callback: () => {
-				this.activateConflictView();
+				void this.activateConflictView();
 			},
 		});
 
@@ -325,6 +325,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.syncStateManager,
 				this.conflictResolver,
 				this.eventManager,
+				this.app.vault.configDir,
 				remoteRoot,
 				remoteRootOnDrive,
 				this.conflictQueue,
@@ -338,7 +339,6 @@ export default class OneDriveSyncPlugin extends Plugin {
 				() => this.settings.largeDeleteThreshold ?? 0,
 				(info) => this.handleLargeDeleteWarning(info),
 				(msg) => this.statusBarManager?.setProgress(msg),
-				this.app.vault.configDir
 			);
 
 			// Get user info to display in settings
@@ -661,7 +661,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private async activateConflictView(): Promise<void> {
 		const existing = this.app.workspace.getLeavesOfType(CONFLICT_VIEW_TYPE);
 		if (existing.length > 0) {
-			this.app.workspace.revealLeaf(existing[0]);
+			void this.app.workspace.revealLeaf(existing[0]);
 			// Re-render in case queue changed
 			const view = existing[0].view;
 			if (view instanceof ConflictView) {
@@ -673,7 +673,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		const leaf = this.app.workspace.getRightLeaf(false);
 		if (leaf) {
 			await leaf.setViewState({ type: CONFLICT_VIEW_TYPE, active: true });
-			this.app.workspace.revealLeaf(leaf);
+			void this.app.workspace.revealLeaf(leaf);
 		}
 	}
 
@@ -773,7 +773,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 * Load settings from disk
 	 */
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<PluginSettings>);
 	}
 
 	/**

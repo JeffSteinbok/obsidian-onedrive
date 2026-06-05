@@ -393,7 +393,7 @@ export class OneDriveClient {
 	 *
 	 * @param deltaLink Stored delta cursor; if undefined the call starts a fresh stream.
 	 * @param remotePath Remote vault root path (Full Access mode only).
-	 * @param subPath Optional path under the vault root to scope the delta to (e.g. ".obsidian").
+	 * @param subPath Optional path under the vault root to scope the delta to (e.g. the config directory).
 	 *                When the scoped folder does not yet exist remotely the call returns an empty
 	 *                result so the first sync can proceed and later create it via upload.
 	 */

@@ -143,7 +143,7 @@ const LOG_NOTE_FOLDER = '_OneDriveSyncLogs/';
 
 function normalizeConfigDir(configDir: string): string {
 	const normalized = normalizePath(configDir).replace(/\/+$/g, '');
-	return normalized || '.obsidian';
+	return normalized;
 }
 
 function buildConfigPath(configDir: string, ...segments: string[]): string {
@@ -191,7 +191,7 @@ export function shouldSyncVaultPath(
 	path: string,
 	syncPluginManifests = false,
 	syncAppSettings = false,
-	configDir = '.obsidian'
+	configDir: string
 ): boolean {
 	const normalized = normalizePath(path);
 	const normalizedConfigDir = normalizeConfigDir(configDir);

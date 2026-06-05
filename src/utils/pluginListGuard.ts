@@ -5,8 +5,8 @@
 import { logger } from './logger';
 import { normalizePath } from './pathUtils';
 
-export function getCommunityPluginsListPath(configDir = '.obsidian'): string {
-	const normalizedConfigDir = normalizePath(configDir).replace(/\/+$/g, '') || '.obsidian';
+export function getCommunityPluginsListPath(configDir: string): string {
+	const normalizedConfigDir = normalizePath(configDir).replace(/\/+$/g, '');
 	return `${normalizedConfigDir}/community-plugins.json`;
 }
 
@@ -19,15 +19,13 @@ export interface CommunityPluginsAdapter {
 export async function ensureSelfInCommunityPluginsList(
 	adapter: CommunityPluginsAdapter,
 	pluginId: string,
-	configDirOrLog: string | Pick<typeof logger, 'warn' | 'info'> = '.obsidian',
+	configDir: string,
 	log: Pick<typeof logger, 'warn' | 'info'> = logger
 ): Promise<void> {
 	if (!pluginId) {
 		return;
 	}
 
-	const configDir = typeof configDirOrLog === 'string' ? configDirOrLog : '.obsidian';
-	const effectiveLog = typeof configDirOrLog === 'string' ? log : configDirOrLog;
 	const communityPluginsListPath = getCommunityPluginsListPath(configDir);
 
 	try {
@@ -40,7 +38,7 @@ export async function ensureSelfInCommunityPluginsList(
 					list = parsed.filter((item): item is string => typeof item === 'string');
 				}
 			} catch {
-				effectiveLog.warn(`community-plugins.json is malformed; rewriting with just ${pluginId}`);
+				log.warn(`community-plugins.json is malformed; rewriting with just ${pluginId}`);
 			}
 		}
 
@@ -50,8 +48,8 @@ export async function ensureSelfInCommunityPluginsList(
 
 		list.push(pluginId);
 		await adapter.write(communityPluginsListPath, JSON.stringify(list, null, 2));
-		effectiveLog.info(`Self-healed: added ${pluginId} back to community-plugins.json`);
+		log.info(`Self-healed: added ${pluginId} back to community-plugins.json`);
 	} catch (error) {
-		effectiveLog.warn('Failed to self-heal community-plugins.json:', error);
+		log.warn('Failed to self-heal community-plugins.json:', error);
 	}
 }

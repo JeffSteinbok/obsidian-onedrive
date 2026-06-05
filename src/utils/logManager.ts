@@ -5,8 +5,8 @@
 import { TFile } from 'obsidian';
 import { normalizePath } from './pathUtils';
 
-export function getSyncLogsNotePath(configDir = '.obsidian'): string {
-	const normalizedConfigDir = normalizePath(configDir).replace(/\/+$/g, '') || '.obsidian';
+export function getSyncLogsNotePath(configDir: string): string {
+	const normalizedConfigDir = normalizePath(configDir).replace(/\/+$/g, '');
 	return `${normalizedConfigDir}/plugins/onedrive-sync/OneDrive Sync Logs.md`;
 }
 
@@ -39,7 +39,7 @@ export interface VaultLogAdapter {
 export interface OpenLogsNoteParams {
 	vault: LogNoteVault;
 	workspace: LogNoteWorkspace;
-	configDir?: string;
+	configDir: string;
 	getRecentLogs(this: void): string[];
 	notify(this: void, message: string): void;
 	now?: Date;
@@ -73,7 +73,7 @@ ${lines.join('\n')}
 export async function openLogsNote({
 	vault,
 	workspace,
-	configDir = '.obsidian',
+	configDir,
 	getRecentLogs,
 	notify,
 	now = new Date(),

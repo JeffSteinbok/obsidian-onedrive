@@ -12,15 +12,15 @@ import { logger } from '../utils/logger';
 import { SYNC_CONFIG } from '../constants';
 import { shouldSyncVaultPath } from '../utils/pathUtils';
 
-const timerApi = typeof window !== 'undefined' ? window : globalThis;
+const timerApi = typeof window !== 'undefined' ? window : globalThis as typeof window;
 
 /**
  * Manages vault event listeners and sync scheduling
  */
 export class EventManager {
 	private eventRefs: EventRef[] = [];
-	private throttleTimer?: ReturnType<typeof globalThis.setTimeout>;
-	private syncTimer?: ReturnType<typeof globalThis.setInterval>;
+	private throttleTimer?: number;
+	private syncTimer?: number;
 	private isSyncing = false;
 	private dirtyFiles: Map<string, LocalChange> = new Map();
 	// Paths we wrote during sync — events for these are our own writes, not user edits
@@ -30,7 +30,7 @@ export class EventManager {
 		private app: App,
 		private onSyncTriggered: () => Promise<void>,
 		private stateManager: SyncStateManager,
-		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path)
+		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path, false, false, app.vault.configDir)
 	) {}
 
 	private shouldIgnoreEvent(path: string): boolean {

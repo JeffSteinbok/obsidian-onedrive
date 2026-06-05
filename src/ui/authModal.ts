@@ -5,7 +5,7 @@
 
 import { Modal, App, Setting } from 'obsidian';
 
-const timerApi = typeof window !== 'undefined' ? window : globalThis;
+const timerApi = typeof window !== 'undefined' ? window : globalThis as typeof window;
 
 export class DeviceCodeModal extends Modal {
 	private userCode: string;
@@ -66,7 +66,7 @@ export class DeviceCodeModal extends Modal {
 				button.setButtonText('Copy URL').onClick(() => {
 					void navigator.clipboard.writeText(this.verificationUri);
 					button.setButtonText('Copied!');
-					timerApi.setTimeout(() => button.setButtonText('Copy URL'), 2000);
+					timerApi.setTimeout(() => { button.setButtonText('Copy URL'); }, 2000);
 				})
 			);
 
@@ -78,7 +78,7 @@ export class DeviceCodeModal extends Modal {
 				button.setButtonText('Copy Code').onClick(() => {
 					void navigator.clipboard.writeText(this.userCode);
 					button.setButtonText('Copied!');
-					timerApi.setTimeout(() => button.setButtonText('Copy Code'), 2000);
+					timerApi.setTimeout(() => { button.setButtonText('Copy Code'); }, 2000);
 				})
 			);
 
