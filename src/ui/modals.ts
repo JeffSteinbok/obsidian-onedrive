@@ -290,7 +290,7 @@ export class LargeDeleteWarningModal extends Modal {
 				})
 			)
 			.addButton((b) =>
-				b.setButtonText('Proceed (this sync only)').setDestructive().onClick(() => {
+				b.setButtonText('Proceed (this sync only)').setWarning().onClick(() => {
 					this.decision = 'proceed';
 					this.close();
 				})

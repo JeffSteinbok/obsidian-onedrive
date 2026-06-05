@@ -2,8 +2,9 @@
 	font-size: 14px;
 	font-weight: normal;
 	color: var(--text-muted);
-	margin-top: 4px;
+	margin-top: -8px;
 	margin-bottom: 8px;
+	padding-left: 0;
 }
 
 .onedrive-sync-settings-help {

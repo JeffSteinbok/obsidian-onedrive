@@ -48,20 +48,10 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl).setName('OneDrive Sync Settings').setHeading();
-		const authorEl = containerEl.createDiv({
-			cls: 'setting-item-description onedrive-sync-settings-author',
-		});
-		const version = this.plugin.manifest.version || '';
-		const versionStr = version ? ` — v${version}` : '';
-		authorEl.appendText('by ');
-		authorEl.createEl('strong', { text: 'Jeff Steinbok' });
-		authorEl.appendText(`${versionStr} — `);
-		authorEl.createEl('a', {
-			text: 'GitHub',
-			href: 'https://github.com/jeffsteinbok/obsidian-onedrive',
-			attr: { target: '_blank' },
-		});
+		new Setting(containerEl)
+			.setName('OneDrive Sync')
+			.setDesc('by Jeff Steinbok — v' + (this.plugin.manifest.version || '') + ' — GitHub')
+			.setHeading();
 
 		// Sections in logical order
 		this.displayAuthSection(containerEl);
@@ -112,7 +102,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			statusSetting.addButton((button) =>
 				button
 					.setButtonText('Disconnect')
-					.setDestructive()
+					.setWarning()
 					.onClick(async () => {
 						this.plugin.disconnect();
 						new Notice('Disconnected from OneDrive');
@@ -341,7 +331,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addButton((button) =>
 				button
 					.setButtonText('Reset sync token')
-					.setDestructive()
+					.setWarning()
 					.onClick(async () => {
 						await this.plugin.resetSyncToken();
 					})
@@ -357,7 +347,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addButton((button) =>
 				button
 					.setButtonText('Reconcile from cloud')
-					.setDestructive()
+					.setWarning()
 					.onClick(async () => {
 						await this.plugin.reconcileFromCloud();
 					})
