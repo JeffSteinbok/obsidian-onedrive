@@ -11,7 +11,7 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Development](docs/DEVELOPMENT.md)
 
 > [!IMPORTANT]
-> While I do work for Microsoft and on the OneDrive team, this plugin is in no way an official Microsoft plugin. Just a thing I needed.
+> While I do work for Microsoft and on the OneDrive team, this plugin is in no way an official Microsoft plugin. Just a thing I needed and wanted to share. If you like it, give me a ⭐. As a friend of mine says, "I'm only in it for the subs and likes.".
 
 ## ✨ Features
 
