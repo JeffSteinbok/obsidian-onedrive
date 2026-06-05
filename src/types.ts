@@ -91,7 +91,12 @@ export interface OneDriveUser {
 export interface SyncState {
 	lastSyncTime: number; // Unix timestamp in milliseconds
 	fileStates: Map<string, FileState>;
+	folderStates: Map<string, string>; // OneDrive folder id → vault path. Needed
+	// so that folder-delete delta entries (which arrive with id only — no name,
+	// no parentReference) can be reverse-resolved to a path and expanded into
+	// per-file deletes for everything we know was beneath that folder.
 	deltaLink?: string; // OneDrive delta API cursor
+	obsidianDeltaLink?: string; // Separate delta cursor for .obsidian scope
 }
 
 export interface FileState {
@@ -134,6 +139,20 @@ export interface SyncOperation {
 	localState?: FileState;
 	remoteState?: FileState;
 }
+
+export interface LargeDeleteWarningInfo {
+	localDeleteCount: number; // files about to be deleted from the local vault (driven by remote)
+	remoteDeleteCount: number; // files about to be deleted from OneDrive (driven by local)
+	threshold: number;
+	sampleLocalDeletes: string[]; // up to 10 example paths
+	sampleRemoteDeletes: string[]; // up to 10 example paths
+}
+
+export type LargeDeleteDecision = 'proceed' | 'cancel' | 'disable';
+
+export type LargeDeleteWarningHandler = (
+	info: LargeDeleteWarningInfo
+) => Promise<LargeDeleteDecision>;
 
 export enum ConflictResolutionStrategy {
 	LAST_WRITE_WINS = 'last-write-wins',
@@ -199,7 +218,14 @@ export interface PluginSettings {
 	syncInterval: number; // Minutes (0 = manual only)
 	conflictResolution: ConflictResolutionStrategy;
 	startupSyncDelay: number; // Seconds (0 = disabled, 1, 10, 30)
-	syncState?: { lastSyncTime: number; fileStates: Array<[string, FileState]>; deltaLink?: string };
+	syncAppSettings: boolean; // Opt-in sync for Obsidian app settings (app.json, appearance.json, hotkeys.json)
+	syncPluginManifests: boolean; // Opt-in sync for selected Obsidian plugin manifest files and binaries
+	syncState?: {
+		lastSyncTime: number;
+		fileStates: Array<[string, FileState]>;
+		deltaLink?: string;
+		obsidianDeltaLink?: string;
+	};
 	conflictQueue?: PersistedConflictQueue;
 
 	// Advanced
@@ -209,6 +235,7 @@ export interface PluginSettings {
 	remoteRootName?: string; // Display name of the root folder on the remote drive
 	remoteRootPath?: string; // Full path of the folder on the remote drive (e.g. /Documents/ObsidianVaults/JeffBrain)
 	enableDebugLogging: boolean;
+	largeDeleteThreshold: number; // Warn if a sync would delete more than this many files (0 = disabled)
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -225,12 +252,15 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	syncInterval: 5, // Poll every 5 minutes
 	conflictResolution: ConflictResolutionStrategy.LAST_WRITE_WINS,
 	startupSyncDelay: 10, // 10 seconds default
+	syncAppSettings: false,
+	syncPluginManifests: false,
 	syncState: undefined,
 	conflictQueue: undefined,
 
 	// Advanced
 	remotePath: undefined, // Only used with Full Access mode
 	enableDebugLogging: false,
+	largeDeleteThreshold: 25,
 };
 
 // ============================================================================

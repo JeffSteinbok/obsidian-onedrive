@@ -139,6 +139,79 @@ export function stripGraphPrefix(path: string): string {
 	return result;
 }
 
+const SYNCABLE_OBSIDIAN_APP_SETTINGS = new Set([
+	'.obsidian/app.json',
+	'.obsidian/appearance.json',
+	'.obsidian/hotkeys.json',
+]);
+
+const SYNCABLE_OBSIDIAN_PLUGIN_MANIFESTS = new Set([
+	'.obsidian/community-plugins.json',
+	'.obsidian/core-plugins.json',
+]);
+
+function isInstalledPluginManifestPath(path: string): boolean {
+	return /^\.obsidian\/plugins\/[^/]+\/manifest\.json$/.test(path);
+}
+
+function isInstalledPluginBinaryPath(path: string): boolean {
+	return /^\.obsidian\/plugins\/[^/]+\/(main\.js|styles\.css)$/.test(path);
+}
+
+const LOG_NOTE_FOLDER = '_OneDriveSyncLogs/';
+const OWN_PLUGIN_FOLDER = '.obsidian/plugins/obsidian-onedrive/';
+
+// `workspace.json` and its per-device variants (`workspace-<host>.json`,
+// `workspace-<host>-N.json`, plus the mobile/legacy `workspace-mobile.json`)
+// hold local UI state — open tabs, pane layout, cursor positions. They change
+// constantly on every device and produce nothing but conflict noise when
+// synced. Obsidian Sync excludes them by default; we do the same.
+const WORKSPACE_STATE_PATTERN = /^\.obsidian\/workspace(-[^/]+)?\.json$/;
+
+/**
+ * Check whether a vault path should be synced.
+ */
+export function shouldSyncVaultPath(path: string, syncPluginManifests = false, syncAppSettings = false): boolean {
+	const normalized = normalizePath(path);
+
+	// Plugin debug log notes live in a dedicated folder so each device keeps its
+	// own. The leading underscore is on the folder, so users who want to share a
+	// specific day's log can simply move that file out of the folder.
+	if (normalized === LOG_NOTE_FOLDER.slice(0, -1) || normalized.startsWith(LOG_NOTE_FOLDER)) {
+		return false;
+	}
+
+	// Never sync the OneDrive plugin's own folder. Auth state in data.json must
+	// stay device-local, and syncing main.js across devices would let an older
+	// install on one device silently downgrade a newer install on another.
+	if (normalized === OWN_PLUGIN_FOLDER.slice(0, -1) || normalized.startsWith(OWN_PLUGIN_FOLDER)) {
+		return false;
+	}
+
+	// Never sync Obsidian's per-device workspace state.
+	if (WORKSPACE_STATE_PATTERN.test(normalized)) {
+		return false;
+	}
+
+	if (!normalized.startsWith('.obsidian/')) {
+		return true;
+	}
+
+	if (syncAppSettings && SYNCABLE_OBSIDIAN_APP_SETTINGS.has(normalized)) {
+		return true;
+	}
+
+	if (!syncPluginManifests) {
+		return false;
+	}
+
+	return (
+		SYNCABLE_OBSIDIAN_PLUGIN_MANIFESTS.has(normalized) ||
+		isInstalledPluginManifestPath(normalized) ||
+		isInstalledPluginBinaryPath(normalized)
+	);
+}
+
 /**
  * Check if path is within root directory
  */
@@ -165,14 +238,56 @@ export function createConflictFileName(originalPath: string): string {
  * Known text file extensions (for diff display in conflict resolution)
  */
 const TEXT_EXTENSIONS = new Set([
-	'.md', '.txt', '.markdown', '.mdown', '.mkd', '.mkdn',
-	'.json', '.yaml', '.yml', '.toml', '.xml', '.html', '.htm',
-	'.css', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs',
-	'.py', '.rb', '.java', '.c', '.cpp', '.h', '.hpp',
-	'.sh', '.bash', '.zsh', '.bat', '.ps1',
-	'.csv', '.tsv', '.log', '.ini', '.cfg', '.conf',
-	'.tex', '.latex', '.bib', '.org', '.rst', '.adoc',
-	'.svg', '.graphql', '.sql', '.r', '.lua', '.go',
+	'.md',
+	'.txt',
+	'.markdown',
+	'.mdown',
+	'.mkd',
+	'.mkdn',
+	'.json',
+	'.yaml',
+	'.yml',
+	'.toml',
+	'.xml',
+	'.html',
+	'.htm',
+	'.css',
+	'.js',
+	'.ts',
+	'.jsx',
+	'.tsx',
+	'.mjs',
+	'.cjs',
+	'.py',
+	'.rb',
+	'.java',
+	'.c',
+	'.cpp',
+	'.h',
+	'.hpp',
+	'.sh',
+	'.bash',
+	'.zsh',
+	'.bat',
+	'.ps1',
+	'.csv',
+	'.tsv',
+	'.log',
+	'.ini',
+	'.cfg',
+	'.conf',
+	'.tex',
+	'.latex',
+	'.bib',
+	'.org',
+	'.rst',
+	'.adoc',
+	'.svg',
+	'.graphql',
+	'.sql',
+	'.r',
+	'.lua',
+	'.go',
 ]);
 
 /**

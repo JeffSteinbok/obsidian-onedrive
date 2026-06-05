@@ -7,6 +7,7 @@ import { Plugin, Notice, TFile } from 'obsidian';
 import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID, ONEDRIVE_PATHS } from './constants';
 import { logger } from './utils/logger';
+import { shouldSyncVaultPath } from './utils/pathUtils';
 
 // Auth
 import { TokenStorage } from './auth/tokenStorage';
@@ -30,6 +31,23 @@ import { StatusBarManager, SyncStatus } from './ui/statusBar';
 import { DeviceCodeModal } from './ui/authModal';
 import { FolderSelection } from './ui/folderBrowserModal';
 import { ConflictView, CONFLICT_VIEW_TYPE } from './ui/conflictView';
+import { LargeDeleteWarningModal } from './ui/modals';
+
+import { LargeDeleteWarningInfo, LargeDeleteDecision } from './types';
+
+const SYNC_LOGS_NOTE_PATH = '.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md';
+const LIVE_LOG_FOLDER = '_OneDriveSyncLogs';
+const LIVE_LOG_HEADER = `> [!warning] OneDrive sync debug log
+> This folder is **excluded from sync** — each device keeps its own. To share a specific day's log, move that file out of this folder.
+
+`;
+
+function liveLogNotePath(date: Date = new Date()): string {
+	const yyyy = date.getFullYear();
+	const mm = String(date.getMonth() + 1).padStart(2, '0');
+	const dd = String(date.getDate()).padStart(2, '0');
+	return `${LIVE_LOG_FOLDER}/${yyyy}-${mm}-${dd}.md`;
+}
 
 /**
  * Main plugin class
@@ -59,6 +77,13 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Load settings
 		await this.loadSettings();
 
+		// Self-heal our entry in community-plugins.json. If we're loading,
+		// we're enabled on this device — so don't let a sync from another
+		// device (which may not have had us installed yet) silently remove
+		// us. Without this, the file ping-pongs and we drop off this device
+		// the next time another device's list overwrites ours.
+		await this.ensureSelfInCommunityPluginsList();
+
 		// Initialize core components
 		this.tokenStorage = new TokenStorage();
 		this.syncStateManager = new SyncStateManager();
@@ -75,6 +100,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 		if (vaultPath) {
 			logger.enableFileLogging(vaultPath);
 		}
+		// Mirror logs to a vault-root note when debug logging is on
+		this.applyVaultLogHook();
 
 		// Initialize device code client with appropriate client ID and access mode
 		const clientId = this.settings.useCustomClientId
@@ -129,10 +156,26 @@ export default class OneDriveSyncPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'reconcile-from-cloud',
+			name: 'Reconcile from cloud (cloud-as-truth recovery)',
+			callback: async () => {
+				await this.reconcileFromCloud();
+			},
+		});
+
+		this.addCommand({
 			id: 'show-conflicts',
 			name: 'Show sync conflicts',
 			callback: () => {
 				this.activateConflictView();
+			},
+		});
+
+		this.addCommand({
+			id: 'view-sync-logs',
+			name: 'View sync logs',
+			callback: async () => {
+				await this.openLogsNote();
 			},
 		});
 
@@ -172,7 +215,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		// Perform startup sync if configured and sync target is set
-		if (this.tokenStorage.hasTokens() && this.settings.startupSyncDelay > 0 && this.isSyncConfigured()) {
+		if (
+			this.tokenStorage.hasTokens() &&
+			this.settings.startupSyncDelay > 0 &&
+			this.isSyncConfigured()
+		) {
 			setTimeout(async () => {
 				await this.triggerManualSync();
 			}, this.settings.startupSyncDelay * 1000);
@@ -216,7 +263,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.fileOps = new FileOperations(this.oneDriveClient);
 
 			// Configure shared drive if previously selected
-			if (this.settings.remoteDriveId && this.settings.remoteItemId && this.settings.remoteRootName) {
+			if (
+				this.settings.remoteDriveId &&
+				this.settings.remoteItemId &&
+				this.settings.remoteRootName
+			) {
 				this.oneDriveClient.setRemoteDrive(
 					this.settings.remoteDriveId,
 					this.settings.remoteItemId,
@@ -225,9 +276,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 			}
 
 			// Initialize event manager — listening starts after initial sync
-			this.eventManager = new EventManager(this.app, async () => {
-				await this.performSync();
-			}, this.syncStateManager);
+			this.eventManager = new EventManager(
+				this.app,
+				async () => {
+					await this.performSync();
+				},
+				this.syncStateManager,
+				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings)
+			);
 
 			// Initialize conflict queue
 			this.conflictQueue = new ConflictQueue(this.app, this.syncStateManager, this.eventManager);
@@ -237,10 +293,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 			const isShared = this.oneDriveClient.isSharedDrive();
 			// For shared drives, upload paths are relative to the shared folder (no prefix needed).
 			// For non-shared, prepend the remote path.
-			const remoteRoot = isShared ? '' : (this.settings.remotePath || ONEDRIVE_PATHS.APP_FOLDER);
+			const remoteRoot = isShared ? '' : this.settings.remotePath || ONEDRIVE_PATHS.APP_FOLDER;
 			// For path stripping of delta responses, use the actual path on the remote drive
 			const remoteRootOnDrive = isShared
-				? (this.settings.remoteRootPath || `/${this.settings.remoteRootName}`)
+				? this.settings.remoteRootPath || `/${this.settings.remoteRootName}`
 				: undefined;
 
 			this.syncEngine = new SyncEngine(
@@ -252,7 +308,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.eventManager,
 				remoteRoot,
 				remoteRootOnDrive,
-				this.conflictQueue
+				this.conflictQueue,
+				(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests, this.settings.syncAppSettings),
+				() => this.settings.largeDeleteThreshold ?? 0,
+				(info) => this.handleLargeDeleteWarning(info),
+				(msg) => this.statusBarManager?.setProgress(msg)
 			);
 
 			// Get user info to display in settings
@@ -502,7 +562,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 		if (!this.oneDriveClient) {
 			throw new Error('Not connected to OneDrive');
 		}
-		return this.oneDriveClient.listFoldersForPicker(path, sharedDriveId, sharedItemId, relativePathInShared);
+		return this.oneDriveClient.listFoldersForPicker(
+			path,
+			sharedDriveId,
+			sharedItemId,
+			relativePathInShared
+		);
 	}
 
 	/**
@@ -526,7 +591,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 			if (this.oneDriveClient) {
 				try {
 					const resolvedPath = await this.oneDriveClient.resolveSharedFolderPath(
-						selection.driveId, selection.itemId
+						selection.driveId,
+						selection.itemId
 					);
 					this.settings.remoteRootPath = resolvedPath;
 					logger.info(`Resolved shared folder path on remote drive: ${resolvedPath}`);
@@ -594,6 +660,41 @@ export default class OneDriveSyncPlugin extends Plugin {
 	}
 
 	/**
+	 * Create/update a readable vault note with recent plugin logs and open it.
+	 */
+	private async openLogsNote(): Promise<void> {
+		const lines = logger.getRecentLogs();
+		if (lines.length === 0) {
+			new Notice('No sync logs available yet.');
+			return;
+		}
+
+		const notePath = SYNC_LOGS_NOTE_PATH;
+		const content = `# OneDrive Sync Logs
+
+Last updated: ${new Date().toISOString()}
+
+\`\`\`
+${lines.join('\n')}
+\`\`\`
+`;
+
+		let logFile: TFile;
+		const existing = this.app.vault.getAbstractFileByPath(notePath);
+		if (existing instanceof TFile) {
+			await this.app.vault.modify(existing, content);
+			logFile = existing;
+		} else if (!existing) {
+			logFile = await this.app.vault.create(notePath, content);
+		} else {
+			new Notice(`Cannot write logs to ${notePath} because that path is a folder.`);
+			return;
+		}
+
+		await this.app.workspace.getLeaf(false).openFile(logFile);
+	}
+
+	/**
 	 * DEV: Create a fake conflict for testing the conflict resolution UI.
 	 * Picks the active file (or first .md file) and fabricates a
 	 * simulated "incoming" version with some changes.
@@ -602,7 +703,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 		if (!this.conflictQueue) {
 			// Initialize a standalone queue if not authenticated
 			if (!this.eventManager) {
-				this.eventManager = new EventManager(this.app, async () => {}, this.syncStateManager);
+				this.eventManager = new EventManager(
+					this.app,
+					async () => {},
+					this.syncStateManager,
+					(path) => shouldSyncVaultPath(path, this.settings.syncPluginManifests)
+				);
 			}
 			this.conflictQueue = new ConflictQueue(this.app, this.syncStateManager, this.eventManager);
 			this.conflictQueue.load(this.settings.conflictQueue);
@@ -610,9 +716,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		// Pick the active file, or fall back to the first .md file
 		const activeFile = this.app.workspace.getActiveFile?.();
-		const file = activeFile instanceof TFile
-			? activeFile
-			: this.app.vault.getFiles().find((f: TFile) => f.extension === 'md');
+		const file =
+			activeFile instanceof TFile
+				? activeFile
+				: this.app.vault.getFiles().find((f: TFile) => f.extension === 'md');
 
 		if (!file) {
 			new Notice('OneDrive DEV: No file found to create a test conflict');
@@ -624,8 +731,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 		const localText = decoder.decode(localContent);
 
 		// Fabricate a fake "incoming" version
-		const fakeRemoteText = localText
-			+ '\n\n---\n_This line was added on another device (simulated incoming change)_\n';
+		const fakeRemoteText =
+			localText + '\n\n---\n_This line was added on another device (simulated incoming change)_\n';
 		const fakeRemoteContent = new TextEncoder().encode(fakeRemoteText).buffer;
 
 		await this.conflictQueue.add(
@@ -653,6 +760,110 @@ export default class OneDriveSyncPlugin extends Plugin {
 	}
 
 	/**
+	 * Make sure this plugin's id is listed in `.obsidian/community-plugins.json`.
+	 * That file is the list of *enabled* plugins; if a sync from another device
+	 * overwrites it with a version that doesn't include us, we'd silently
+	 * disappear on next Obsidian launch. Since we're running, we're enabled —
+	 * re-add ourselves if missing.
+	 */
+	private async ensureSelfInCommunityPluginsList(): Promise<void> {
+		const path = '.obsidian/community-plugins.json';
+		const adapter = this.app.vault.adapter;
+		const id = this.manifest?.id;
+		if (!id) return;
+		try {
+			let list: string[] = [];
+			if (await adapter.exists(path)) {
+				const raw = await adapter.read(path);
+				try {
+					const parsed = JSON.parse(raw);
+					if (Array.isArray(parsed)) list = parsed.filter((x) => typeof x === 'string');
+				} catch {
+					logger.warn(`community-plugins.json is malformed; rewriting with just ${id}`);
+				}
+			}
+			if (list.includes(id)) return;
+			list.push(id);
+			await adapter.write(path, JSON.stringify(list, null, 2));
+			logger.info(`Self-healed: added ${id} back to community-plugins.json`);
+		} catch (error) {
+			logger.warn('Failed to self-heal community-plugins.json:', error);
+		}
+	}
+
+	async onPluginManifestSyncChanged(enabled: boolean): Promise<void> {
+		if (this.settings.syncPluginManifests === enabled) {
+			return;
+		}
+
+		this.settings.syncPluginManifests = enabled;
+		await this.saveSettings();
+
+		new Notice(
+			`Plugin sync ${enabled ? 'enabled' : 'disabled'} (community-plugins.json, core-plugins.json, plugin manifests and binaries). ` +
+				'Run Sync Now to apply the new scope.'
+		);
+	}
+
+	async onAppSettingsSyncChanged(enabled: boolean): Promise<void> {
+		if (this.settings.syncAppSettings === enabled) {
+			return;
+		}
+
+		this.settings.syncAppSettings = enabled;
+		this.syncStateManager.clearState();
+		await this.saveSettings();
+
+		new Notice(
+			`App settings sync ${enabled ? 'enabled' : 'disabled'} (app.json, appearance.json, hotkeys.json). ` +
+				'Run Sync Now to apply the new scope.'
+		);
+	}
+
+	async resetSyncToken(): Promise<void> {
+		this.syncStateManager.clearDeltaLink();
+		await this.saveSettings();
+		new Notice(
+			'Sync reset. Delta cursors, file states, and last sync time cleared. ' +
+				'Next sync will re-read from OneDrive and reconcile local files.'
+		);
+	}
+
+	/**
+	 * Reconcile the local vault from a full cloud listing. Treats cloud as
+	 * authoritative — local-only files are deleted, remote-only files are
+	 * downloaded. Destructive deletes are confirmed via the large-delete
+	 * modal. See issue #26.
+	 */
+	async reconcileFromCloud(): Promise<void> {
+		if (!this.tokenStorage.hasTokens()) {
+			new Notice('Reconcile from cloud: not connected to OneDrive.');
+			return;
+		}
+		if (!this.isSyncConfigured()) {
+			new Notice('Reconcile from cloud: select a sync folder in settings first.');
+			return;
+		}
+		if (!this.syncEngine) {
+			new Notice('Reconcile from cloud: sync engine not initialized.');
+			return;
+		}
+		if (this.eventManager?.isSyncInProgress()) {
+			new Notice('Reconcile from cloud: a sync is already in progress.');
+			return;
+		}
+		try {
+			this.statusBarManager?.setStatus(SyncStatus.SYNCING);
+			await this.syncEngine.reconcileFromCloud();
+			await this.saveSettings();
+			this.statusBarManager?.setStatus(SyncStatus.IDLE);
+		} catch (error) {
+			this.statusBarManager?.setStatus(SyncStatus.ERROR);
+			throw error;
+		}
+	}
+
+	/**
 	 * Save settings to disk
 	 */
 	async saveSettings() {
@@ -674,7 +885,80 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		// Update logger debug mode if changed
 		logger.setDebugMode(this.settings.enableDebugLogging);
+		this.applyVaultLogHook();
 
 		await this.saveData(this.settings);
+	}
+
+	/**
+	 * Install (or remove) a Logger hook that appends each log line to a
+	 * vault-root daily log file. Files match `_OneDriveSyncLogs-YYYY-MM-DD.md`
+	 * and are explicitly excluded from sync via shouldSyncVaultPath so each
+	 * device keeps its own.
+	 */
+	private applyVaultLogHook(): void {
+		if (!this.settings.enableDebugLogging) {
+			logger.setVaultLogHook(null);
+			return;
+		}
+		const adapter = this.app.vault.adapter;
+		// Serialize writes so concurrent log calls don't interleave or race
+		// on file existence checks.
+		let inFlight: Promise<void> = Promise.resolve();
+		logger.setVaultLogHook((line) => {
+			inFlight = inFlight.then(async () => {
+				try {
+					const path = liveLogNotePath();
+					const exists = await adapter.exists(path);
+					if (!exists) {
+						const folderExists = await adapter.exists(LIVE_LOG_FOLDER);
+						if (!folderExists) {
+							await adapter.mkdir(LIVE_LOG_FOLDER);
+						}
+						await adapter.write(path, LIVE_LOG_HEADER + line + '\n');
+					} else {
+						await adapter.append(path, line + '\n');
+					}
+				} catch {
+					// Swallow — never let log mirroring break the plugin.
+				}
+			});
+		});
+	}
+
+	/**
+	 * Show the large-delete warning modal and act on the user's choice.
+	 *
+	 * When the user picks "Disable plugin", we actually disable the plugin
+	 * after the modal closes (so the modal can finish unmounting first).
+	 * Either 'cancel' or 'disable' is returned to the sync engine, which
+	 * treats both as "abort this sync without advancing delta cursors".
+	 */
+	private handleLargeDeleteWarning(
+		info: LargeDeleteWarningInfo
+	): Promise<LargeDeleteDecision> {
+		return new Promise((resolve) => {
+			const modal = new LargeDeleteWarningModal(this.app, info, (decision) => {
+				if (decision === 'disable') {
+					// Defer so the modal closes cleanly before unloading the plugin.
+					setTimeout(() => {
+						try {
+							const plugins = (this.app as unknown as {
+								plugins?: { disablePlugin?: (id: string) => Promise<void> | void };
+							}).plugins;
+							if (plugins?.disablePlugin) {
+								void plugins.disablePlugin(this.manifest.id);
+							}
+						} catch (err) {
+							logger.error(
+								`Failed to disable plugin from large-delete modal: ${(err as Error)?.message || err}`
+							);
+						}
+					}, 0);
+				}
+				resolve(decision);
+			});
+			modal.open();
+		});
 	}
 }

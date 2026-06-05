@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => {
 		error: vi.fn(),
 		setDebugMode: vi.fn(),
 		enableFileLogging: vi.fn(),
+		setVaultLogHook: vi.fn(),
+		getRecentLogs: vi.fn().mockReturnValue([]),
 	};
 
 	const tokenStorage = {
@@ -81,18 +83,42 @@ const mocks = vi.hoisted(() => {
 		eventManager,
 		statusBarManager,
 		deviceCodeModal,
-		TokenStorage: vi.fn().mockImplementation(() => tokenStorage),
-		DeviceCodeFlowClient: vi.fn().mockImplementation(() => deviceCodeClient),
-		OneDriveAuthProvider: vi.fn(),
-		OneDriveClient: vi.fn().mockImplementation(() => oneDriveClient),
-		FileOperations: vi.fn(),
-		SyncEngine: vi.fn().mockImplementation(() => syncEngine),
-		SyncStateManager: vi.fn().mockImplementation(() => syncStateManager),
-		ConflictResolver: vi.fn().mockImplementation(() => conflictResolver),
-		EventManager: vi.fn().mockImplementation(() => eventManager),
-		OneDriveSettingTab: vi.fn(),
-		StatusBarManager: vi.fn().mockImplementation(() => statusBarManager),
-		DeviceCodeModal: vi.fn().mockImplementation(() => deviceCodeModal),
+		TokenStorage: vi.fn().mockImplementation(function () {
+			return tokenStorage;
+		}),
+		DeviceCodeFlowClient: vi.fn().mockImplementation(function () {
+			return deviceCodeClient;
+		}),
+		OneDriveAuthProvider: vi.fn().mockImplementation(function () {
+			return {};
+		}),
+		OneDriveClient: vi.fn().mockImplementation(function () {
+			return oneDriveClient;
+		}),
+		FileOperations: vi.fn().mockImplementation(function () {
+			return {};
+		}),
+		SyncEngine: vi.fn().mockImplementation(function () {
+			return syncEngine;
+		}),
+		SyncStateManager: vi.fn().mockImplementation(function () {
+			return syncStateManager;
+		}),
+		ConflictResolver: vi.fn().mockImplementation(function () {
+			return conflictResolver;
+		}),
+		EventManager: vi.fn().mockImplementation(function () {
+			return eventManager;
+		}),
+		OneDriveSettingTab: vi.fn().mockImplementation(function () {
+			return {};
+		}),
+		StatusBarManager: vi.fn().mockImplementation(function () {
+			return statusBarManager;
+		}),
+		DeviceCodeModal: vi.fn().mockImplementation(function () {
+			return deviceCodeModal;
+		}),
 	};
 });
 
@@ -158,9 +184,13 @@ const createApp = () => ({
 		adapter: { getBasePath: vi.fn().mockReturnValue('/mock/vault') },
 		on: vi.fn().mockReturnValue({}),
 		offref: vi.fn(),
+		getAbstractFileByPath: vi.fn().mockReturnValue(null),
+		create: vi.fn(),
+		modify: vi.fn(),
 	},
 	workspace: {
 		on: vi.fn(),
+		getLeaf: vi.fn().mockReturnValue({ openFile: vi.fn() }),
 	},
 });
 
@@ -191,11 +221,14 @@ describe('OneDriveSyncPlugin', () => {
 		mocks.eventManager.isSyncInProgress.mockReturnValue(false);
 		mocks.eventManager.getDirtyFiles.mockReturnValue([]);
 
-		plugin = new OneDriveSyncPlugin({} as any, {
-			id: 'obsidian-onedrive',
-			name: 'OneDrive Sync',
-			version: '0.1.0',
-		} as any);
+		plugin = new OneDriveSyncPlugin(
+			{} as any,
+			{
+				id: 'obsidian-onedrive',
+				name: 'OneDrive Sync',
+				version: '0.1.0',
+			} as any
+		);
 		(plugin as any).loadData = vi.fn().mockResolvedValue({});
 		(plugin as any).saveData = vi.fn().mockResolvedValue(undefined);
 		(plugin as any).addRibbonIcon = vi.fn();
@@ -237,6 +270,16 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.syncState).toEqual(savedState);
 	});
 
+	it('onPluginManifestSyncChanged saves the new setting without resetting sync state', async () => {
+		await plugin.onload();
+
+		await plugin.onPluginManifestSyncChanged(true);
+
+		expect(plugin.settings.syncPluginManifests).toBe(true);
+		expect(mocks.syncStateManager.clearState).not.toHaveBeenCalled();
+		expect((plugin as any).saveData).toHaveBeenCalledWith(plugin.settings);
+	});
+
 	it('triggerManualSync returns early when no tokens are available', async () => {
 		await plugin.onload();
 		const performSyncSpy = vi.spyOn(plugin as any, 'performSync');
@@ -249,7 +292,9 @@ describe('OneDriveSyncPlugin', () => {
 
 	it('triggerManualSync blocks full-access sync until a remote path is set', async () => {
 		mocks.tokenStorage.hasTokens.mockReturnValue(true);
-		(plugin as any).loadData = vi.fn().mockResolvedValue({ accessMode: OneDriveAccessMode.FULL_ACCESS });
+		(plugin as any).loadData = vi
+			.fn()
+			.mockResolvedValue({ accessMode: OneDriveAccessMode.FULL_ACCESS });
 		await plugin.onload();
 		const performSyncSpy = vi.spyOn(plugin as any, 'performSync');
 
@@ -308,7 +353,11 @@ describe('OneDriveSyncPlugin', () => {
 			remoteItemId: 'item-id',
 			remoteRootName: 'Shared Root',
 			remoteRootPath: '/Shared Root',
-			connectedUser: { id: '2', displayName: 'Connected User', userPrincipalName: 'connected@test.com' },
+			connectedUser: {
+				id: '2',
+				displayName: 'Connected User',
+				userPrincipalName: 'connected@test.com',
+			},
 		});
 		await plugin.onload();
 
@@ -324,5 +373,26 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.remoteRootPath).toBeUndefined();
 		expect((plugin as any).syncEngine).toBeUndefined();
 		expect((plugin as any).eventManager).toBeUndefined();
+	});
+
+	it('view-sync-logs command creates and opens a log note', async () => {
+		mocks.logger.getRecentLogs.mockReturnValue(['[2026-01-01T00:00:00.000Z] [OneDrive Sync] [INFO] Test log']);
+		const createdFile = { path: '.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md' } as any;
+		(plugin as any).app.vault.create = vi.fn().mockResolvedValue(createdFile);
+		const openFile = vi.fn().mockResolvedValue(undefined);
+		(plugin as any).app.workspace.getLeaf = vi.fn().mockReturnValue({ openFile });
+
+		await plugin.onload();
+		const viewLogsCommand = ((plugin as any).addCommand as any).mock.calls
+			.map((call: any[]) => call[0])
+			.find((cmd: any) => cmd.id === 'view-sync-logs');
+
+		await viewLogsCommand.callback();
+
+		expect((plugin as any).app.vault.create).toHaveBeenCalledWith(
+			'.obsidian/plugins/obsidian-onedrive/OneDrive Sync Logs.md',
+			expect.stringContaining('[OneDrive Sync] [INFO] Test log')
+		);
+		expect(openFile).toHaveBeenCalledWith(createdFile);
 	});
 });
