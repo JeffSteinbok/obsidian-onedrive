@@ -44,7 +44,7 @@ import { LargeDeleteWarningModal } from './ui/modals';
 
 import { LargeDeleteWarningInfo, LargeDeleteDecision } from './types';
 
-const timerApi = typeof window !== 'undefined' ? window : globalThis as typeof window;
+import { timerApi } from './utils/timerApi';
 
 function isCommunityPluginsAdapter(adapter: unknown): adapter is CommunityPluginsAdapter {
 	if (!adapter || typeof adapter !== 'object') {

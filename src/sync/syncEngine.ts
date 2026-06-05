@@ -324,7 +324,7 @@ export class SyncEngine {
 		const deltaResponse = await this.oneDriveClient.getDelta(deltaLink, this.remoteRoot);
 		const obsidianDeltaLink = this.stateManager.getObsidianDeltaLink();
 		if (shouldSyncObsidianScope) {
-			progress('fetching .obsidian changes...');
+			progress(`fetching ${this.configDir} changes...`);
 		}
 		const obsidianDeltaResponse = shouldSyncObsidianScope
 			? await this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot, this.configDir)

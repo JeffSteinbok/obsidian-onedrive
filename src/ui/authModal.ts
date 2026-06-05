@@ -5,7 +5,7 @@
 
 import { Modal, App, Setting } from 'obsidian';
 
-const timerApi = typeof window !== 'undefined' ? window : globalThis as typeof window;
+import { timerApi } from '../utils/timerApi';
 
 export class DeviceCodeModal extends Modal {
 	private userCode: string;

@@ -12,7 +12,7 @@ import { logger } from '../utils/logger';
 import { SYNC_CONFIG } from '../constants';
 import { shouldSyncVaultPath } from '../utils/pathUtils';
 
-const timerApi = typeof window !== 'undefined' ? window : globalThis as typeof window;
+import { timerApi } from '../utils/timerApi';
 
 /**
  * Manages vault event listeners and sync scheduling
