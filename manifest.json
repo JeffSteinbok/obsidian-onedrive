@@ -1,7 +1,7 @@
 {
 	"id": "onedrive-sync",
 	"name": "OneDrive Sync",
-	"version": "0.5.10",
+	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "Sync your Obsidian vault with OneDrive Personal/Consumer",
 	"author": "Jeff Steinbok",
