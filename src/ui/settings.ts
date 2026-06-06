@@ -11,6 +11,8 @@ import {
 } from '../types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID } from '../constants';
 import { FolderBrowserModal, FolderSelection } from './folderBrowserModal';
+import type { SyncStatusInfo } from '../main';
+import { SyncStatus } from './statusBar';
 
 // Forward declaration for the plugin type
 interface OneDrivePlugin {
@@ -31,6 +33,7 @@ interface OneDrivePlugin {
 		relativePathInShared?: string
 	): Promise<OneDriveItem[]>;
 	onRemoteFolderChanged(selection: FolderSelection): Promise<void>;
+	getSyncStatusInfo(): SyncStatusInfo;
 }
 
 /**
@@ -190,6 +193,29 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 */
 	private displaySyncSection(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Sync Configuration').setHeading();
+		const syncStatus = this.plugin.getSyncStatusInfo();
+
+		const statusText = this.getSyncStatusText(syncStatus.status);
+		const lastSyncText = syncStatus.lastSyncTime
+			? new Date(syncStatus.lastSyncTime).toLocaleString()
+			: 'Not synced yet';
+		const progressText = syncStatus.status === SyncStatus.SYNCING
+			? (syncStatus.progressMessage || 'Starting...')
+			: '—';
+		const conflictText = syncStatus.conflictCount > 0
+			? `${syncStatus.conflictCount} pending`
+			: 'None';
+
+		new Setting(containerEl)
+			.setName('Sync status')
+			.setDesc(
+				`Status: ${statusText} · Last sync: ${lastSyncText} · Progress: ${progressText} · Conflicts: ${conflictText}`
+			)
+			.addButton((button) =>
+				button.setButtonText('Refresh').onClick(() => {
+					this.display();
+				})
+			);
 
 		const { configDir } = this.app.vault;
 
@@ -381,6 +407,21 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				attr: { target: '_blank' },
 			});
 			helpDiv.appendText(' in the README.');
+		}
+	}
+
+	private getSyncStatusText(status: SyncStatus): string {
+		switch (status) {
+			case SyncStatus.SYNCING:
+				return 'Syncing';
+			case SyncStatus.IDLE:
+				return 'Idle';
+			case SyncStatus.ERROR:
+				return 'Error';
+			case SyncStatus.DISCONNECTED:
+				return 'Disconnected';
+			default:
+				return status;
 		}
 	}
 }
