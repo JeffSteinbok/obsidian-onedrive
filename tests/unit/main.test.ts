@@ -422,6 +422,15 @@ describe('OneDriveSyncPlugin', () => {
 		});
 	});
 
+	it('clears progress message when sync status leaves syncing', async () => {
+		await plugin.onload();
+		(plugin as any).setSyncStatus('syncing');
+		(plugin as any).setSyncProgress('2/5 files');
+		(plugin as any).setSyncStatus('idle');
+
+		expect(plugin.getSyncStatusInfo().progressMessage).toBeUndefined();
+	});
+
 	it('view-sync-logs command creates and opens a log note', async () => {
 		mocks.logger.getRecentLogs.mockReturnValue(['[2026-01-01T00:00:00.000Z] [OneDrive Sync] [INFO] Test log']);
 		const createdFile = { path: '.obsidian/plugins/onedrive-sync/OneDrive Sync Logs.md' } as any;
