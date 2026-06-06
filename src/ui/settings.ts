@@ -408,20 +408,20 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			});
 			helpDiv.appendText(' in the README.');
 		}
+	}
 
-		private getSyncStatusText(status: SyncStatus): string {
-			switch (status) {
-				case SyncStatus.SYNCING:
-					return 'Syncing';
-				case SyncStatus.IDLE:
-					return 'Idle';
-				case SyncStatus.ERROR:
-					return 'Error';
-				case SyncStatus.DISCONNECTED:
-					return 'Disconnected';
-				default:
-					return status;
-			}
+	private getSyncStatusText(status: SyncStatus): string {
+		switch (status) {
+			case SyncStatus.SYNCING:
+				return 'Syncing';
+			case SyncStatus.IDLE:
+				return 'Idle';
+			case SyncStatus.ERROR:
+				return 'Error';
+			case SyncStatus.DISCONNECTED:
+				return 'Disconnected';
+			default:
+				return status;
 		}
 	}
 }
