@@ -1,0 +1,7 @@
+{
+	"name": "eslint-plugin-obsidian-compat",
+	"version": "1.0.0",
+	"description": "Local ESLint rules replicating Obsidian plugin-review lint checks",
+	"main": "index.js",
+	"private": true
+}

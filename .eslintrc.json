@@ -5,7 +5,7 @@
 		"ecmaVersion": 2020,
 		"sourceType": "module"
 	},
-	"plugins": ["@typescript-eslint"],
+	"plugins": ["@typescript-eslint", "obsidian-compat"],
 	"rules": {
 		"no-console": "warn",
 		"@typescript-eslint/no-explicit-any": "error",
@@ -16,7 +16,12 @@
 				"argsIgnorePattern": "^_",
 				"varsIgnorePattern": "^_"
 			}
-		]
+		],
+		"obsidian-compat/no-global-document": "warn",
+		"obsidian-compat/no-global-this": "warn",
+		"obsidian-compat/no-bare-timers": "warn",
+		"obsidian-compat/no-static-styles": "warn",
+		"obsidian-compat/no-deprecated-display": "warn"
 	},
 	"env": {
 		"node": true,
