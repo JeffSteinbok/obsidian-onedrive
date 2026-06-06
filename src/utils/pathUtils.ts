@@ -169,6 +169,57 @@ function getSyncableObsidianPluginManifests(configDir: string): Set<string> {
 	]);
 }
 
+/**
+ * Return all fixed (non-dynamic) config file paths that may be synced,
+ * depending on the current settings. Used by config-file polling to
+ * detect local changes to `.obsidian/` files that Obsidian's vault
+ * events don't fire for.
+ */
+export function getFixedSyncableConfigPaths(
+	configDir: string,
+	syncPluginManifests: boolean,
+	syncAppSettings: boolean
+): string[] {
+	const paths: string[] = [];
+	if (syncAppSettings) {
+		for (const p of getSyncableObsidianAppSettings(configDir)) {
+			paths.push(p);
+		}
+	}
+	if (syncPluginManifests) {
+		for (const p of getSyncableObsidianPluginManifests(configDir)) {
+			paths.push(p);
+		}
+	}
+	return paths;
+}
+
+/**
+ * Return the per-plugin syncable file paths (manifest.json, main.js,
+ * styles.css) for all plugins found inside `<configDir>/plugins/`.
+ * Requires the vault adapter to list directories.
+ */
+export async function getInstalledPluginSyncPaths(
+	configDir: string,
+	adapter: { list(path: string): Promise<{ folders: string[] }> }
+): Promise<string[]> {
+	const pluginsDir = buildConfigPath(configDir, 'plugins');
+	const paths: string[] = [];
+	try {
+		const listing = await adapter.list(pluginsDir);
+		for (const folder of listing.folders) {
+			const folderName = folder.split('/').pop() || '';
+			if (!folderName) continue;
+			paths.push(buildConfigPath(configDir, 'plugins', folderName, 'manifest.json'));
+			paths.push(buildConfigPath(configDir, 'plugins', folderName, 'main.js'));
+			paths.push(buildConfigPath(configDir, 'plugins', folderName, 'styles.css'));
+		}
+	} catch {
+		// plugins folder may not exist
+	}
+	return paths;
+}
+
 function isInstalledPluginManifestPath(path: string, configDir: string): boolean {
 	const normalizedConfigDir = escapeRegExp(normalizeConfigDir(configDir));
 	return new RegExp(`^${normalizedConfigDir}/plugins/[^/]+/manifest\\.json$`).test(path);

@@ -89,6 +89,17 @@ export function makeTFile(path: string, size: number = 0, mtime: number = Date.n
 (global as typeof global & { requestUrl: typeof mockRequestUrl }).requestUrl = mockRequestUrl;
 (global as typeof global & { Notice: typeof Notice }).Notice = Notice;
 
+// Provide window with timer methods for timerApi.ts (Obsidian always has window)
+if (typeof window === 'undefined') {
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
+	(global as any).window = {
+		setTimeout: globalThis.setTimeout.bind(globalThis),
+		clearTimeout: globalThis.clearTimeout.bind(globalThis),
+		setInterval: globalThis.setInterval.bind(globalThis),
+		clearInterval: globalThis.clearInterval.bind(globalThis),
+	};
+}
+
 // Reset all mocks before each test
 beforeEach(() => {
 	vi.clearAllMocks();

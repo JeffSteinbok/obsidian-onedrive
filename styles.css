@@ -94,6 +94,14 @@
 	overflow: hidden;
 }
 
+.onedrive-sync-notice-bar-container {
+	margin-top: 6px;
+}
+
+.onedrive-sync-progress-notice-text {
+	font-size: var(--font-ui-small);
+}
+
 .onedrive-sync-progress-bar {
 	height: 100%;
 	background-color: var(--interactive-accent);

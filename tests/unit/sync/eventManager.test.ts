@@ -47,6 +47,8 @@ describe('EventManager', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		vi.stubGlobal('window', {
+			setTimeout: globalThis.setTimeout,
+			clearTimeout: globalThis.clearTimeout,
 			setInterval: globalThis.setInterval,
 			clearInterval: globalThis.clearInterval,
 		});
@@ -355,22 +357,24 @@ describe('EventManager', () => {
 		it('registers all vault event handlers when listening starts', () => {
 			eventManager.startListening();
 
-			expect(mockApp.vault.on).toHaveBeenCalledTimes(4);
+			expect(mockApp.vault.on).toHaveBeenCalledTimes(5);
 			expect(mockApp.vault.on).toHaveBeenNthCalledWith(1, 'modify', expect.any(Function));
 			expect(mockApp.vault.on).toHaveBeenNthCalledWith(2, 'create', expect.any(Function));
 			expect(mockApp.vault.on).toHaveBeenNthCalledWith(3, 'delete', expect.any(Function));
 			expect(mockApp.vault.on).toHaveBeenNthCalledWith(4, 'rename', expect.any(Function));
+			expect(mockApp.vault.on).toHaveBeenNthCalledWith(5, 'raw', expect.any(Function));
 		});
 
 		it('unregisters all event refs when listening stops', () => {
 			eventManager.startListening();
 			eventManager.stopListening();
 
-			expect(mockApp.vault.offref).toHaveBeenCalledTimes(4);
+			expect(mockApp.vault.offref).toHaveBeenCalledTimes(5);
 			expect(mockApp.vault.offref).toHaveBeenNthCalledWith(1, { id: 'ref-modify' });
 			expect(mockApp.vault.offref).toHaveBeenNthCalledWith(2, { id: 'ref-create' });
 			expect(mockApp.vault.offref).toHaveBeenNthCalledWith(3, { id: 'ref-delete' });
 			expect(mockApp.vault.offref).toHaveBeenNthCalledWith(4, { id: 'ref-rename' });
+			expect(mockApp.vault.offref).toHaveBeenNthCalledWith(5, { id: 'ref-raw' });
 		});
 
 		it('reports whether a sync is in progress', async () => {

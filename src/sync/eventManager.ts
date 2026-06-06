@@ -5,7 +5,7 @@
  * our own writes or Obsidian's startup file indexing.
  */
 
-import { App, TFile, EventRef } from 'obsidian';
+import { App, TFile, EventRef, Events } from 'obsidian';
 import { LocalChange, LocalChangeType } from '../types';
 import { SyncStateManager } from './syncState';
 import { logger } from '../utils/logger';
@@ -25,6 +25,9 @@ export class EventManager {
 	private dirtyFiles: Map<string, LocalChange> = new Map();
 	// Paths we wrote during sync — events for these are our own writes, not user edits
 	private ownWritePaths: Set<string> = new Set();
+	// Suppress raw config events until after the first sync completes,
+	// because Obsidian rewrites config files on startup (new mtime, same content).
+	private initialSyncDone = false;
 
 	constructor(
 		private app: App,
@@ -60,6 +63,22 @@ export class EventManager {
 	 */
 	removeOwnWrite(path: string): void {
 		this.ownWritePaths.delete(path);
+	}
+
+	/**
+	 * Check if a path is currently suppressed as an own-write.
+	 */
+	isOwnWrite(path: string): boolean {
+		return this.ownWritePaths.has(path);
+	}
+
+	/**
+	 * Signal that the first sync after plugin load has completed.
+	 * Raw config-file events are suppressed until this is called,
+	 * because Obsidian rewrites config files on startup.
+	 */
+	markInitialSyncDone(): void {
+		this.initialSyncDone = true;
 	}
 
 	/**
@@ -144,6 +163,42 @@ export class EventManager {
 					});
 					this.scheduleSync();
 				}
+			})
+		);
+
+		// The typed vault events above only fire for TFile instances —
+		// config files inside .obsidian/ are not TFiles. The undocumented
+		// 'raw' event fires for ALL file changes on disk and gives us the
+		// path string. Use it to detect config-file changes (e.g. plugin
+		// enable/disable modifying community-plugins.json).
+		const configPrefix = `${this.app.vault.configDir}/`;
+		this.eventRefs.push(
+			(this.app.vault as Events).on('raw', (...args: unknown[]) => {
+				const path = args[0];
+				if (typeof path !== 'string') return;
+				if (!path.startsWith(configPrefix)) return;
+				if (!this.shouldSyncPath(path)) return;
+				if (this.shouldIgnoreEvent(path)) return;
+				// Ignore raw events until the first sync completes — Obsidian
+				// rewrites config files on startup with new mtimes.
+				if (!this.initialSyncDone) return;
+				// Already queued by a typed event — skip
+				if (this.dirtyFiles.has(path)) return;
+
+				// Compare mtime/size against tracked state to avoid false
+				// positives from Obsidian touching config files on startup.
+				const tracked = this.stateManager.getFileState(path);
+				void this.app.vault.adapter.stat(path).then((stat) => {
+					if (!stat || stat.type !== 'file') return;
+					if (tracked && stat.mtime === tracked.localMtime && stat.size === tracked.size) {
+						return; // unchanged — ignore
+					}
+					if (this.dirtyFiles.has(path)) return; // raced with another event
+					const type = tracked ? LocalChangeType.MODIFY : LocalChangeType.CREATE;
+					this.dirtyFiles.set(path, { path, type });
+					logger.debug(`Raw event: config file changed: ${path}`);
+					this.scheduleSync();
+				});
 			})
 		);
 

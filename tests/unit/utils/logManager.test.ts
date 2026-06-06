@@ -190,9 +190,9 @@ Last updated: 2026-06-04T12:34:56.000Z
 			};
 			const setVaultLogHook = vi.fn();
 			const flushAsyncWork = async () => {
-				await Promise.resolve();
-				await Promise.resolve();
-				await Promise.resolve();
+				for (let i = 0; i < 10; i++) {
+					await Promise.resolve();
+				}
 			};
 
 			applyVaultLogHook({

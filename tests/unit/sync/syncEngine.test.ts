@@ -120,6 +120,8 @@ describe('SyncEngine', () => {
 		removeDirtyPaths: Mock;
 		markOwnWrites: Mock;
 		removeOwnWrite: Mock;
+		isOwnWrite: Mock;
+		markInitialSyncDone: Mock;
 	};
 	type TrackingNoticeClass = typeof Notice & { calls: Array<[string, number | undefined]> };
 	const trackingNotice = Notice as TrackingNoticeClass;
@@ -134,6 +136,8 @@ describe('SyncEngine', () => {
 		mockApp.vault.adapter.read.mockReset().mockRejectedValue(new Error('missing .syncIgnore'));
 		mockApp.vault.adapter.mkdir.mockReset().mockResolvedValue(undefined);
 		mockApp.vault.adapter.writeBinary.mockReset().mockResolvedValue(undefined);
+		mockApp.vault.adapter.stat.mockReset().mockResolvedValue(null);
+		mockApp.vault.adapter.list.mockReset().mockResolvedValue({ files: [], folders: [] });
 
 		mockFileOps = {
 			uploadFile: vi.fn().mockResolvedValue(
@@ -156,6 +160,8 @@ describe('SyncEngine', () => {
 			removeDirtyPaths: vi.fn(),
 			markOwnWrites: vi.fn(),
 			removeOwnWrite: vi.fn(),
+			isOwnWrite: vi.fn().mockReturnValue(false),
+			markInitialSyncDone: vi.fn(),
 		};
 
 		mockClient = {
@@ -175,7 +181,7 @@ describe('SyncEngine', () => {
 		);
 	});
 
-	it('shows an up to date notice when there are no changes', async () => {
+	it('does not perform any operations when there are no changes', async () => {
 		stateManager.setLastSyncTime(Date.now());
 
 		await syncEngine.performSync();
@@ -184,10 +190,6 @@ describe('SyncEngine', () => {
 		expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
 		expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
 		expect(stateManager.getDeltaLink()).toBe('delta-link-1');
-		expect(trackingNotice.calls).toContainEqual([
-			'OneDrive sync: Everything up to date',
-			undefined,
-		]);
 	});
 
 	it('uploads locally modified files', async () => {
@@ -909,6 +911,8 @@ describe('SyncEngine large-delete circuit breaker', () => {
 			addDirtyFile: vi.fn(),
 			removeDirtyPaths: vi.fn(),
 			markOwnWrites: vi.fn(),
+			isOwnWrite: vi.fn().mockReturnValue(false),
+			markInitialSyncDone: vi.fn(),
 		};
 	});
 
@@ -1058,6 +1062,8 @@ describe('SyncEngine first-sync local vault enumeration', () => {
 			addDirtyFile: vi.fn(),
 			removeDirtyPaths: vi.fn(),
 			markOwnWrites: vi.fn(),
+			isOwnWrite: vi.fn().mockReturnValue(false),
+			markInitialSyncDone: vi.fn(),
 		};
 	});
 
@@ -1170,6 +1176,8 @@ describe('SyncEngine progress reporting', () => {
 			addDirtyFile: vi.fn(),
 			removeDirtyPaths: vi.fn(),
 			markOwnWrites: vi.fn(),
+			isOwnWrite: vi.fn().mockReturnValue(false),
+			markInitialSyncDone: vi.fn(),
 		};
 	});
 
@@ -1242,6 +1250,8 @@ describe('SyncEngine remote-delete via id-only delta entries', () => {
 			removeDirtyPaths: vi.fn(),
 			markOwnWrites: vi.fn(),
 			removeOwnWrite: vi.fn(),
+			isOwnWrite: vi.fn().mockReturnValue(false),
+			markInitialSyncDone: vi.fn(),
 		};
 		(mockApp.vault.getFiles as Mock).mockReturnValue([]);
 	});
@@ -1320,6 +1330,8 @@ describe('SyncEngine remote folder-delete expansion', () => {
 			removeDirtyPaths: vi.fn(),
 			markOwnWrites: vi.fn(),
 			removeOwnWrite: vi.fn(),
+			isOwnWrite: vi.fn().mockReturnValue(false),
+			markInitialSyncDone: vi.fn(),
 		};
 		(mockApp.vault.getFiles as Mock).mockReturnValue([]);
 	});
@@ -1432,6 +1444,8 @@ describe('SyncEngine reconcile from cloud', () => {
 			removeDirtyPaths: vi.fn(),
 			markOwnWrites: vi.fn(),
 			removeOwnWrite: vi.fn(),
+			isOwnWrite: vi.fn().mockReturnValue(false),
+			markInitialSyncDone: vi.fn(),
 		};
 	});
 

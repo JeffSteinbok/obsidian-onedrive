@@ -30,7 +30,24 @@ import {
 	getParentPath,
 	stripGraphPrefix,
 	shouldSyncVaultPath,
+	getFixedSyncableConfigPaths,
+	getInstalledPluginSyncPaths,
 } from '../utils/pathUtils';
+import { ProgressNotice } from '../ui/progressNotice';
+
+/**
+ * FNV-1a 32-bit hash of binary content, returned as hex string.
+ * Used to detect whether config file content actually changed
+ * vs Obsidian just touching the file on startup.
+ */
+function hashContent(data: Uint8Array): string {
+	let hash = 0x811c9dc5;
+	for (let i = 0; i < data.length; i++) {
+		hash ^= data[i];
+		hash = Math.imul(hash, 0x01000193);
+	}
+	return (hash >>> 0).toString(16).padStart(8, '0');
+}
 
 /** Progress callback — pass undefined to clear the status bar message. */
 type ProgressFn = (message: string | undefined) => void;
@@ -140,7 +157,7 @@ export class SyncEngine {
 			// Phase 1: Collect local dirty files, filtering out .syncIgnore matches
 			const ignoreMatchers = await this.loadIgnoreMatchers();
 			const isFirstSync = this.stateManager.isFirstSync();
-			const { localChanges } = this.gatherLocalChanges(ignoreMatchers);
+			const { localChanges } = await this.gatherLocalChanges(ignoreMatchers);
 
 			// Phase 2: Fetch remote delta changes from OneDrive, expand folder
 			// deletes into per-file deletes, and filter by sync scope
@@ -157,7 +174,7 @@ export class SyncEngine {
 			// On first sync the dirty queue is empty, so walk the vault and add
 			// uploads for any local-only files not already covered by the delta
 			if (isFirstSync) {
-				this.addFirstSyncUploads(operations, ignoreMatchers);
+				await this.addFirstSyncUploads(operations, ignoreMatchers);
 			}
 
 			logger.info(`Sync plan: ${operations.length} operations`);
@@ -190,7 +207,7 @@ export class SyncEngine {
 					);
 					new Notice('OneDrive sync: No files to sync. Edit or create files first.');
 				} else {
-					new Notice('OneDrive sync: Everything up to date');
+					logger.info('Everything up to date — no operations needed');
 				}
 				this.stateManager.setDeltaLink(deltaResponse.deltaLink);
 				if (obsidianDeltaResponse) {
@@ -229,6 +246,7 @@ export class SyncEngine {
 			}
 
 			logger.info('Sync completed successfully');
+			this.eventManager.markInitialSyncDone();
 
 			const syncedCount = completed - conflictedPaths.length;
 			if (conflictedPaths.length > 0) {
@@ -236,8 +254,6 @@ export class SyncEngine {
 					`OneDrive sync: ${syncedCount} file${syncedCount === 1 ? '' : 's'} synced, ` +
 						`${conflictedPaths.length} conflict${conflictedPaths.length === 1 ? '' : 's'} need resolution`
 				);
-			} else {
-				new Notice(`OneDrive sync: ${syncedCount} file${syncedCount === 1 ? '' : 's'} synced`);
 			}
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -276,7 +292,7 @@ export class SyncEngine {
 	 * that match .syncIgnore patterns. Ignored paths are removed from the
 	 * dirty queue so they don't reappear on the next sync cycle.
 	 */
-	private gatherLocalChanges(ignoreMatchers: RegExp[]): LocalChangesResult {
+	private async gatherLocalChanges(ignoreMatchers: RegExp[]): Promise<LocalChangesResult> {
 		const allLocalChanges = this.eventManager.getDirtyFiles();
 		const ignoredLocalPaths: string[] = [];
 		const localChanges = allLocalChanges.filter((change) => {
@@ -289,7 +305,14 @@ export class SyncEngine {
 		if (ignoredLocalPaths.length > 0) {
 			this.eventManager.removeDirtyPaths(ignoredLocalPaths);
 		}
-		logger.info(`Local changes: ${localChanges.length} dirty files`);
+
+		// Config files inside .obsidian/ don't fire vault events (they
+		// aren't TFile instances). Detect changes by comparing their
+		// current mtime/size against tracked sync state.
+		const configChanges = await this.detectConfigFileChanges(ignoreMatchers);
+		localChanges.push(...configChanges);
+
+		logger.info(`Local changes: ${localChanges.length} dirty files (${configChanges.length} config)`);
 		for (const change of localChanges) {
 			logger.info(
 				`  Local: ${change.type} ${change.path}${change.oldPath ? ` (from ${change.oldPath})` : ''}`
@@ -299,6 +322,79 @@ export class SyncEngine {
 			localChanges,
 			ignoredCount: ignoredLocalPaths.length,
 		};
+	}
+
+	/**
+	 * Detect local changes to .obsidian/ config files by comparing their
+	 * current mtime/size against the last-synced state. Returns synthetic
+	 * LocalChange entries for any files that changed or were deleted.
+	 */
+	private async detectConfigFileChanges(ignoreMatchers: RegExp[]): Promise<LocalChange[]> {
+		const adapter = this.app.vault.adapter;
+		const changes: LocalChange[] = [];
+
+		// Gather all syncable config paths (fixed + installed plugins)
+		const fixedPaths = getFixedSyncableConfigPaths(
+			this.configDir,
+			this.shouldSyncPath(`${this.configDir}/community-plugins.json`),
+			this.shouldSyncPath(`${this.configDir}/app.json`)
+		);
+		const pluginPaths = this.shouldSyncPath(`${this.configDir}/community-plugins.json`)
+			? await getInstalledPluginSyncPaths(this.configDir, adapter)
+			: [];
+
+		const allConfigPaths = [...fixedPaths, ...pluginPaths];
+
+		for (const path of allConfigPaths) {
+			if (!this.shouldSyncPath(path)) continue;
+			if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
+			// Skip paths already queued by vault events
+			if (this.eventManager.getDirtyFiles().some((d) => d.path === path)) continue;
+			// Skip paths we just wrote during a previous download
+			if (this.eventManager.isOwnWrite(path)) continue;
+
+			const trackedState = this.stateManager.getFileState(path);
+
+			try {
+				const stat = await adapter.stat(path);
+				if (stat && stat.type === 'file') {
+					// File exists locally
+					if (!trackedState) {
+						changes.push({ path, type: LocalChangeType.CREATE });
+					} else if (
+						stat.mtime !== trackedState.localMtime ||
+						stat.size !== trackedState.size
+					) {
+						// Mtime or size changed — read content and compare hash
+						// to avoid false positives from Obsidian touching files on startup
+						const content = await adapter.readBinary(path);
+						const hash = hashContent(new Uint8Array(content));
+						if (hash !== trackedState.localContentHash) {
+							logger.debug(`Config file content changed: ${path} (hash ${trackedState.localContentHash} → ${hash})`);
+							changes.push({ path, type: LocalChangeType.MODIFY });
+						} else {
+							// Content unchanged — just update tracked mtime
+							logger.debug(`Config file mtime changed but content unchanged: ${path}`);
+							this.stateManager.setFileState(path, {
+								...trackedState,
+								localMtime: stat.mtime,
+								size: stat.size,
+							});
+						}
+					}
+				} else if (trackedState) {
+					// File was tracked but no longer exists → local delete
+					changes.push({ path, type: LocalChangeType.DELETE });
+				}
+			} catch {
+				// stat failed — if tracked, treat as delete
+				if (trackedState) {
+					changes.push({ path, type: LocalChangeType.DELETE });
+				}
+			}
+		}
+
+		return changes;
 	}
 
 	/**
@@ -323,9 +419,6 @@ export class SyncEngine {
 		logger.info(`Delta query: isFirstSync=${isFirstSync}, hasDeltaLink=${!!deltaLink}`);
 		const deltaResponse = await this.oneDriveClient.getDelta(deltaLink, this.remoteRoot);
 		const obsidianDeltaLink = this.stateManager.getObsidianDeltaLink();
-		if (shouldSyncObsidianScope) {
-			progress(`fetching ${this.configDir} changes...`);
-		}
 		const obsidianDeltaResponse = shouldSyncObsidianScope
 			? await this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot, this.configDir)
 			: undefined;
@@ -479,7 +572,7 @@ export class SyncEngine {
 	 *
 	 * @returns The number of local-only uploads added.
 	 */
-	private addFirstSyncUploads(operations: SyncOperation[], ignoreMatchers: RegExp[]): number {
+	private async addFirstSyncUploads(operations: SyncOperation[], ignoreMatchers: RegExp[]): Promise<number> {
 		const remoteCoveredPaths = new Set<string>(operations.map((op) => op.path));
 		for (const path of this.stateManager.getTrackedPaths()) {
 			remoteCoveredPaths.add(path);
@@ -494,6 +587,34 @@ export class SyncEngine {
 			operations.push({ path, direction: SyncDirection.UPLOAD });
 			localOnlyCount++;
 		}
+
+		// Also enumerate config files that vault.getFiles() misses
+		const adapter = this.app.vault.adapter;
+		const configPaths = [
+			...getFixedSyncableConfigPaths(
+				this.configDir,
+				this.shouldSyncPath(`${this.configDir}/community-plugins.json`),
+				this.shouldSyncPath(`${this.configDir}/app.json`)
+			),
+			...(this.shouldSyncPath(`${this.configDir}/community-plugins.json`)
+				? await getInstalledPluginSyncPaths(this.configDir, adapter)
+				: []),
+		];
+		for (const path of configPaths) {
+			if (remoteCoveredPaths.has(path)) continue;
+			if (!this.shouldSyncPath(path)) continue;
+			if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
+			try {
+				const stat = await adapter.stat(path);
+				if (stat && stat.type === 'file') {
+					operations.push({ path, direction: SyncDirection.UPLOAD });
+					localOnlyCount++;
+				}
+			} catch {
+				// file doesn't exist, skip
+			}
+		}
+
 		if (localOnlyCount > 0) {
 			logger.info(`First-sync local enumeration: queued ${localOnlyCount} local-only file uploads`);
 		}
@@ -502,7 +623,7 @@ export class SyncEngine {
 
 	/**
 	 * Execute all planned sync operations (uploads, downloads, deletes)
-	 * with progress tracking. Shows a persistent Notice for batches of
+	 * with progress tracking. Shows a progress-bar Notice for batches of
 	 * 5+ operations that updates in-place as each operation completes.
 	 */
 	private async executeSyncOperations(
@@ -514,7 +635,7 @@ export class SyncEngine {
 		const conflictedPaths: string[] = [];
 		progress(`0/${operations.length} files`);
 		const progressNotice =
-			operations.length >= 5 ? new Notice(`Syncing: 0/${operations.length} files...`, 0) : null;
+			operations.length >= 5 ? new ProgressNotice('Syncing', operations.length) : null;
 		await this.executeOperations(operations, (operation) => {
 			completed++;
 
@@ -528,7 +649,7 @@ export class SyncEngine {
 			const progressLabel = `${completed}/${operations.length} files`;
 			progress(progressLabel);
 			if (progressNotice) {
-				progressNotice.setMessage(`Syncing: ${progressLabel}...`);
+				progressNotice.update(completed, 'Syncing');
 			}
 		});
 		progressNotice?.hide();
@@ -848,26 +969,37 @@ export class SyncEngine {
 			return;
 		}
 
-		const file = this.app.vault.getAbstractFileByPath(operation.path);
-		if (!(file instanceof TFile)) {
-			logger.warn(`Local file not found for conflict: ${operation.path}`);
-			return;
-		}
-
 		if (!operation.remoteState?.oneDriveId) {
 			logger.warn(`No remote ID for conflict: ${operation.path}`);
 			return;
 		}
 
+		// Read local content — TFile for vault files, adapter for config files
+		let localContent: ArrayBuffer;
+		let localMtime: number;
+		const file = this.app.vault.getAbstractFileByPath(operation.path);
+		if (file instanceof TFile) {
+			localContent = await this.app.vault.readBinary(file);
+			localMtime = file.stat.mtime;
+		} else {
+			const adapter = this.app.vault.adapter;
+			if (!(await adapter.exists(operation.path))) {
+				logger.warn(`Local file not found for conflict: ${operation.path}`);
+				return;
+			}
+			localContent = await adapter.readBinary(operation.path);
+			const stat = await adapter.stat(operation.path);
+			localMtime = stat?.mtime ?? Date.now();
+		}
+
 		// Snapshot both versions
-		const localContent = await this.app.vault.readBinary(file);
 		const remoteContent = await this.fileOps.downloadFile(operation.remoteState.oneDriveId);
 
 		await this.conflictQueue.add(
 			operation.path,
 			localContent,
 			remoteContent,
-			file.stat.mtime,
+			localMtime,
 			operation.remoteState.remoteModifiedTime,
 			operation.remoteState.oneDriveId,
 			operation.remoteState.remoteHash
@@ -879,22 +1011,31 @@ export class SyncEngine {
 	 */
 	private async uploadFile(operation: SyncOperation): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(operation.path);
-		if (!(file instanceof TFile)) {
-			logger.warn(`File not found locally: ${operation.path}`);
-			return;
+		let content: ArrayBuffer;
+		let localMtime: number;
+
+		if (file instanceof TFile) {
+			content = await this.app.vault.readBinary(file);
+			localMtime = file.stat.mtime;
+		} else {
+			// Config files aren't TFile — read via adapter
+			const adapter = this.app.vault.adapter;
+			content = await adapter.readBinary(operation.path);
+			const stat = await adapter.stat(operation.path);
+			localMtime = stat?.mtime ?? Date.now();
 		}
 
-		const content = await this.app.vault.readBinary(file);
 		const remotePath = this.vaultPathToRemotePath(operation.path);
 		const item = await this.fileOps.uploadFile(remotePath, content);
 
 		this.stateManager.setFileState(operation.path, {
 			path: operation.path,
-			localMtime: file.stat.mtime,
+			localMtime,
 			remoteHash: item.file?.hashes?.quickXorHash || '',
 			size: content.byteLength,
 			remoteModifiedTime: new Date(item.lastModifiedDateTime).getTime(),
 			oneDriveId: item.id,
+			localContentHash: !(file instanceof TFile) ? hashContent(new Uint8Array(content)) : undefined,
 		});
 
 		logger.debug(`Uploaded ${operation.path} successfully`);
@@ -966,7 +1107,13 @@ export class SyncEngine {
 
 		// Get the mtime Obsidian assigned to the file
 		const file = this.app.vault.getAbstractFileByPath(operation.path);
-		const localMtime = file instanceof TFile ? file.stat.mtime : Date.now();
+		let localMtime: number;
+		if (file instanceof TFile) {
+			localMtime = file.stat.mtime;
+		} else {
+			const stat = await this.app.vault.adapter.stat(operation.path);
+			localMtime = stat?.mtime ?? Date.now();
+		}
 
 		this.stateManager.setFileState(operation.path, {
 			path: operation.path,
@@ -975,6 +1122,7 @@ export class SyncEngine {
 			size: content.byteLength,
 			remoteModifiedTime: operation.remoteState.remoteModifiedTime,
 			oneDriveId: operation.remoteState.oneDriveId,
+			localContentHash: !(file instanceof TFile) ? hashContent(new Uint8Array(content)) : undefined,
 		});
 
 		logger.debug(`Downloaded ${operation.path} successfully`);
@@ -994,6 +1142,19 @@ export class SyncEngine {
 				throw error;
 			}
 			logger.debug(`Deleted local file ${filePath}`);
+		} else {
+			// Config files aren't in the vault index — delete via adapter
+			const adapter = this.app.vault.adapter;
+			if (await adapter.exists(filePath)) {
+				this.eventManager.markOwnWrites([filePath]);
+				try {
+					await adapter.remove(filePath);
+				} catch (error) {
+					this.eventManager.removeOwnWrite(filePath);
+					throw error;
+				}
+				logger.debug(`Deleted local config file ${filePath}`);
+			}
 		}
 		this.stateManager.removeFileState(filePath);
 	}
@@ -1260,7 +1421,35 @@ export class SyncEngine {
 				.getFiles()
 				.filter((f) => this.shouldSyncPath(f.path))
 				.filter((f) => !this.shouldIgnorePath(f.path, ignoreMatchers));
-			const localByPath = new Map<string, TFile>(localFiles.map((f) => [f.path, f]));
+			const localByPath = new Map<string, { path: string; size: number }>(
+				localFiles.map((f) => [f.path, { path: f.path, size: f.stat.size }])
+			);
+
+			// Config files aren't in vault.getFiles() — add them via adapter
+			const adapter = this.app.vault.adapter;
+			const configPaths = [
+				...getFixedSyncableConfigPaths(
+					this.configDir,
+					this.shouldSyncPath(`${this.configDir}/community-plugins.json`),
+					this.shouldSyncPath(`${this.configDir}/app.json`)
+				),
+				...(this.shouldSyncPath(`${this.configDir}/community-plugins.json`)
+					? await getInstalledPluginSyncPaths(this.configDir, adapter)
+					: []),
+			];
+			for (const path of configPaths) {
+				if (localByPath.has(path)) continue;
+				if (!this.shouldSyncPath(path)) continue;
+				if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
+				try {
+					const stat = await adapter.stat(path);
+					if (stat && stat.type === 'file') {
+						localByPath.set(path, { path, size: stat.size });
+					}
+				} catch {
+					// file doesn't exist, skip
+				}
+			}
 
 			// 4. Plan operations.
 			const operations: SyncOperation[] = [];
@@ -1268,12 +1457,12 @@ export class SyncEngine {
 			const remoteOnly: string[] = [];
 			const sizeMismatch: string[] = [];
 
-			for (const local of localFiles) {
-				if (!remoteFiles.has(local.path)) {
-					localOnly.push(local.path);
+			for (const [path] of localByPath) {
+				if (!remoteFiles.has(path)) {
+					localOnly.push(path);
 					// Encoded as a remote→local delete (download direction, no remoteState).
 					operations.push({
-						path: local.path,
+						path,
 						direction: SyncDirection.DOWNLOAD,
 						remoteState: undefined,
 					});
@@ -1291,7 +1480,7 @@ export class SyncEngine {
 					});
 				} else {
 					const remoteSize = item.size || 0;
-					if (local.stat.size !== remoteSize) {
+					if (local.size !== remoteSize) {
 						sizeMismatch.push(path);
 						operations.push({
 							path,
@@ -1348,15 +1537,12 @@ export class SyncEngine {
 			// 6. Execute.
 			let completed = 0;
 			progress(`0/${operations.length} files`);
-			const progressNotice = new Notice(
-				`Reconciling: 0/${operations.length} files...`,
-				0
-			);
+			const progressNotice = new ProgressNotice('Reconciling', operations.length);
 			await this.executeOperations(operations, () => {
 				completed++;
 				const label = `${completed}/${operations.length} files`;
 				progress(label);
-				progressNotice.setMessage(`Reconciling: ${label}...`);
+				progressNotice.update(completed, 'Reconciling');
 			});
 			progressNotice.hide();
 			progress(undefined);

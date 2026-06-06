@@ -48,9 +48,13 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl)
-			.setDesc('by Jeff Steinbok — v' + (this.plugin.manifest.version || '') + ' — GitHub')
+		const heading = new Setting(containerEl)
+			.setName('OneDrive Sync')
 			.setHeading();
+		const desc = heading.descEl;
+		desc.appendText('by Jeff Steinbok — v' + (this.plugin.manifest.version || '') + ' — ');
+		const link = desc.createEl('a', { text: 'GitHub', href: 'https://github.com/JeffSteinbok/obsidian-onedrive' });
+		link.setAttr('target', '_blank');
 
 		// Sections in logical order
 		this.displayAuthSection(containerEl);
@@ -292,7 +296,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				toggle.setValue(this.plugin.settings.enableDebugLogging).onChange(async (value) => {
 					this.plugin.settings.enableDebugLogging = value;
 					await this.plugin.saveSettings();
-					new Notice(`Debug logging ${value ? 'enabled' : 'disabled'}`);
 				})
 			);
 
