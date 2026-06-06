@@ -67,6 +67,8 @@ const mocks = vi.hoisted(() => {
 	const statusBarManager = {
 		setStatus: vi.fn(),
 		setLastSyncTime: vi.fn(),
+		setProgress: vi.fn(),
+		setConflictCount: vi.fn(),
 	};
 
 	const deviceCodeModal = {
@@ -381,6 +383,43 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.remoteRootPath).toBeUndefined();
 		expect((plugin as any).syncEngine).toBeUndefined();
 		expect((plugin as any).eventManager).toBeUndefined();
+	});
+
+	it('getSyncStatusInfo reports disconnected and unsynced state by default', async () => {
+		await plugin.onload();
+
+		expect(plugin.getSyncStatusInfo()).toEqual({
+			status: 'disconnected',
+			lastSyncTime: undefined,
+			progressMessage: undefined,
+			conflictCount: 0,
+		});
+	});
+
+	it('getSyncStatusInfo reports idle status and last sync time when connected', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		mocks.syncStateManager.getLastSyncTime.mockReturnValue(123456);
+		await plugin.onload();
+
+		expect(plugin.getSyncStatusInfo()).toEqual({
+			status: 'idle',
+			lastSyncTime: 123456,
+			progressMessage: undefined,
+			conflictCount: 0,
+		});
+	});
+
+	it('getSyncStatusInfo reports in-progress sync details', async () => {
+		await plugin.onload();
+		(plugin as any).setSyncStatus('syncing');
+		(plugin as any).setSyncProgress('3/10 files');
+
+		expect(plugin.getSyncStatusInfo()).toEqual({
+			status: 'syncing',
+			lastSyncTime: undefined,
+			progressMessage: '3/10 files',
+			conflictCount: 0,
+		});
 	});
 
 	it('view-sync-logs command creates and opens a log note', async () => {

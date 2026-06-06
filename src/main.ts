@@ -3,7 +3,7 @@
  * Syncs vault with OneDrive Personal/Consumer accounts using Device Code Flow
  */
 
-import { Plugin, Notice, TFile } from 'obsidian';
+import { App, Plugin, Notice, TFile } from 'obsidian';
 import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID } from './constants';
 import { logger } from './utils/logger';
@@ -46,6 +46,13 @@ import { LargeDeleteWarningInfo, LargeDeleteDecision } from './types';
 
 import { timerApi } from './utils/timerApi';
 
+export interface SyncStatusInfo {
+	status: SyncStatus;
+	lastSyncTime?: number;
+	progressMessage?: string;
+	conflictCount: number;
+}
+
 function isCommunityPluginsAdapter(adapter: unknown): adapter is CommunityPluginsAdapter {
 	if (!adapter || typeof adapter !== 'object') {
 		return false;
@@ -84,6 +91,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 	// UI components
 	private statusBarManager?: StatusBarManager;
+	private currentSyncStatus: SyncStatus = SyncStatus.DISCONNECTED;
+	private currentProgressMessage?: string;
+	private mobileProgressNotice?: Notice;
 
 	async onload() {
 		logger.info('Loading OneDrive Sync plugin');
@@ -239,6 +249,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 	onunload() {
 		logger.info('Unloading OneDrive Sync plugin');
+		this.hideMobileProgressNotice();
 
 		// Stop event manager
 		if (this.eventManager) {
@@ -352,7 +363,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 					),
 				() => this.settings.largeDeleteThreshold ?? 0,
 				(info) => this.handleLargeDeleteWarning(info),
-				(msg) => this.statusBarManager?.setProgress(msg),
+				(msg) => this.setSyncProgress(msg),
 			);
 
 			// Get user info to display in settings
@@ -543,7 +554,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		try {
 			// Update status bar
-			this.statusBarManager?.setStatus(SyncStatus.SYNCING);
+			this.setSyncStatus(SyncStatus.SYNCING);
 
 			// Perform sync
 			await this.syncEngine.performSync();
@@ -551,7 +562,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			// Update status bar
 			const now = Date.now();
 			this.statusBarManager?.setLastSyncTime(now);
-			this.statusBarManager?.setStatus(SyncStatus.IDLE);
+			this.setSyncStatus(SyncStatus.IDLE);
 
 			// Update conflict count and reveal view if there are new conflicts
 			this.updateConflictCount();
@@ -565,7 +576,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			logger.info('Sync completed successfully');
 		} catch (error) {
 			logger.error('Sync failed:', error);
-			this.statusBarManager?.setStatus(SyncStatus.ERROR);
+			this.setSyncStatus(SyncStatus.ERROR);
 			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
 			new Notice(`Sync failed: ${errorMsg}`);
 			throw error;
@@ -583,11 +594,21 @@ export default class OneDriveSyncPlugin extends Plugin {
 			if (lastSyncTime > 0) {
 				this.statusBarManager.setLastSyncTime(lastSyncTime);
 			}
-			this.statusBarManager.setStatus(SyncStatus.IDLE);
+			this.setSyncStatus(SyncStatus.IDLE);
 		} else {
-			this.statusBarManager.setStatus(SyncStatus.DISCONNECTED);
+			this.setSyncStatus(SyncStatus.DISCONNECTED);
 		}
 	}
+
+		getSyncStatusInfo(): SyncStatusInfo {
+			const lastSyncTime = this.syncStateManager.getLastSyncTime();
+			return {
+				status: this.currentSyncStatus,
+				lastSyncTime: lastSyncTime > 0 ? lastSyncTime : undefined,
+				progressMessage: this.currentProgressMessage,
+				conflictCount: this.conflictQueue?.count ?? 0,
+			};
+		}
 
 	/**
 	 * List folders at a path for the folder picker.
@@ -734,6 +755,50 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private updateConflictCount(): void {
 		const count = this.conflictQueue?.count ?? 0;
 		this.statusBarManager?.setConflictCount(count);
+	}
+
+	private setSyncStatus(status: SyncStatus): void {
+		this.currentSyncStatus = status;
+		if (status !== SyncStatus.SYNCING) {
+			this.currentProgressMessage = undefined;
+		}
+		this.statusBarManager?.setStatus(status);
+		this.updateMobileProgressNotice();
+	}
+
+	private setSyncProgress(message: string | undefined): void {
+		this.currentProgressMessage = message;
+		this.statusBarManager?.setProgress(message);
+		this.updateMobileProgressNotice();
+	}
+
+	private updateMobileProgressNotice(): void {
+		if (!this.isMobileClient()) return;
+		if (this.currentSyncStatus !== SyncStatus.SYNCING) {
+			this.hideMobileProgressNotice();
+			return;
+		}
+
+		const message = this.currentProgressMessage
+			? `OneDrive sync: ${this.currentProgressMessage}`
+			: 'OneDrive sync in progress...';
+
+		if (!this.mobileProgressNotice) {
+			this.mobileProgressNotice = new Notice(message, 0);
+		} else {
+			this.mobileProgressNotice.setMessage(message);
+		}
+	}
+
+	private hideMobileProgressNotice(): void {
+		if (this.mobileProgressNotice) {
+			this.mobileProgressNotice.hide();
+			this.mobileProgressNotice = undefined;
+		}
+	}
+
+	private isMobileClient(): boolean {
+		return !!(this.app as App & { isMobile?: boolean }).isMobile;
 	}
 
 	/**
@@ -911,12 +976,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return;
 		}
 		try {
-			this.statusBarManager?.setStatus(SyncStatus.SYNCING);
+			this.setSyncStatus(SyncStatus.SYNCING);
 			await this.syncEngine.reconcileFromCloud();
 			await this.saveSettings();
-			this.statusBarManager?.setStatus(SyncStatus.IDLE);
+			this.setSyncStatus(SyncStatus.IDLE);
 		} catch (error) {
-			this.statusBarManager?.setStatus(SyncStatus.ERROR);
+			this.setSyncStatus(SyncStatus.ERROR);
 			throw error;
 		}
 	}
