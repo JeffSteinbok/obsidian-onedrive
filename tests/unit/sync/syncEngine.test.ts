@@ -290,6 +290,46 @@ describe('SyncEngine', () => {
 		});
 	});
 
+	it('realigns localized app-folder delta paths to the vault root', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		syncEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			conflictResolver,
+			mockEventManager as any,
+			'.obsidian',
+			'',
+			'/Apps/ObsidianOneDrive'
+		);
+		mockApp.vault.adapter.exists.mockResolvedValue(false);
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				makeRemoteFile('Development/Remotething/Remotething ideas.md', {
+					id: 'remote-idea-id',
+					parentReference: {
+						id: 'parent-id',
+						path: '/drive/root:/Aplikacje/ObsidianOneDrive/Development/Remotething',
+					},
+				}),
+			],
+			deltaLink: 'delta-link-localized',
+		});
+
+		await syncEngine.performSync();
+
+		expect(mockApp.vault.adapter.mkdir).toHaveBeenCalledWith('Development/Remotething');
+		expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
+			'Development/Remotething/Remotething ideas.md',
+			expect.any(ArrayBuffer)
+		);
+		expect(stateManager.getFileState('Development/Remotething/Remotething ideas.md')).toMatchObject({
+			path: 'Development/Remotething/Remotething ideas.md',
+			oneDriveId: 'remote-idea-id',
+		});
+	});
+
 	it('ignores remote .obsidian plugin files by default', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		mockClient.getDelta.mockResolvedValue({

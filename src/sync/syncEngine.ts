@@ -1120,8 +1120,40 @@ export class SyncEngine {
 
 		// Strip OneDrive API prefixes
 		fullPath = stripGraphPrefix(fullPath);
+		fullPath = this.realignRemoteRoot(fullPath);
 
 		return toVaultPath(fullPath, this.remoteRootOnDrive);
+	}
+
+	private realignRemoteRoot(fullPath: string): string {
+		const normalizedPath = normalizePath(fullPath);
+		const normalizedRoot = normalizePath(this.remoteRootOnDrive);
+		if (!normalizedRoot || normalizedPath.startsWith(normalizedRoot)) {
+			return normalizedPath;
+		}
+
+		const rootSegments = normalizedRoot.split('/').filter((segment) => segment.length > 0);
+		const rootName = rootSegments[rootSegments.length - 1];
+		if (!rootName) {
+			return normalizedPath;
+		}
+
+		const marker = `/${rootName}`;
+		const markerIndex = normalizedPath.indexOf(marker);
+		if (markerIndex < 0) {
+			return normalizedPath;
+		}
+
+		const candidateRoot = normalizedPath.substring(0, markerIndex + marker.length);
+		if (!candidateRoot || candidateRoot === normalizedRoot) {
+			return normalizedPath;
+		}
+
+		logger.warn(
+			`Adjusting remote root path from '${this.remoteRootOnDrive}' to '${candidateRoot}' based on delta item path`
+		);
+		this.remoteRootOnDrive = candidateRoot;
+		return normalizedPath;
 	}
 
 	private async loadIgnoreMatchers(): Promise<RegExp[]> {
