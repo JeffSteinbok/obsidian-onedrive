@@ -3,7 +3,7 @@
  * Syncs vault with OneDrive Personal/Consumer accounts using Device Code Flow
  */
 
-import { App, Plugin, Notice, TFile } from 'obsidian';
+import { Platform, Plugin, Notice, TFile } from 'obsidian';
 import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID } from './constants';
 import { logger } from './utils/logger';
@@ -600,15 +600,15 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 	}
 
-		getSyncStatusInfo(): SyncStatusInfo {
-			const lastSyncTime = this.syncStateManager.getLastSyncTime();
-			return {
-				status: this.currentSyncStatus,
-				lastSyncTime: lastSyncTime > 0 ? lastSyncTime : undefined,
-				progressMessage: this.currentProgressMessage,
-				conflictCount: this.conflictQueue?.count ?? 0,
-			};
-		}
+	getSyncStatusInfo(): SyncStatusInfo {
+		const lastSyncTime = this.syncStateManager.getLastSyncTime();
+		return {
+			status: this.currentSyncStatus,
+			lastSyncTime: lastSyncTime > 0 ? lastSyncTime : undefined,
+			progressMessage: this.currentProgressMessage,
+			conflictCount: this.conflictQueue?.count ?? 0,
+		};
+	}
 
 	/**
 	 * List folders at a path for the folder picker.
@@ -798,7 +798,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 	}
 
 	private isMobileClient(): boolean {
-		return !!(this.app as App & { isMobile?: boolean }).isMobile;
+		return (Platform as { isMobile?: boolean } | undefined)?.isMobile === true ||
+			(this.app as { isMobile?: boolean }).isMobile === true;
 	}
 
 	/**
