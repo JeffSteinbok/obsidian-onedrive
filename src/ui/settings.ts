@@ -48,14 +48,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		const heading = new Setting(containerEl)
-			.setName('OneDrive Sync')
-			.setHeading();
-		const desc = heading.descEl;
-		desc.appendText('by Jeff Steinbok — v' + (this.plugin.manifest.version || '') + ' — ');
-		const link = desc.createEl('a', { text: 'GitHub', href: 'https://github.com/JeffSteinbok/obsidian-onedrive' });
-		link.setAttr('target', '_blank');
-
 		// Sections in logical order
 		this.displayAuthSection(containerEl);
 		this.displaySyncFolderSection(containerEl);
