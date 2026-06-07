@@ -179,7 +179,7 @@ export class SyncEngine {
 
 			logger.info(`Sync plan: ${operations.length} operations`);
 			for (const op of operations) {
-				logger.info(`  Op: ${op.direction} ${op.path}`);
+				logger.debug(`  Op: ${op.direction} ${op.path}`);
 			}
 
 			// Circuit breaker: if a non-first sync would delete a large number
@@ -245,7 +245,7 @@ export class SyncEngine {
 				this.eventManager.addDirtyFile(path, 'modify');
 			}
 
-			logger.info('Sync completed successfully');
+			logger.debug('Sync operations finished');
 			this.eventManager.markInitialSyncDone();
 
 			const syncedCount = completed - conflictedPaths.length;
@@ -314,7 +314,7 @@ export class SyncEngine {
 
 		logger.info(`Local changes: ${localChanges.length} dirty files (${configChanges.length} config)`);
 		for (const change of localChanges) {
-			logger.info(
+			logger.debug(
 				`  Local: ${change.type} ${change.path}${change.oldPath ? ` (from ${change.oldPath})` : ''}`
 			);
 		}
@@ -457,7 +457,7 @@ export class SyncEngine {
 		);
 		for (const item of remoteChanges) {
 			const vaultPath = this.remotePathToVaultPath(item);
-			logger.info(`  Remote: ${item.deleted ? 'DELETE' : 'CHANGED'} ${vaultPath} (id=${item.id})`);
+			logger.debug(`  Remote: ${item.deleted ? 'DELETE' : 'CHANGED'} ${vaultPath} (id=${item.id})`);
 		}
 
 		return {

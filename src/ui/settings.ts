@@ -168,6 +168,10 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			}
 		}
 
+		if (isConnected) {
+			this.displaySyncStatus(containerEl);
+		}
+
 		// Sync Now button
 		if (isConnected) {
 			new Setting(containerEl).addButton((btn) => {
@@ -193,29 +197,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 */
 	private displaySyncSection(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Sync Configuration').setHeading();
-		const syncStatus = this.plugin.getSyncStatusInfo();
-
-		const statusText = this.getSyncStatusText(syncStatus.status);
-		const lastSyncText = syncStatus.lastSyncTime
-			? new Date(syncStatus.lastSyncTime).toLocaleString()
-			: 'Not synced yet';
-		const progressText = syncStatus.status === SyncStatus.SYNCING
-			? (syncStatus.progressMessage || 'Starting...')
-			: '—';
-		const conflictText = syncStatus.conflictCount > 0
-			? `${syncStatus.conflictCount} pending`
-			: 'None';
-
-		new Setting(containerEl)
-			.setName('Sync status')
-			.setDesc(
-				`Status: ${statusText} · Last sync: ${lastSyncText} · Progress: ${progressText} · Conflicts: ${conflictText}`
-			)
-			.addButton((button) =>
-				button.setButtonText('Refresh').onClick(() => {
-					this.display();
-				})
-			);
 
 		const { configDir } = this.app.vault;
 
@@ -296,6 +277,31 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncPluginManifests).onChange(async (value) => {
 					await this.plugin.onPluginManifestSyncChanged(value);
+				})
+			);
+	}
+
+	private displaySyncStatus(containerEl: HTMLElement): void {
+		const syncStatus = this.plugin.getSyncStatusInfo();
+		const statusText = this.getSyncStatusText(syncStatus.status);
+		const lastSyncText = syncStatus.lastSyncTime
+			? new Date(syncStatus.lastSyncTime).toLocaleString()
+			: 'Not synced yet';
+		const progressText = syncStatus.status === SyncStatus.SYNCING
+			? (syncStatus.progressMessage || 'Starting...')
+			: '—';
+		const conflictText = syncStatus.conflictCount > 0
+			? `${syncStatus.conflictCount} pending`
+			: 'None';
+
+		new Setting(containerEl)
+			.setName('Sync status')
+			.setDesc(
+				`Status: ${statusText} · Last sync: ${lastSyncText} · Progress: ${progressText} · Conflicts: ${conflictText}`
+			)
+			.addButton((button) =>
+				button.setButtonText('Refresh').onClick(() => {
+					this.display();
 				})
 			);
 	}
