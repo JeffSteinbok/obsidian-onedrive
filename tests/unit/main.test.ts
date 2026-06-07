@@ -4,10 +4,10 @@ const mocks = vi.hoisted(() => {
 		info: vi.fn(),
 		warn: vi.fn(),
 		error: vi.fn(),
+		setLogLevel: vi.fn(),
 		setDebugMode: vi.fn(),
 		enableFileLogging: vi.fn(),
 		setVaultLogHook: vi.fn(),
-		getRecentLogs: vi.fn().mockReturnValue([]),
 	};
 
 	const tokenStorage = {
@@ -53,6 +53,13 @@ const mocks = vi.hoisted(() => {
 		setStrategy: vi.fn(),
 	};
 
+	const conflictQueue = {
+		load: vi.fn(),
+		prepareForSave: vi.fn().mockReturnValue(undefined),
+		add: vi.fn().mockResolvedValue(undefined),
+		count: 0,
+	};
+
 	const eventManager = {
 		startListening: vi.fn(),
 		stopListening: vi.fn(),
@@ -83,6 +90,7 @@ const mocks = vi.hoisted(() => {
 		syncEngine,
 		syncStateManager,
 		conflictResolver,
+		conflictQueue,
 		eventManager,
 		statusBarManager,
 		deviceCodeModal,
@@ -110,6 +118,9 @@ const mocks = vi.hoisted(() => {
 		ConflictResolver: vi.fn().mockImplementation(function () {
 			return conflictResolver;
 		}),
+		ConflictQueue: vi.fn().mockImplementation(function () {
+			return conflictQueue;
+		}),
 		EventManager: vi.fn().mockImplementation(function () {
 			return eventManager;
 		}),
@@ -127,6 +138,13 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('../../src/utils/logger', () => ({
 	logger: mocks.logger,
+	LogLevel: {
+		DEBUG: 0,
+		INFO: 1,
+		WARN: 2,
+		ERROR: 3,
+		OFF: 4,
+	},
 }));
 
 vi.mock('../../src/auth/tokenStorage', () => ({
@@ -163,6 +181,10 @@ vi.mock('../../src/sync/conflictResolver', () => ({
 
 vi.mock('../../src/sync/eventManager', () => ({
 	EventManager: mocks.EventManager,
+}));
+
+vi.mock('../../src/sync/conflictQueue', () => ({
+	ConflictQueue: mocks.ConflictQueue,
 }));
 
 vi.mock('../../src/ui/settings', () => ({
@@ -225,6 +247,10 @@ describe('OneDriveSyncPlugin', () => {
 		mocks.syncEngine.performSync.mockResolvedValue(undefined);
 		mocks.syncStateManager.prepareForSave.mockReturnValue({ lastSyncTime: 0, fileStates: [] });
 		mocks.syncStateManager.getLastSyncTime.mockReturnValue(0);
+		mocks.conflictQueue.load.mockReset();
+		mocks.conflictQueue.prepareForSave.mockReturnValue(undefined);
+		mocks.conflictQueue.add.mockResolvedValue(undefined);
+		mocks.conflictQueue.count = 0;
 		mocks.eventManager.triggerManualSync.mockResolvedValue(undefined);
 		mocks.eventManager.isSyncInProgress.mockReturnValue(false);
 		mocks.eventManager.getDirtyFiles.mockReturnValue([]);
@@ -431,24 +457,4 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.getSyncStatusInfo().progressMessage).toBeUndefined();
 	});
 
-	it('view-sync-logs command creates and opens a log note', async () => {
-		mocks.logger.getRecentLogs.mockReturnValue(['[2026-01-01T00:00:00.000Z] [OneDrive Sync] [INFO] Test log']);
-		const createdFile = { path: '.obsidian/plugins/onedrive-sync/OneDrive Sync Logs.md' } as any;
-		(plugin as any).app.vault.create = vi.fn().mockResolvedValue(createdFile);
-		const openFile = vi.fn().mockResolvedValue(undefined);
-		(plugin as any).app.workspace.getLeaf = vi.fn().mockReturnValue({ openFile });
-
-		await plugin.onload();
-		const viewLogsCommand = ((plugin as any).addCommand as any).mock.calls
-			.map((call: any[]) => call[0])
-			.find((cmd: any) => cmd.id === 'view-sync-logs');
-
-		await viewLogsCommand.callback();
-
-		expect((plugin as any).app.vault.create).toHaveBeenCalledWith(
-			'.obsidian/plugins/onedrive-sync/OneDrive Sync Logs.md',
-			expect.stringContaining('[OneDrive Sync] [INFO] Test log')
-		);
-		expect(openFile).toHaveBeenCalledWith(createdFile);
-	});
 });

@@ -134,9 +134,8 @@ export class EventManager {
 					// If file is already tracked in sync state, this is Obsidian
 					// re-indexing on startup — not a real new file
 					if (this.stateManager.getFileState(file.path)) {
-						logger.debug(`Ignoring startup create event for known file: ${file.path}`);
-						return;
-					}
+							return;
+						}
 					this.dirtyFiles.set(file.path, { path: file.path, type: LocalChangeType.CREATE });
 					this.scheduleSync();
 				}
@@ -189,11 +188,21 @@ export class EventManager {
 				// positives from Obsidian touching config files on startup.
 				const tracked = this.stateManager.getFileState(path);
 				void this.app.vault.adapter.stat(path).then((stat) => {
-					if (!stat || stat.type !== 'file') return;
+					if (this.dirtyFiles.has(path)) return; // raced with another event
+
+					if (!stat || stat.type !== 'file') {
+						// File no longer exists — if we were tracking it, it's a delete
+						if (tracked) {
+							this.dirtyFiles.set(path, { path, type: LocalChangeType.DELETE });
+							logger.debug(`Raw event: config file deleted: ${path}`);
+							this.scheduleSync();
+						}
+						return;
+					}
+
 					if (tracked && stat.mtime === tracked.localMtime && stat.size === tracked.size) {
 						return; // unchanged — ignore
 					}
-					if (this.dirtyFiles.has(path)) return; // raced with another event
 					const type = tracked ? LocalChangeType.MODIFY : LocalChangeType.CREATE;
 					this.dirtyFiles.set(path, { path, type });
 					logger.debug(`Raw event: config file changed: ${path}`);

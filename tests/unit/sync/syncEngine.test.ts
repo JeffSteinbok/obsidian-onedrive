@@ -108,6 +108,15 @@ function makeRemoteDelete(vaultPath: string, overrides: Partial<OneDriveItem> = 
 	});
 }
 
+function hashContent(data: Uint8Array): string {
+	let hash = 0x811c9dc5;
+	for (const byte of data) {
+		hash ^= byte;
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return hash.toString(16).padStart(8, '0');
+}
+
 describe('SyncEngine', () => {
 	let syncEngine: SyncEngine;
 	let mockFileOps: { uploadFile: Mock; downloadFile: Mock; deleteFile: Mock };
@@ -773,6 +782,151 @@ describe('SyncEngine', () => {
 		await syncEngine.performSync();
 
 		expect(mockEventManager.clearDirtyFiles).toHaveBeenCalledTimes(1);
+	});
+
+	it('backfills missing config file hashes without generating a modify change', async () => {
+		const configPath = '.obsidian/app.json';
+		const content = new TextEncoder().encode('{"theme":"moonstone"}');
+		const expectedHash = hashContent(content);
+
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState(configPath, {
+			path: configPath,
+			localMtime: 100,
+			remoteHash: 'remote-hash',
+			size: 10,
+			remoteModifiedTime: 200,
+			oneDriveId: 'config-id',
+			localContentHash: undefined,
+		});
+		syncEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			conflictResolver,
+			mockEventManager as any,
+			'.obsidian',
+			'/remote/root',
+			undefined,
+			undefined,
+			(path) => path === configPath
+		);
+		mockApp.vault.adapter.stat.mockImplementation(async (path: string) =>
+			path === configPath
+				? { type: 'file', mtime: 300, size: content.byteLength, ctime: 0 }
+				: null
+		);
+		mockApp.vault.adapter.readBinary.mockImplementation(async (path: string) =>
+			path === configPath ? content.buffer.slice(0) : new ArrayBuffer(0)
+		);
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		expect(stateManager.getFileState(configPath)).toMatchObject({
+			path: configPath,
+			localMtime: 300,
+			size: content.byteLength,
+			localContentHash: expectedHash,
+		});
+	});
+
+	it('uploads config files when the stored hash differs from the current content hash', async () => {
+		const configPath = '.obsidian/app.json';
+		const content = new TextEncoder().encode('{"theme":"ember"}');
+		const expectedHash = hashContent(content);
+
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState(configPath, {
+			path: configPath,
+			localMtime: 100,
+			remoteHash: 'remote-hash',
+			size: 10,
+			remoteModifiedTime: 200,
+			oneDriveId: 'config-id',
+			localContentHash: 'previous-hash',
+		});
+		syncEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			conflictResolver,
+			mockEventManager as any,
+			'.obsidian',
+			'/remote/root',
+			undefined,
+			undefined,
+			(path) => path === configPath
+		);
+		mockApp.vault.adapter.stat.mockImplementation(async (path: string) =>
+			path === configPath
+				? { type: 'file', mtime: 300, size: content.byteLength, ctime: 0 }
+				: null
+		);
+		mockApp.vault.adapter.readBinary.mockImplementation(async (path: string) =>
+			path === configPath ? content.buffer.slice(0) : new ArrayBuffer(0)
+		);
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.uploadFile).toHaveBeenCalledWith(
+			'/remote/root/.obsidian/app.json',
+			expect.any(ArrayBuffer)
+		);
+		expect(stateManager.getFileState(configPath)).toMatchObject({
+			path: configPath,
+			localContentHash: expectedHash,
+		});
+	});
+
+	it('updates tracked mtime without uploading when a config file hash still matches', async () => {
+		const configPath = '.obsidian/app.json';
+		const content = new TextEncoder().encode('{"theme":"moonstone"}');
+		const expectedHash = hashContent(content);
+
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState(configPath, {
+			path: configPath,
+			localMtime: 100,
+			remoteHash: 'remote-hash',
+			size: 10,
+			remoteModifiedTime: 200,
+			oneDriveId: 'config-id',
+			localContentHash: expectedHash,
+		});
+		syncEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			conflictResolver,
+			mockEventManager as any,
+			'.obsidian',
+			'/remote/root',
+			undefined,
+			undefined,
+			(path) => path === configPath
+		);
+		mockApp.vault.adapter.stat.mockImplementation(async (path: string) =>
+			path === configPath
+				? { type: 'file', mtime: 350, size: content.byteLength, ctime: 0 }
+				: null
+		);
+		mockApp.vault.adapter.readBinary.mockImplementation(async (path: string) =>
+			path === configPath ? content.buffer.slice(0) : new ArrayBuffer(0)
+		);
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		expect(stateManager.getFileState(configPath)).toMatchObject({
+			path: configPath,
+			localMtime: 350,
+			size: content.byteLength,
+			localContentHash: expectedHash,
+		});
 	});
 
 	it('clearDeltaLink resets delta cursors, file states, and lastSyncTime', () => {

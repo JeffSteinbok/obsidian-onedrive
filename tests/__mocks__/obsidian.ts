@@ -5,6 +5,10 @@
 export class App {}
 export class Plugin {
 	app: App = new App();
+	manifest: { id: string; name: string; version: string } = { id: '', name: '', version: '0.0.0' };
+	constructor(_app?: unknown, manifest?: { id: string; name: string; version: string }) {
+		if (manifest) this.manifest = manifest;
+	}
 	loadData(): Promise<unknown> { return Promise.resolve({}); }
 	saveData(_data: unknown): Promise<void> { return Promise.resolve(); }
 	addRibbonIcon(_icon: string, _title: string, _callback: () => void) { return document.createElement('div'); }
@@ -46,6 +50,11 @@ export class TFile {
 	basename: string = '';
 	extension: string = '';
 	name: string = '';
+}
+export class TFolder {
+	path: string = '';
+	name: string = '';
+	children: Array<TFile | TFolder> = [];
 }
 export class TAbstractFile {
 	path: string = '';
