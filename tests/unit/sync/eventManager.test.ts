@@ -242,6 +242,67 @@ describe('EventManager', () => {
 			]);
 		});
 
+		it('queues delete for tracked config files removed by raw events', async () => {
+			const configPath = '.obsidian/app.json';
+			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
+				path === configPath
+			);
+			eventManager.startListening();
+			eventManager.markInitialSyncDone();
+			stateManager.setFileState(configPath, makeFileState(configPath));
+			mockApp.vault.adapter.stat.mockResolvedValue(null);
+
+			eventCallbacks.raw(configPath);
+			await Promise.resolve();
+			await vi.advanceTimersByTimeAsync(100);
+
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: configPath, type: LocalChangeType.DELETE },
+			]);
+			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
+		});
+
+		it('ignores raw deletes for untracked config files that are already gone', async () => {
+			const configPath = '.obsidian/app.json';
+			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
+				path === configPath
+			);
+			eventManager.startListening();
+			eventManager.markInitialSyncDone();
+			mockApp.vault.adapter.stat.mockResolvedValue(null);
+
+			eventCallbacks.raw(configPath);
+			await Promise.resolve();
+			await vi.advanceTimersByTimeAsync(100);
+
+			expect(eventManager.getDirtyFiles()).toEqual([]);
+			expect(onSyncTriggered).not.toHaveBeenCalled();
+		});
+
+		it('queues modify for tracked config files changed by raw events', async () => {
+			const configPath = '.obsidian/app.json';
+			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
+				path === configPath
+			);
+			eventManager.startListening();
+			eventManager.markInitialSyncDone();
+			stateManager.setFileState(configPath, {
+				...makeFileState(configPath),
+				localMtime: 100,
+				size: 10,
+			});
+			mockApp.vault.adapter.stat.mockResolvedValue({ type: 'file', mtime: 200, size: 12, ctime: 0 });
+
+			eventCallbacks.raw(configPath);
+			await Promise.resolve();
+			await vi.advanceTimersByTimeAsync(100);
+
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: configPath, type: LocalChangeType.MODIFY },
+			]);
+			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
+		});
+
 		it('ignores non-TFile events', async () => {
 			eventManager.startListening();
 

@@ -47,6 +47,11 @@ export class TFile {
 	extension: string = '';
 	name: string = '';
 }
+export class TFolder {
+	path: string = '';
+	name: string = '';
+	children: Array<TFile | TFolder> = [];
+}
 export class TAbstractFile {
 	path: string = '';
 }

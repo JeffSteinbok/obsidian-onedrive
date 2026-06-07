@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => {
 		info: vi.fn(),
 		warn: vi.fn(),
 		error: vi.fn(),
+		setLogLevel: vi.fn(),
 		setDebugMode: vi.fn(),
 		enableFileLogging: vi.fn(),
 		setVaultLogHook: vi.fn(),
@@ -52,6 +53,13 @@ const mocks = vi.hoisted(() => {
 		setStrategy: vi.fn(),
 	};
 
+	const conflictQueue = {
+		load: vi.fn(),
+		prepareForSave: vi.fn().mockReturnValue(undefined),
+		add: vi.fn().mockResolvedValue(undefined),
+		count: 0,
+	};
+
 	const eventManager = {
 		startListening: vi.fn(),
 		stopListening: vi.fn(),
@@ -82,6 +90,7 @@ const mocks = vi.hoisted(() => {
 		syncEngine,
 		syncStateManager,
 		conflictResolver,
+		conflictQueue,
 		eventManager,
 		statusBarManager,
 		deviceCodeModal,
@@ -109,6 +118,9 @@ const mocks = vi.hoisted(() => {
 		ConflictResolver: vi.fn().mockImplementation(function () {
 			return conflictResolver;
 		}),
+		ConflictQueue: vi.fn().mockImplementation(function () {
+			return conflictQueue;
+		}),
 		EventManager: vi.fn().mockImplementation(function () {
 			return eventManager;
 		}),
@@ -126,6 +138,13 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('../../src/utils/logger', () => ({
 	logger: mocks.logger,
+	LogLevel: {
+		DEBUG: 0,
+		INFO: 1,
+		WARN: 2,
+		ERROR: 3,
+		OFF: 4,
+	},
 }));
 
 vi.mock('../../src/auth/tokenStorage', () => ({
@@ -162,6 +181,10 @@ vi.mock('../../src/sync/conflictResolver', () => ({
 
 vi.mock('../../src/sync/eventManager', () => ({
 	EventManager: mocks.EventManager,
+}));
+
+vi.mock('../../src/sync/conflictQueue', () => ({
+	ConflictQueue: mocks.ConflictQueue,
 }));
 
 vi.mock('../../src/ui/settings', () => ({
@@ -224,6 +247,10 @@ describe('OneDriveSyncPlugin', () => {
 		mocks.syncEngine.performSync.mockResolvedValue(undefined);
 		mocks.syncStateManager.prepareForSave.mockReturnValue({ lastSyncTime: 0, fileStates: [] });
 		mocks.syncStateManager.getLastSyncTime.mockReturnValue(0);
+		mocks.conflictQueue.load.mockReset();
+		mocks.conflictQueue.prepareForSave.mockReturnValue(undefined);
+		mocks.conflictQueue.add.mockResolvedValue(undefined);
+		mocks.conflictQueue.count = 0;
 		mocks.eventManager.triggerManualSync.mockResolvedValue(undefined);
 		mocks.eventManager.isSyncInProgress.mockReturnValue(false);
 		mocks.eventManager.getDirtyFiles.mockReturnValue([]);

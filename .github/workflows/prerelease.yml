@@ -1,4 +1,4 @@
-name: Beta Pre-release
+name: Release Automation - Beta Pre-Release
 
 on:
   workflow_dispatch:

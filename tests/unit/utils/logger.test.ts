@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type LoggerModule = typeof import('../../../src/utils/logger');
 
@@ -35,30 +35,47 @@ describe('logger', () => {
 		logger.setDebugMode(true);
 		logger.debug('visible', { enabled: true });
 		expect(console.debug).toHaveBeenCalledWith(
-			expect.stringContaining('[OneDrive Sync] [DEBUG] visible'),
+			expect.stringContaining('[DBG] visible'),
 			{ enabled: true }
 		);
 	});
 
-	it('info, warn, and error always log', () => {
-		logger.setDebugMode(false);
+	it('setLogLevel respects thresholds and LogLevel.OFF disables all logging', () => {
+		logger.setLogLevel(LogLevel.WARN);
+		logger.info('hidden info');
+		logger.warn('visible warn');
+		expect(console.info).not.toHaveBeenCalled();
+		expect(console.warn).toHaveBeenCalledWith(
+			expect.stringContaining('[WRN] visible warn')
+		);
+
+		vi.clearAllMocks();
+		logger.setLogLevel(LogLevel.OFF);
+		logger.error('hidden error');
+		expect(console.error).not.toHaveBeenCalled();
+	});
+
+	it('info, warn, and error log when enabled', () => {
+		logger.setLogLevel(LogLevel.INFO);
 
 		logger.info('info message');
 		logger.warn('warn message');
 		logger.error('error message');
 
 		expect(console.info).toHaveBeenCalledWith(
-			expect.stringContaining('[OneDrive Sync] [INFO] info message')
+			expect.stringContaining('[INF] info message')
 		);
 		expect(console.warn).toHaveBeenCalledWith(
-			expect.stringContaining('[OneDrive Sync] [WARN] warn message')
+			expect.stringContaining('[WRN] warn message')
 		);
 		expect(console.error).toHaveBeenCalledWith(
-			expect.stringContaining('[OneDrive Sync] [ERROR] error message')
+			expect.stringContaining('[ERR] error message')
 		);
 	});
 
 	it('getRecentLogs returns buffered lines, respects limits, and caps at 500 entries', () => {
+		logger.setLogLevel(LogLevel.INFO);
+
 		for (let i = 0; i < 505; i++) {
 			logger.info(`entry ${i}`);
 		}
@@ -75,6 +92,8 @@ describe('logger', () => {
 	});
 
 	it('safeLog sanitizes sensitive fields recursively before logging', () => {
+		logger.setLogLevel(LogLevel.INFO);
+
 		logger.safeLog(LogLevel.INFO, 'Sanitized payload', {
 			access_token: 'token',
 			refresh_token: 'refresh',
@@ -91,7 +110,7 @@ describe('logger', () => {
 		});
 
 		expect(console.info).toHaveBeenCalledWith(
-			expect.stringContaining('[OneDrive Sync] [INFO] Sanitized payload'),
+			expect.stringContaining('[INF] Sanitized payload'),
 			{
 				access_token: '[REDACTED]',
 				refresh_token: '[REDACTED]',
@@ -114,24 +133,26 @@ describe('logger', () => {
 		expect(recentLog).not.toContain('Bearer token');
 	});
 
-	it('formatMessage output includes the timestamp and plugin name', () => {
+	it('formatMessage output includes the timestamp and abbreviated level', () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date('2024-01-02T03:04:05.000Z'));
+		logger.setLogLevel(LogLevel.INFO);
 
 		logger.info('formatted message');
 
 		expect(console.info).toHaveBeenCalledWith(
-			'[2024-01-02T03:04:05.000Z] [OneDrive Sync] [INFO] formatted message'
+			'[2024-01-02T03:04:05.000Z] [INF] formatted message'
 		);
 	});
 
 	it('setVaultLogHook forwards log lines to the hook and null clears it', () => {
+		logger.setLogLevel(LogLevel.INFO);
 		const hook = vi.fn();
 		logger.setVaultLogHook(hook);
 
 		logger.info('first line');
 		expect(hook).toHaveBeenCalledTimes(1);
-		expect(hook).toHaveBeenCalledWith(expect.stringContaining('[INFO] first line'));
+		expect(hook).toHaveBeenCalledWith(expect.stringContaining('[INF] first line'));
 
 		logger.setVaultLogHook(null);
 		logger.info('second line');
