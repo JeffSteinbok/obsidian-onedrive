@@ -148,6 +148,26 @@ export class FileOperations {
 	}
 
 	/**
+	 * Create a folder on OneDrive (including any missing ancestors).
+	 * Returns the OneDrive item for the created/existing folder.
+	 */
+	async createFolder(remotePath: string): Promise<OneDriveItem> {
+		logger.debug('Creating folder:', remotePath);
+		const segments = remotePath.split('/').filter((s) => s.length > 0);
+		let currentPath = '';
+
+		for (const segment of segments) {
+			const parentPath = currentPath;
+			const nextPath = currentPath ? `${currentPath}/${segment}` : segment;
+			await this.ensureFolderExists(parentPath, segment, nextPath);
+			currentPath = nextPath;
+		}
+
+		// Return the item metadata for the leaf folder
+		return this.client.getItemByPath(remotePath);
+	}
+
+	/**
 	 * Get file metadata
 	 */
 	async getFileMetadata(remotePath: string): Promise<OneDriveItem> {

@@ -5,7 +5,7 @@
  * our own writes or Obsidian's startup file indexing.
  */
 
-import { App, TFile, EventRef, Events } from 'obsidian';
+import { App, TFile, TFolder, EventRef, Events } from 'obsidian';
 import { LocalChange, LocalChangeType } from '../types';
 import { SyncStateManager } from './syncState';
 import { logger } from '../utils/logger';
@@ -138,6 +138,13 @@ export class EventManager {
 						}
 					this.dirtyFiles.set(file.path, { path: file.path, type: LocalChangeType.CREATE });
 					this.scheduleSync();
+				} else if (file instanceof TFolder && !this.shouldIgnoreEvent(file.path)) {
+					// Suppress folder creates until initial sync completes —
+					// Obsidian fires create events for all existing folders on startup
+					if (!this.initialSyncDone) return;
+					if (this.stateManager.getFolderIdByPath(file.path)) return;
+					this.dirtyFiles.set(file.path, { path: file.path, type: LocalChangeType.FOLDER_CREATE });
+					this.scheduleSync();
 				}
 			})
 		);
@@ -146,6 +153,9 @@ export class EventManager {
 			this.app.vault.on('delete', (file) => {
 				if (file instanceof TFile && !this.shouldIgnoreEvent(file.path)) {
 					this.dirtyFiles.set(file.path, { path: file.path, type: LocalChangeType.DELETE });
+					this.scheduleSync();
+				} else if (file instanceof TFolder && !this.shouldIgnoreEvent(file.path)) {
+					this.dirtyFiles.set(file.path, { path: file.path, type: LocalChangeType.FOLDER_DELETE });
 					this.scheduleSync();
 				}
 			})
@@ -160,6 +170,13 @@ export class EventManager {
 						type: LocalChangeType.RENAME,
 						oldPath,
 					});
+					this.scheduleSync();
+				} else if (file instanceof TFolder && !this.shouldIgnoreEvent(file.path)) {
+					// Update any pending folder create to use the new name
+					if (this.dirtyFiles.has(oldPath)) {
+						this.dirtyFiles.delete(oldPath);
+					}
+					this.dirtyFiles.set(file.path, { path: file.path, type: LocalChangeType.FOLDER_CREATE });
 					this.scheduleSync();
 				}
 			})

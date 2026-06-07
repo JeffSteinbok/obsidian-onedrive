@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mockApp, makeTFile } from '../../setup';
+import { mockApp, makeTFile, makeTFolder } from '../../setup';
 
 vi.mock('../../../src/utils/logger', () => ({
 	logger: {
@@ -303,7 +303,7 @@ describe('EventManager', () => {
 			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
 		});
 
-		it('ignores non-TFile events', async () => {
+		it('ignores non-TFile/TFolder events', async () => {
 			eventManager.startListening();
 
 			eventCallbacks.modify({ path: 'folder' });
@@ -314,6 +314,85 @@ describe('EventManager', () => {
 
 			expect(eventManager.getDirtyFiles()).toEqual([]);
 			expect(onSyncTriggered).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('TFolder events', () => {
+		it('adds folder delete events to dirty files', () => {
+			eventManager.startListening();
+			const folder = makeTFolder('my-folder');
+
+			eventCallbacks.delete(folder);
+
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'my-folder', type: LocalChangeType.FOLDER_DELETE },
+			]);
+		});
+
+		it('adds folder create events after initial sync is done', () => {
+			eventManager.startListening();
+			eventManager.markInitialSyncDone();
+			const folder = makeTFolder('new-folder');
+
+			eventCallbacks.create(folder);
+
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'new-folder', type: LocalChangeType.FOLDER_CREATE },
+			]);
+		});
+
+		it('suppresses folder create events before initial sync completes', () => {
+			eventManager.startListening();
+			const folder = makeTFolder('startup-folder');
+
+			eventCallbacks.create(folder);
+
+			expect(eventManager.getDirtyFiles()).toEqual([]);
+		});
+
+		it('suppresses folder create events for already-tracked folders', () => {
+			eventManager.startListening();
+			eventManager.markInitialSyncDone();
+			stateManager.setFolderState('some-id', 'existing-folder');
+			const folder = makeTFolder('existing-folder');
+
+			eventCallbacks.create(folder);
+
+			expect(eventManager.getDirtyFiles()).toEqual([]);
+		});
+
+		it('updates folder create path on rename (Untitled → real name)', () => {
+			eventManager.startListening();
+			eventManager.markInitialSyncDone();
+			const untitled = makeTFolder('Untitled');
+			eventCallbacks.create(untitled);
+
+			const renamed = makeTFolder('MyFolder');
+			eventCallbacks.rename(renamed, 'Untitled');
+
+			const dirty = eventManager.getDirtyFiles();
+			expect(dirty).toEqual([
+				{ path: 'MyFolder', type: LocalChangeType.FOLDER_CREATE },
+			]);
+		});
+
+		it('schedules sync on folder delete', async () => {
+			eventManager.startListening();
+			eventCallbacks.delete(makeTFolder('deleted-folder'));
+
+			await vi.advanceTimersByTimeAsync(100);
+
+			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
+		});
+
+		it('schedules sync on folder create after initial sync', async () => {
+			eventManager.startListening();
+			eventManager.markInitialSyncDone();
+			eventCallbacks.create(makeTFolder('new-folder'));
+
+			await vi.advanceTimersByTimeAsync(100);
+
+			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
 		});
 	});
 
