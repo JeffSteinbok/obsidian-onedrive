@@ -896,16 +896,17 @@ export class SyncEngine {
 			}
 
 			if (item.deleted) {
-				// Remote delete — delete locally
+				// Remote delete — delete locally (vault files or config files via adapter)
 				const file = this.app.vault.getAbstractFileByPath(vaultPath);
-				if (file) {
+				const isTracked = this.stateManager.getFileState(vaultPath);
+				if (file || isTracked) {
 					operations.push({
 						path: vaultPath,
 						direction: SyncDirection.DOWNLOAD, // "download" the deletion
 						remoteState: undefined,
 					});
 				}
-				// Clean up state
+				// Clean up tracked state regardless — the remote copy is gone
 				this.stateManager.removeFileState(vaultPath);
 				continue;
 			}
@@ -1264,18 +1265,37 @@ export class SyncEngine {
 
 		for (const path of sorted) {
 			const folder = this.app.vault.getAbstractFileByPath(path);
-			if (!folder || !(folder instanceof TFolder)) continue;
-			if (folder.children.length > 0) {
-				logger.debug(
-					`Skipping cloud-deleted folder ${path} — still has ${folder.children.length} local children`
-				);
-				continue;
-			}
-			try {
-				await this.app.fileManager.trashFile(folder);
-				logger.debug(`Deleted local folder (cloud-deleted): ${path}`);
-			} catch (error) {
-				logger.warn(`Failed to delete local folder ${path}:`, error);
+			if (folder && folder instanceof TFolder) {
+				if (folder.children.length > 0) {
+					logger.debug(
+						`Skipping cloud-deleted folder ${path} — still has ${folder.children.length} local children`
+					);
+					continue;
+				}
+				try {
+					await this.app.fileManager.trashFile(folder);
+					logger.debug(`Deleted local folder (cloud-deleted): ${path}`);
+				} catch (error) {
+					logger.warn(`Failed to delete local folder ${path}:`, error);
+				}
+			} else {
+				// Config folders aren't in the vault index — delete via adapter
+				const adapter = this.app.vault.adapter;
+				try {
+					if (await adapter.exists(path)) {
+						const listing = await adapter.list(path);
+						if (listing.files.length > 0 || listing.folders.length > 0) {
+							logger.debug(
+								`Skipping cloud-deleted config folder ${path} — still has local children`
+							);
+							continue;
+						}
+						await adapter.rmdir(path, false);
+						logger.debug(`Deleted local config folder (cloud-deleted): ${path}`);
+					}
+				} catch (error) {
+					logger.warn(`Failed to delete local config folder ${path}:`, error);
+				}
 			}
 		}
 	}
