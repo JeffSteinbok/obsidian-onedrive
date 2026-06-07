@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => {
 		setDebugMode: vi.fn(),
 		enableFileLogging: vi.fn(),
 		setVaultLogHook: vi.fn(),
-		getRecentLogs: vi.fn().mockReturnValue([]),
 	};
 
 	const tokenStorage = {
@@ -431,24 +430,4 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.getSyncStatusInfo().progressMessage).toBeUndefined();
 	});
 
-	it('view-sync-logs command creates and opens a log note', async () => {
-		mocks.logger.getRecentLogs.mockReturnValue(['[2026-01-01T00:00:00.000Z] [OneDrive Sync] [INFO] Test log']);
-		const createdFile = { path: '.obsidian/plugins/onedrive-sync/OneDrive Sync Logs.md' } as any;
-		(plugin as any).app.vault.create = vi.fn().mockResolvedValue(createdFile);
-		const openFile = vi.fn().mockResolvedValue(undefined);
-		(plugin as any).app.workspace.getLeaf = vi.fn().mockReturnValue({ openFile });
-
-		await plugin.onload();
-		const viewLogsCommand = ((plugin as any).addCommand as any).mock.calls
-			.map((call: any[]) => call[0])
-			.find((cmd: any) => cmd.id === 'view-sync-logs');
-
-		await viewLogsCommand.callback();
-
-		expect((plugin as any).app.vault.create).toHaveBeenCalledWith(
-			'.obsidian/plugins/onedrive-sync/OneDrive Sync Logs.md',
-			expect.stringContaining('[OneDrive Sync] [INFO] Test log')
-		);
-		expect(openFile).toHaveBeenCalledWith(createdFile);
-	});
 });

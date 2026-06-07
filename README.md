@@ -74,7 +74,6 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 | **Reconcile from Cloud** | Treats cloud as authoritative. Deletes local-only files and downloads remote-only files. Use when Reset Sync Token can't clear stale local files. Large deletes confirmed |
 | **Custom Client ID**     | Optional — bring your own Azure AD app (see [GitHub docs](#custom-client-id))                                                                                             |
 | **Debug Logging**        | Enable for troubleshooting. Writes a daily note under `_OneDriveSyncLogs/YYYY-MM-DD.md` (device-local, never synced)                                                      |
-| **View sync logs**       | Run command palette → `OneDrive Sync: View sync logs` to open recent logs in a note (mobile-friendly)                                                                     |
 
 ### Commands
 
@@ -85,7 +84,6 @@ Available via the command palette (`Ctrl/Cmd+P`):
 - **Force full sync (re-download everything)** — clear sync state and re-pull all files from cloud
 - **Reconcile from cloud (cloud-as-truth recovery)** — destructive recovery; see Reset vs. Reconcile below
 - **Show sync conflicts** — open the conflict resolution view
-- **View sync logs** — open the current day's log note (mobile-friendly diagnostics)
 
 ### Reset vs. Reconcile — which one?
 

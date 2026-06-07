@@ -10,7 +10,6 @@ import { logger } from './utils/logger';
 import { shouldSyncVaultPath } from './utils/pathUtils';
 import {
 	applyVaultLogHook as applyPluginVaultLogHook,
-	openLogsNote as openPluginLogsNote,
 	type VaultLogAdapter,
 } from './utils/logManager';
 import {
@@ -187,14 +186,6 @@ export default class OneDriveSyncPlugin extends Plugin {
 			name: 'Show sync conflicts',
 			callback: () => {
 				void this.activateConflictView();
-			},
-		});
-
-		this.addCommand({
-			id: 'view-sync-logs',
-			name: 'View sync logs',
-			callback: async () => {
-				await this.openLogsNote();
 			},
 		});
 
@@ -800,21 +791,6 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private isMobileClient(): boolean {
 		return (Platform as { isMobile?: boolean } | undefined)?.isMobile === true ||
 			(this.app as { isMobile?: boolean }).isMobile === true;
-	}
-
-	/**
-	 * Create/update a readable vault note with recent plugin logs and open it.
-	 */
-	private async openLogsNote(): Promise<void> {
-		await openPluginLogsNote({
-			vault: this.app.vault as Parameters<typeof openPluginLogsNote>[0]['vault'],
-			workspace: this.app.workspace as Parameters<typeof openPluginLogsNote>[0]['workspace'],
-			configDir: this.app.vault.configDir,
-			getRecentLogs: () => logger.getRecentLogs(),
-			notify: (message) => {
-				new Notice(message);
-			},
-		});
 	}
 
 	/**
