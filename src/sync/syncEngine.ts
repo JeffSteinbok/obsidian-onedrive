@@ -52,9 +52,10 @@ function hashContent(data: Uint8Array): string {
 /** Progress callback — pass undefined to clear the status bar message. */
 type ProgressFn = (message: string | undefined) => void;
 
-/** Returned by gatherLocalChanges: filtered dirty files and the count of ignored paths. */
+/** Returned by gatherLocalChanges: filtered dirty files, folder changes, and the count of ignored paths. */
 interface LocalChangesResult {
 	localChanges: LocalChange[];
+	folderChanges: LocalChange[];
 	ignoredCount: number;
 }
 
@@ -158,7 +159,7 @@ export class SyncEngine {
 			// Phase 1: Collect local dirty files, filtering out .syncIgnore matches
 			const ignoreMatchers = await this.loadIgnoreMatchers();
 			const isFirstSync = this.stateManager.isFirstSync();
-			const { localChanges } = await this.gatherLocalChanges(ignoreMatchers);
+			const { localChanges, folderChanges } = await this.gatherLocalChanges(ignoreMatchers);
 
 			// Phase 2: Fetch remote delta changes from OneDrive, expand folder
 			// deletes into per-file deletes, and filter by sync scope
@@ -207,15 +208,18 @@ export class SyncEngine {
 						'First sync with no local dirty files and empty remote — nothing to do. Edit or create files, then sync again.'
 					);
 					new Notice('OneDrive sync: No files to sync. Edit or create files first.');
-				} else {
+				} else if (folderChanges.length === 0 && deletedFolderPaths.length === 0) {
 					logger.info('Everything up to date — no operations needed');
 				}
-				this.stateManager.setDeltaLink(deltaResponse.deltaLink);
-				if (obsidianDeltaResponse) {
-					this.stateManager.setObsidianDeltaLink(obsidianDeltaResponse.deltaLink);
+				if (folderChanges.length === 0 && deletedFolderPaths.length === 0) {
+					this.stateManager.setDeltaLink(deltaResponse.deltaLink);
+					if (obsidianDeltaResponse) {
+						this.stateManager.setObsidianDeltaLink(obsidianDeltaResponse.deltaLink);
+					}
+					this.stateManager.setLastSyncTime(Date.now());
+					this.eventManager.markInitialSyncDone();
+					return;
 				}
-				this.stateManager.setLastSyncTime(Date.now());
-				return;
 			}
 
 			// Phase 4: Execute all planned sync operations with progress tracking
@@ -229,10 +233,13 @@ export class SyncEngine {
 				await this.deleteCloudDeletedFolders(deletedFolderPaths);
 			}
 
-			// Prune remote folders left empty after local-driven file deletes
-			// (e.g. user deleted a plugin folder locally → files deleted remotely
-			// but the empty remote folder remains).
-			await this.pruneEmptyRemoteFolders(operations);
+			// Process explicit folder creates/deletes from vault events
+			await this.processFolderChanges(folderChanges);
+
+			// Prune remote config folders (.obsidian/plugins/*) left empty
+			// after local-driven file deletes. Config folders don't fire
+			// TFolder vault events, so processFolderChanges won't catch them.
+			await this.pruneEmptyRemoteConfigFolders(operations);
 
 			// Phase 5: Finalize — store delta cursors so next sync starts where
 			// this one left off, clear the dirty queue, re-mark conflicts
@@ -301,9 +308,15 @@ export class SyncEngine {
 	private async gatherLocalChanges(ignoreMatchers: RegExp[]): Promise<LocalChangesResult> {
 		const allLocalChanges = this.eventManager.getDirtyFiles();
 		const ignoredLocalPaths: string[] = [];
+		const folderChanges: LocalChange[] = [];
 		const localChanges = allLocalChanges.filter((change) => {
 			if (this.shouldIgnorePath(change.path, ignoreMatchers)) {
 				ignoredLocalPaths.push(change.path);
+				return false;
+			}
+			// Separate folder operations from file operations
+			if (change.type === LocalChangeType.FOLDER_CREATE || change.type === LocalChangeType.FOLDER_DELETE) {
+				folderChanges.push(change);
 				return false;
 			}
 			return true;
@@ -318,14 +331,18 @@ export class SyncEngine {
 		const configChanges = await this.detectConfigFileChanges(ignoreMatchers);
 		localChanges.push(...configChanges);
 
-		logger.info(`Local changes: ${localChanges.length} dirty files (${configChanges.length} config)`);
+		logger.info(`Local changes: ${localChanges.length} dirty files (${configChanges.length} config), ${folderChanges.length} folder operations`);
 		for (const change of localChanges) {
 			logger.debug(
 				`  Local: ${change.type} ${change.path}${change.oldPath ? ` (from ${change.oldPath})` : ''}`
 			);
 		}
+		for (const change of folderChanges) {
+			logger.debug(`  Local folder: ${change.type} ${change.path}`);
+		}
 		return {
 			localChanges,
+			folderChanges,
 			ignoredCount: ignoredLocalPaths.length,
 		};
 	}
@@ -1264,13 +1281,12 @@ export class SyncEngine {
 	}
 
 	/**
-	 * After executing sync operations, check if the parent folders of
-	 * remotely-deleted files were also deleted locally. If so, delete the
-	 * remote folder too — the user deleted the whole folder, not just
-	 * the tracked files inside it.
+	 * Prune remote config folders (.obsidian/) left empty after local-driven
+	 * file deletes. Config folders don't fire TFolder vault events, so
+	 * processFolderChanges won't catch them. Only applies to .obsidian/ paths.
 	 */
-	private async pruneEmptyRemoteFolders(operations: SyncOperation[]): Promise<void> {
-		// Collect parent folder paths from remote delete operations
+	private async pruneEmptyRemoteConfigFolders(operations: SyncOperation[]): Promise<void> {
+		const configPrefix = `${normalizePath(this.configDir).replace(/\/+$/g, '')}/`;
 		const candidateFolders = new Set<string>();
 		for (const op of operations) {
 			if (
@@ -1279,23 +1295,23 @@ export class SyncEngine {
 				op.remoteState?.oneDriveId
 			) {
 				const parent = getParentPath(op.path);
-				if (parent) candidateFolders.add(parent);
+				if (parent && parent.startsWith(configPrefix)) {
+					candidateFolders.add(parent);
+				}
 			}
 		}
 
 		if (candidateFolders.size === 0) return;
 
-		// Sort deepest-first so child folders are pruned before parents
 		const sorted = Array.from(candidateFolders).sort(
 			(a, b) => b.split('/').length - a.split('/').length
 		);
 
 		const adapter = this.app.vault.adapter;
 		for (const folderPath of sorted) {
-			// Only delete the remote folder if the local folder is actually gone
 			try {
 				const stat = await adapter.stat(folderPath);
-				if (stat) continue; // folder still exists locally — leave remote alone
+				if (stat) continue;
 			} catch {
 				// stat threw — folder is gone
 			}
@@ -1306,50 +1322,61 @@ export class SyncEngine {
 			try {
 				await this.fileOps.deleteFile(folderId);
 				this.stateManager.removeFolderStateByPath(folderPath);
-				logger.info(`Deleted remote folder (local folder gone): ${folderPath}`);
+				logger.info(`Deleted remote config folder (local folder gone): ${folderPath}`);
 			} catch (error) {
-				logger.warn(`Failed to delete remote folder ${folderPath}:`, error);
+				logger.warn(`Failed to delete remote config folder ${folderPath}:`, error);
 			}
 		}
 	}
 
 	/**
-	 * Sweep the entire vault for empty folders and prune them, deepest-first
-	 * so cascades collapse in one pass. Skips folders whose path is in
-	 * `keepPaths` — those exist on cloud and the user wants them preserved.
-	 * Returns the number of folders actually deleted.
+	 * Process explicit folder create/delete events from the vault.
+	 * Creates or deletes remote folders to match user intent.
 	 */
-	private async pruneAllEmptyFolders(keepPaths: Set<string>): Promise<number> {
-		const root = this.app.vault.getRoot();
-		const allFolders: TFolder[] = [];
-		const walk = (folder: TFolder) => {
-			for (const child of folder.children) {
-				if (child instanceof TFolder) {
-					allFolders.push(child);
-					walk(child);
-				}
-			}
-		};
-		walk(root);
-		allFolders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+	private async processFolderChanges(folderChanges: LocalChange[]): Promise<void> {
+		if (folderChanges.length === 0) return;
 
-		let deleted = 0;
-		for (const folder of allFolders) {
-			if (folder.children.length > 0) continue;
-			if (keepPaths.has(folder.path)) continue;
-			// Skip anything we don't sync — including the log folder, our own
-			// plugin folder, and .obsidian (unless explicitly synced). Those
-			// are device-local and must not be pruned by reconcile.
-			if (!this.shouldSyncPath(folder.path)) continue;
+		// Sort creates shallowest-first, deletes deepest-first
+		const creates = folderChanges
+			.filter((c) => c.type === LocalChangeType.FOLDER_CREATE)
+			.sort((a, b) => a.path.split('/').length - b.path.split('/').length);
+		const deletes = folderChanges
+			.filter((c) => c.type === LocalChangeType.FOLDER_DELETE)
+			.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+
+		for (const change of creates) {
 			try {
-				await this.app.fileManager.trashFile(folder);
-				deleted++;
-				logger.debug(`Reconcile: pruned empty folder ${folder.path}`);
+				const remotePath = this.vaultPathToRemotePath(change.path);
+				const item = await this.fileOps.createFolder(remotePath);
+				this.stateManager.setFolderState(item.id, change.path);
+				logger.info(`Created remote folder: ${change.path}`);
 			} catch (error) {
-				logger.warn(`Reconcile: failed to prune empty folder ${folder.path}:`, error);
+				logger.warn(`Failed to create remote folder ${change.path}:`, error);
 			}
 		}
-		return deleted;
+
+		for (const change of deletes) {
+			const folderId = this.stateManager.getFolderIdByPath(change.path);
+			if (folderId) {
+				try {
+					await this.fileOps.deleteFile(folderId);
+					this.stateManager.removeFolderStateByPath(change.path);
+					logger.info(`Deleted remote folder: ${change.path}`);
+				} catch (error) {
+					logger.warn(`Failed to delete remote folder ${change.path}:`, error);
+				}
+			} else {
+				// Folder not tracked (created before folder tracking existed) — look up by path
+				try {
+					const remotePath = this.vaultPathToRemotePath(change.path);
+					await this.fileOps.deleteFileByPath(remotePath);
+					logger.info(`Deleted remote folder (by path): ${change.path}`);
+				} catch (error) {
+					// 404 is fine — folder may not exist remotely
+					logger.debug(`Could not delete remote folder by path ${change.path}: ${error instanceof Error ? error.message : error}`);
+				}
+			}
+		}
 	}
 
 	/**
@@ -1513,19 +1540,12 @@ export class SyncEngine {
 			const allRemoteItems = await this.oneDriveClient.listAllItems(this.remoteRoot);
 			logger.info(`Reconcile: enumerated ${allRemoteItems.length} remote items`);
 
-			// 2. Build vaultPath -> OneDriveItem map for everything we'd sync,
-			// plus a set of folder paths that exist on cloud so we don't
-			// prune local empty folders the user intentionally created on
-			// another device.
+			// 2. Build vaultPath -> OneDriveItem map for everything we'd sync.
 			const remoteFiles = new Map<string, OneDriveItem>();
-			const remoteFolders = new Set<string>();
 			for (const item of allRemoteItems) {
 				const vaultPath = this.remotePathToVaultPath(item);
 				if (!vaultPath) continue;
-				if (item.folder) {
-					remoteFolders.add(vaultPath);
-					continue;
-				}
+				if (item.folder) continue;
 				if (!this.shouldSyncPath(vaultPath)) continue;
 				if (this.shouldIgnorePath(vaultPath, ignoreMatchers)) continue;
 				remoteFiles.set(vaultPath, item);
@@ -1645,12 +1665,7 @@ export class SyncEngine {
 
 			if (operations.length === 0) {
 				logger.info('Reconcile: nothing to do — local already matches cloud');
-				const pruned = await this.pruneAllEmptyFolders(remoteFolders);
-				new Notice(
-					pruned > 0
-						? `Reconcile from cloud: already in sync. Pruned ${pruned} empty folder${pruned === 1 ? '' : 's'}.`
-						: 'Reconcile from cloud: already in sync.'
-				);
+				new Notice('Reconcile from cloud: already in sync.');
 				return;
 			}
 
@@ -1671,14 +1686,6 @@ export class SyncEngine {
 			// we were downloading. Clear them — we just authoritatively synced
 			// from cloud, anything pending is stale.
 			this.eventManager.clearDirtyFiles();
-
-			// 7a. Sweep the entire vault for empty folders and prune them,
-			// EXCEPT those that exist on cloud — those were intentionally
-			// created on another device and we should keep them locally.
-			const prunedCount = await this.pruneAllEmptyFolders(remoteFolders);
-			if (prunedCount > 0) {
-				logger.info(`Reconcile: pruned ${prunedCount} empty folder(s)`);
-			}
 
 			// 8. Advance delta cursors so the next normal sync starts clean.
 			progress('advancing delta cursor...');

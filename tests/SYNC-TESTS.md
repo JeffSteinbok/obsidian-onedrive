@@ -8,7 +8,7 @@ This document describes the sync engine test suites and the scenarios they cover
 |---|---|---|
 | `sync/syncEngine.test.ts` | 27 | Core sync operations — uploads, downloads, deletes, conflicts, delta handling |
 | `sync/syncEngine.deletion.test.ts` | 16 | Deletion permutations — local→remote, remote→local, folder cleanup, reconcile |
-| `sync/eventManager.test.ts` | 30 | Event detection — TFile events, raw config events, debouncing, scheduling |
+| `sync/eventManager.test.ts` | 37 | Event detection — TFile events, TFolder events, raw config events, debouncing, scheduling |
 | `sync/syncState.test.ts` | 3 | State manager — file state cleanup, folder reverse lookups |
 | `sync/conflictQueue.test.ts` | 11 | Conflict queue — add, resolve, persistence |
 | `api/chunkUpload.test.ts` | 9 | Chunked upload — size alignment, constraints |
@@ -77,12 +77,16 @@ This document describes the sync engine test suites and the scenarios they cover
 | 10 | Folder delete, empty after file deletes | Delete folder |
 | 11 | Nested folder structure deleted | Handle deepest-first |
 
-### Remote Folder Pruning
+### Remote Folder Pruning (config folders only)
 | # | Scenario | Expected |
 |---|---|---|
-| 12 | Local folder gone, remote exists | Delete remote folder |
-| 13 | Local folder still exists | Do NOT delete remote folder |
+| 12 | Local config folder gone, remote exists | Delete remote config folder |
+| 13 | Local config folder still exists | Do NOT delete remote folder |
 | 14 | Multiple plugin folders deleted | Prune all independently |
+
+> **Note:** Regular (non-config) folder deletes are handled by explicit `FOLDER_DELETE`
+> events via `processFolderChanges`, not by pruning. Config folders (`.obsidian/`) don't
+> fire TFolder vault events, so they still need the prune path.
 
 ### Reconcile
 | # | Scenario | Expected |
@@ -97,6 +101,14 @@ This document describes the sync engine test suites and the scenarios they cover
 - Create → dirty queue (unless already tracked = startup noise)
 - Delete → dirty queue
 - Rename → remove old path, add new
+
+### TFolder Events (vault folders)
+- Delete → dirty queue as FOLDER_DELETE
+- Create → dirty queue as FOLDER_CREATE (only after initial sync completes)
+- Create suppressed before initial sync (Obsidian fires create for all existing folders on startup)
+- Create suppressed for already-tracked folders
+- Rename updates pending FOLDER_CREATE path (Untitled → real name)
+- Folder create and delete both schedule sync
 
 ### Raw Events (`.obsidian/` config files)
 - Tracked config file deleted (stat returns null) → queue DELETE

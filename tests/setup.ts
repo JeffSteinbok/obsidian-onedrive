@@ -4,7 +4,7 @@
  */
 
 import { vi, beforeEach } from 'vitest';
-import { TFile } from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
 
 // Mock Obsidian API
 export const mockApp = {
@@ -83,6 +83,17 @@ export function makeTFile(path: string, size: number = 0, mtime: number = Date.n
 	file.basename = file.name.replace(/\.[^.]+$/, '');
 	file.extension = file.name.includes('.') ? file.name.split('.').pop() || '' : '';
 	return file;
+}
+
+/**
+ * Helper to create a mock TFolder instance that passes instanceof checks
+ */
+export function makeTFolder(path: string): TFolder {
+	const folder = new TFolder();
+	folder.path = path;
+	folder.name = path.split('/').pop() || path;
+	folder.children = [];
+	return folder;
 }
 
 // Global mocks
