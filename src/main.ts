@@ -6,7 +6,7 @@
 import { Platform, Plugin, Notice, TFile } from 'obsidian';
 import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID } from './constants';
-import { logger } from './utils/logger';
+import { logger, LogLevel } from './utils/logger';
 import { shouldSyncVaultPath } from './utils/pathUtils';
 import {
 	applyVaultLogHook as applyPluginVaultLogHook,
@@ -117,8 +117,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.syncStateManager.loadState(this.settings.syncState);
 
 		// Configure logger
-		logger.setDebugMode(this.settings.enableDebugLogging);
-		// Mirror logs to a vault-root note when debug logging is on
+		this.applyLogLevel();
+		// Mirror logs to a vault-root note when logging is on
 		this.applyVaultLogHook();
 
 		// Initialize device code client with appropriate client ID and access mode
@@ -355,6 +355,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 				() => this.settings.largeDeleteThreshold ?? 0,
 				(info) => this.handleLargeDeleteWarning(info),
 				(msg) => this.setSyncProgress(msg),
+				this.manifest.version,
 			);
 
 			// Get user info to display in settings
@@ -867,6 +868,15 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 */
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<PluginSettings>);
+
+		// Migrate legacy enableDebugLogging boolean → logLevel string
+		const raw = this.settings as unknown as Record<string, unknown>;
+		if ('enableDebugLogging' in raw) {
+			if (raw['enableDebugLogging'] === true && this.settings.logLevel === 'off') {
+				this.settings.logLevel = 'debug';
+			}
+			delete raw['enableDebugLogging'];
+		}
 	}
 
 	/**
@@ -898,11 +908,6 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		this.settings.syncPluginManifests = enabled;
 		await this.saveSettings();
-
-		new Notice(
-			`Plugin sync ${enabled ? 'enabled' : 'disabled'} (community-plugins.json, core-plugins.json, plugin manifests and binaries). ` +
-				'Run Sync Now to apply the new scope.'
-		);
 	}
 
 	async onAppSettingsSyncChanged(enabled: boolean): Promise<void> {
@@ -911,13 +916,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		this.settings.syncAppSettings = enabled;
-		this.syncStateManager.clearState();
 		await this.saveSettings();
-
-		new Notice(
-			`App settings sync ${enabled ? 'enabled' : 'disabled'} (app.json, appearance.json, hotkeys.json). ` +
-				'Run Sync Now to apply the new scope.'
-		);
 	}
 
 	async resetSyncToken(): Promise<void> {
@@ -983,11 +982,24 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.conflictResolver.setStrategy(this.settings.conflictResolution);
 		}
 
-		// Update logger debug mode if changed
-		logger.setDebugMode(this.settings.enableDebugLogging);
+		// Update logger level if changed
+		this.applyLogLevel();
 		this.applyVaultLogHook();
 
 		await this.saveData(this.settings);
+	}
+
+	private static readonly LOG_LEVEL_MAP: Record<string, LogLevel> = {
+		off: LogLevel.OFF,
+		error: LogLevel.ERROR,
+		warn: LogLevel.WARN,
+		info: LogLevel.INFO,
+		debug: LogLevel.DEBUG,
+	};
+
+	private applyLogLevel(): void {
+		const level = OneDriveSyncPlugin.LOG_LEVEL_MAP[this.settings.logLevel] ?? LogLevel.OFF;
+		logger.setLogLevel(level);
 	}
 
 	/**
@@ -1004,7 +1016,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		applyPluginVaultLogHook({
-			enabled: this.settings.enableDebugLogging,
+			enabled: this.settings.logLevel !== 'off',
 			adapter,
 			setVaultLogHook: (hook) => {
 				logger.setVaultLogHook(hook);

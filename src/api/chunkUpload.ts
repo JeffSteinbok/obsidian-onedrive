@@ -18,7 +18,11 @@ import { OneDriveClient } from './oneDriveClient';
  */
 function calculateChunkSize(fileSize: number): number {
 	const targetSize = Math.floor(fileSize / SYNC_CONFIG.TARGET_CHUNKS_PER_FILE);
-	return Math.min(Math.max(targetSize, SYNC_CONFIG.MIN_CHUNK_SIZE), SYNC_CONFIG.MAX_CHUNK_SIZE);
+	// Microsoft Graph requires non-final chunks to be multiples of 320 KiB
+	const aligned =
+		Math.ceil(Math.max(targetSize, SYNC_CONFIG.MIN_CHUNK_SIZE) / SYNC_CONFIG.MIN_CHUNK_SIZE) *
+		SYNC_CONFIG.MIN_CHUNK_SIZE;
+	return Math.min(aligned, SYNC_CONFIG.MAX_CHUNK_SIZE);
 }
 
 /**

@@ -181,6 +181,28 @@ export class SyncStateManager {
 	}
 
 	/**
+	 * Reverse-resolve a vault folder path to its OneDrive item id.
+	 */
+	getFolderIdByPath(vaultPath: string): string | undefined {
+		for (const [id, path] of this.state.folderStates) {
+			if (path === vaultPath) return id;
+		}
+		return undefined;
+	}
+
+	/**
+	 * Remove a folder state entry by its vault path.
+	 */
+	removeFolderStateByPath(vaultPath: string): void {
+		for (const [id, path] of this.state.folderStates) {
+			if (path === vaultPath) {
+				this.state.folderStates.delete(id);
+				return;
+			}
+		}
+	}
+
+	/**
 	 * Return tracked file states whose path lives under the given folder path.
 	 * Matches direct children and any deeper descendants. Used to expand a
 	 * single folder-delete delta entry into per-file delete operations.
@@ -229,5 +251,11 @@ export class SyncStateManager {
 			folderStates: new Map(),
 		};
 		logger.debug('Sync state cleared');
+	}
+
+	/** Wipe all tracked file states but keep folder states and delta link. */
+	clearFileStates(): void {
+		this.state.fileStates.clear();
+		logger.debug('Tracked file states cleared');
 	}
 }

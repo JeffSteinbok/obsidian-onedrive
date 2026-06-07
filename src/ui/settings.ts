@@ -171,25 +171,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		if (isConnected) {
 			this.displaySyncStatus(containerEl);
 		}
-
-		// Sync Now button
-		if (isConnected) {
-			new Setting(containerEl).addButton((btn) => {
-				btn
-					.setButtonText('Sync Now')
-					.setCta()
-					.onClick(() => {
-						void this.plugin.triggerManualSync();
-					});
-				if (
-					this.plugin.settings.accessMode !== OneDriveAccessMode.APP_FOLDER &&
-					!this.plugin.settings.remotePath
-				) {
-					btn.setDisabled(true);
-					btn.setTooltip('Select a sync folder first');
-				}
-			});
-		}
 	}
 
 	/**
@@ -282,6 +263,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	}
 
 	private displaySyncStatus(containerEl: HTMLElement): void {
+		const isConnected = !!this.plugin.settings.connectedUser;
 		const syncStatus = this.plugin.getSyncStatusInfo();
 		const statusText = this.getSyncStatusText(syncStatus.status);
 		const lastSyncText = syncStatus.lastSyncTime
@@ -299,11 +281,26 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.setDesc(
 				`Status: ${statusText} · Last sync: ${lastSyncText} · Progress: ${progressText} · Conflicts: ${conflictText}`
 			)
-			.addButton((button) =>
-				button.setButtonText('Refresh').onClick(() => {
-					this.display();
-				})
-			);
+			.addButton((btn) => {
+				btn
+					.setButtonText('Sync Now')
+					.setCta()
+					.onClick(() => {
+						void this.plugin.triggerManualSync();
+					});
+				if (
+					!isConnected ||
+					(this.plugin.settings.accessMode !== OneDriveAccessMode.APP_FOLDER &&
+						!this.plugin.settings.remotePath)
+				) {
+					btn.setDisabled(true);
+					if (!isConnected) {
+						btn.setTooltip('Connect to OneDrive first');
+					} else {
+						btn.setTooltip('Select a sync folder first');
+					}
+				}
+			});
 	}
 
 	/**
@@ -312,15 +309,22 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	private displayAdvancedSection(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Advanced').setHeading();
 
-		// Debug logging
+		// Log level
 		new Setting(containerEl)
-			.setName('Enable debug logging')
-			.setDesc('Log detailed information to the console (for troubleshooting)')
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.enableDebugLogging).onChange(async (value) => {
-					this.plugin.settings.enableDebugLogging = value;
-					await this.plugin.saveSettings();
-				})
+			.setName('Log level')
+			.setDesc('Controls how much detail is written to the console and vault log file')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('off', 'Off')
+					.addOption('error', 'Error')
+					.addOption('warn', 'Warn')
+					.addOption('info', 'Info')
+					.addOption('debug', 'Debug')
+					.setValue(this.plugin.settings.logLevel)
+					.onChange(async (value) => {
+						this.plugin.settings.logLevel = value as PluginSettings['logLevel'];
+						await this.plugin.saveSettings();
+					})
 			);
 
 		// Large-delete safety threshold

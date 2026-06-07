@@ -6,24 +6,27 @@
  * logger.* instead of console.* directly.
  */
 
-import { PLUGIN_INFO } from '../constants';
 
 export enum LogLevel {
 	DEBUG = 0,
 	INFO = 1,
 	WARN = 2,
 	ERROR = 3,
+	OFF = 4,
 }
 
 class Logger {
-	private enableDebug = false;
-	private minLevel = LogLevel.INFO;
+	private minLevel = LogLevel.OFF;
 	private recentLogs: string[] = [];
 	private vaultLogHook: ((line: string) => void) | null = null;
 	private static readonly MAX_RECENT_LOGS = 500;
 
+	setLogLevel(level: LogLevel) {
+		this.minLevel = level;
+	}
+
+	/** @deprecated Use setLogLevel instead */
 	setDebugMode(enabled: boolean) {
-		this.enableDebug = enabled;
 		this.minLevel = enabled ? LogLevel.DEBUG : LogLevel.INFO;
 	}
 
@@ -40,9 +43,17 @@ class Logger {
 		return level >= this.minLevel;
 	}
 
+	private static readonly LEVEL_ABBREV: Record<string, string> = {
+		DEBUG: 'DBG',
+		INFO: 'INF',
+		WARN: 'WRN',
+		ERROR: 'ERR',
+	};
+
 	private formatMessage(level: string, message: string, ..._args: unknown[]): string {
 		const timestamp = new Date().toISOString();
-		return `[${timestamp}] [${PLUGIN_INFO.NAME}] [${level}] ${message}`;
+		const abbrev = Logger.LEVEL_ABBREV[level] ?? level;
+		return `[${timestamp}] [${abbrev}] ${message}`;
 	}
 
 	private formatExtraArgs(args: unknown[]): string {
