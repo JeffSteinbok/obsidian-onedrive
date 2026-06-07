@@ -370,6 +370,11 @@ export class OneDriveClient {
 			await retryWithBackoff(() => this.client.api(this.getItemEndpoint(itemId)).delete());
 			logger.debug('Item deleted successfully');
 		} catch (error) {
+			// 404 means the item is already gone — that's the outcome we wanted
+			if (error && typeof error === 'object' && 'statusCode' in error && (error as { statusCode: number }).statusCode === 404) {
+				logger.debug(`Item ${itemId} already deleted (404) — treating as success`);
+				return;
+			}
 			logger.error(`Failed to delete item ${itemId}:`, error);
 			throw new OneDriveError(
 				`Failed to delete item: ${error instanceof Error ? error.message : 'Unknown error'}`
