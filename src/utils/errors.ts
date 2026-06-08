@@ -130,10 +130,18 @@ export function isRetryableError(error: Error): boolean {
 		return true;
 	}
 
+	const retryableStatusCodes = [408, 429, 500, 502, 503, 504];
+
 	if (error instanceof OneDriveError) {
-		// Retry on server errors (5xx) and some client errors
-		const retryableStatusCodes = [408, 429, 500, 502, 503, 504];
 		return error.statusCode ? retryableStatusCodes.includes(error.statusCode) : false;
+	}
+
+	// Graph SDK throws errors with statusCode property but not as OneDriveError instances
+	if (error && typeof error === 'object' && 'statusCode' in error) {
+		const statusCode = (error as unknown as { statusCode: number }).statusCode;
+		if (typeof statusCode === 'number') {
+			return retryableStatusCodes.includes(statusCode);
+		}
 	}
 
 	// Network errors are retryable

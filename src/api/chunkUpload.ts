@@ -55,6 +55,8 @@ export class ChunkUploader {
 
 	/**
 	 * Simple upload for files < 4MB
+	 * Uses .put() instead of .putStream() which expects a Node.js ReadableStream
+	 * and doesn't handle ArrayBuffer correctly (causes 504 timeouts).
 	 */
 	private async uploadSmallFile(filePath: string, content: ArrayBuffer): Promise<OneDriveItem> {
 		logger.debug('Using simple upload for small file');
@@ -64,11 +66,13 @@ export class ChunkUploader {
 			const apiPath = this.client.buildEndpoint(filePath, 'content');
 
 			return await retryWithBackoff<OneDriveItem>(() =>
-				graphClient.api(apiPath).putStream(content) as Promise<OneDriveItem>
+				graphClient.api(apiPath)
+					.header('Content-Type', 'application/octet-stream')
+					.put(content) as Promise<OneDriveItem>
 			);
 		} catch (error) {
 			logger.error('Failed to upload small file:', error);
-			throw new OneDriveError(
+			throw error instanceof OneDriveError ? error : new OneDriveError(
 				`Failed to upload file: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
 		}

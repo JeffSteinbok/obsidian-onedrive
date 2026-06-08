@@ -201,6 +201,19 @@ describe('errors utils', () => {
 			expect(isRetryableError(new Error('timeout while waiting for response'))).toBe(true);
 		});
 
+		it.each([408, 429, 500, 502, 503, 504])(
+			'returns true for Graph SDK errors with retryable statusCode %s',
+			(statusCode) => {
+				const error = Object.assign(new Error('Graph SDK error'), { statusCode, code: 'UnknownError' });
+				expect(isRetryableError(error)).toBe(true);
+			}
+		);
+
+		it.each([400, 404])('returns false for Graph SDK errors with non-retryable statusCode %s', (statusCode) => {
+			const error = Object.assign(new Error('Graph SDK error'), { statusCode, code: 'BadRequest' });
+			expect(isRetryableError(error)).toBe(false);
+		});
+
 		it('returns false for generic errors', () => {
 			expect(isRetryableError(new Error('some other error'))).toBe(false);
 		});
