@@ -60,13 +60,13 @@ class Logger {
 		if (args.length === 0) return '';
 		return ' ' + args.map(a => {
 			if (a instanceof Error) {
-				const obj: Record<string, unknown> = {
-					name: a.name,
-					message: a.message,
-				};
-				if (a.stack) obj.stack = a.stack;
-				// Merge any extra enumerable properties (e.g. code, statusCode on OneDriveError)
+				const obj: Record<string, unknown> = {};
+				// Merge any enumerable own properties (e.g. code, statusCode on OneDriveError) first,
+				// then overwrite with the non-enumerable Error properties so they always take precedence.
 				Object.assign(obj, a);
+				obj.name = a.name;
+				obj.message = a.message;
+				if (a.stack) obj.stack = a.stack;
 				try { return JSON.stringify(obj); }
 				catch { return String(a); }
 			}
