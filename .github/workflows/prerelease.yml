@@ -113,11 +113,15 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Prepare beta manifest for release
+        run: cp manifest-beta.json manifest.json
+
       - name: Attest build artifacts
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
             main.js
+            manifest.json
             styles.css
 
       - name: Create GitHub Pre-release
@@ -129,5 +133,5 @@ jobs:
           generate_release_notes: true
           files: |
             main.js
-            manifest-beta.json
+            manifest.json
             styles.css
