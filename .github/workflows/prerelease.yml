@@ -8,10 +8,10 @@ on:
         required: true
         type: choice
         options:
-          - beta
+          - patch-beta
           - minor-beta
           - major-beta
-        default: beta
+        default: patch-beta
 
 permissions:
   contents: write
@@ -78,14 +78,25 @@ jobs:
               (parseInt(major)+1) + '.0.0-beta.0'
             ")
           else
-            # Increment beta number, or start beta.0 from next patch
+            # Increment beta number if ahead of stable, otherwise start beta.0 from next patch
             NEW_VERSION=$(node -p "
-              const v = '$CURRENT';
-              const betaMatch = v.match(/^(.+)-beta\.(\d+)$/);
-              if (betaMatch) {
+              const stable = '$STABLE_VERSION';
+              const current = '$CURRENT';
+              const betaMatch = current.match(/^(.+)-beta\.(\d+)$/);
+              const betaBase = betaMatch ? betaMatch[1] : current;
+              const compareParts = (a, b) => {
+                const pa = a.split('.').map(Number);
+                const pb = b.split('.').map(Number);
+                for (let i = 0; i < 3; i++) {
+                  if (pa[i] > pb[i]) return 1;
+                  if (pa[i] < pb[i]) return -1;
+                }
+                return 0;
+              };
+              if (betaMatch && compareParts(betaBase, stable) > 0) {
                 betaMatch[1] + '-beta.' + (parseInt(betaMatch[2])+1);
               } else {
-                const [major, minor, patch] = v.split('.');
+                const [major, minor, patch] = stable.split('.');
                 major + '.' + minor + '.' + (parseInt(patch)+1) + '-beta.0';
               }
             ")
