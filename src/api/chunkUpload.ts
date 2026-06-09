@@ -7,7 +7,7 @@
 
 import { requestUrl } from 'obsidian';
 import { OneDriveUploadSession, OneDriveItem, OneDriveError } from '../types';
-import { SYNC_CONFIG } from '../constants';
+import { SYNC_CONFIG, GRAPH_API_ENDPOINT } from '../constants';
 import { logger } from '../utils/logger';
 import { retryWithBackoff } from '../utils/retry';
 import { OneDriveClient } from './oneDriveClient';
@@ -55,21 +55,43 @@ export class ChunkUploader {
 
 	/**
 	 * Simple upload for files < 4MB
-	 * Uses .put() instead of .putStream() which expects a Node.js ReadableStream
-	 * and doesn't handle ArrayBuffer correctly (causes 504 timeouts).
+	 * Uses requestUrl (Obsidian's cross-platform fetch wrapper) instead of the
+	 * Graph SDK's .put(), which internally calls Buffer.from() — a Node.js
+	 * built-in that is not available on Android / iOS.
 	 */
 	private async uploadSmallFile(filePath: string, content: ArrayBuffer): Promise<OneDriveItem> {
 		logger.debug('Using simple upload for small file');
 
 		try {
-			const graphClient = this.client.getClient();
 			const apiPath = this.client.buildEndpoint(filePath, 'content');
+			const url = `${GRAPH_API_ENDPOINT}${apiPath}`;
 
-			return await retryWithBackoff<OneDriveItem>(() =>
-				graphClient.api(apiPath)
-					.header('Content-Type', 'application/octet-stream')
-					.put(content) as Promise<OneDriveItem>
-			);
+			return await retryWithBackoff<OneDriveItem>(async () => {
+				// Fetch a fresh token on every attempt so a mid-retry token
+				// refresh is handled transparently.
+				const token = await this.client.getAccessToken();
+
+				const response = await requestUrl({
+					url,
+					method: 'PUT',
+					headers: {
+						Authorization: 'Bearer ' + token,
+						'Content-Type': 'application/octet-stream',
+					},
+					body: content,
+					throw: false,
+				});
+
+				if (response.status < 200 || response.status >= 300) {
+					throw new OneDriveError(
+						`Failed to upload file: HTTP ${response.status}`,
+						undefined,
+						response.status
+					);
+				}
+
+				return response.json as OneDriveItem;
+			});
 		} catch (error) {
 			logger.error('Failed to upload small file:', error);
 			throw error instanceof OneDriveError ? error : new OneDriveError(

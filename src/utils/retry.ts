@@ -57,7 +57,7 @@ export async function retryWithBackoff<T>(
 
 			// Check if error is retryable
 			if (!isRetryableError(lastError)) {
-				logger.debug(`Error is not retryable, stopping retry attempts`);
+				logger.debug(`Error is not retryable, stopping retry attempts`, lastError);
 				throw lastError;
 			}
 

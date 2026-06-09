@@ -59,6 +59,17 @@ class Logger {
 	private formatExtraArgs(args: unknown[]): string {
 		if (args.length === 0) return '';
 		return ' ' + args.map(a => {
+			if (a instanceof Error) {
+				const obj: Record<string, unknown> = {
+					name: a.name,
+					message: a.message,
+				};
+				if (a.stack) obj.stack = a.stack;
+				// Merge any extra enumerable properties (e.g. code, statusCode on OneDriveError)
+				Object.assign(obj, a);
+				try { return JSON.stringify(obj); }
+				catch { return String(a); }
+			}
 			try { return typeof a === 'string' ? a : JSON.stringify(a); }
 			catch { return String(a); }
 		}).join(' ');

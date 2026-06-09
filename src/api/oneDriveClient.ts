@@ -137,6 +137,14 @@ export class OneDriveClient {
 		return `/me/drive/items/${itemId}`;
 	}
 
+	/**
+	 * Get a valid access token. Used by callers that make raw HTTP requests
+	 * (e.g. requestUrl) instead of going through the Graph SDK client.
+	 */
+	async getAccessToken(): Promise<string> {
+		return this.authProvider.getAccessToken();
+	}
+
 	private async getGraph<T>(endpoint: string): Promise<T> {
 		return retryWithBackoff<T>(() => this.client.api(endpoint).get() as Promise<T>);
 	}
