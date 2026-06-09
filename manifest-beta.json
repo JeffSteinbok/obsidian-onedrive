@@ -1,7 +1,7 @@
 {
 	"id": "onedrive-sync",
 	"name": "OneDrive Sync",
-	"version": "1.3.3",
+	"version": "1.3.4-beta.0",
 	"minAppVersion": "1.12.0",
 	"description": "Sync your vault with OneDrive Personal/Consumer.",
 	"author": "Jeff Steinbok",
