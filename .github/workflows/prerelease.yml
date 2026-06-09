@@ -1,4 +1,4 @@
-name: Release Automation - Beta Pre-Release
+name: Release Automation - Beta Pre-Release (patch-beta / minor-beta / major-beta)
 
 on:
   workflow_dispatch:
