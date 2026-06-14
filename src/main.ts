@@ -109,17 +109,22 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		// Initialize core components
 		this.tokenStorage = new TokenStorage();
+		this.tokenStorage.setApp(this.app);
 		this.syncStateManager = new SyncStateManager();
 		this.conflictResolver = new ConflictResolver(this.settings.conflictResolution);
 
-		// Load stored data
-		this.tokenStorage.loadTokens(this.settings.tokens);
-		this.syncStateManager.loadState(this.settings.syncState);
-
-		// Configure logger
+		// Configure logger early so migration logs are captured
 		this.applyLogLevel();
-		// Mirror logs to a vault-root note when logging is on
 		this.applyVaultLogHook();
+
+		// Load stored data — migrate legacy tokens from data.json to SecretStorage
+		const migrated = await this.tokenStorage.loadTokens(this.settings.tokens);
+		if (migrated) {
+			// Clear legacy tokens from data.json now that they're in SecretStorage
+			this.settings.tokens = undefined;
+			await this.saveData(this.settings);
+		}
+		this.syncStateManager.loadState(this.settings.syncState);
 
 		// Initialize device code client with appropriate client ID and access mode
 		const clientId = this.settings.useCustomClientId
@@ -468,6 +473,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		// Clear tokens
 		this.tokenStorage.clearTokens();
+
+		// Clear any remaining legacy tokens from data.json
+		this.settings.tokens = undefined;
 
 		// Clear user info and shared drive settings
 		this.settings.connectedUser = undefined;
@@ -966,8 +974,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 * Save settings to disk
 	 */
 	async saveSettings() {
-		// Prepare tokens for save (obfuscated)
-		this.settings.tokens = this.tokenStorage.prepareTokensForSave();
+		// Tokens are now stored in SecretStorage, not in data.json
 
 		// Prepare sync state for save
 		this.settings.syncState = this.syncStateManager.prepareForSave();
