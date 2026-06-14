@@ -100,7 +100,7 @@ Available via the command palette (`Ctrl/Cmd+P`):
 
 The plugin hardcodes these exclusions for safety:
 
-- `.obsidian/plugins/onedrive-sync/` — prevents auth token leakage and self-downgrade
+- `.obsidian/plugins/onedrive-sync/` — the plugin's own folder is **always excluded** to prevent syncing its `data.json` (which contains sync state and configuration) and to avoid self-downgrade scenarios where one device overwrites another's plugin binary. Authentication tokens are stored separately using Obsidian's [SecretStorage API](https://docs.obsidian.md/plugins/guides/secret-storage), not in `data.json`.
 - `.obsidian/workspace*.json` — per-device UI state (Obsidian Sync excludes these too)
 - `_OneDriveSyncLogs/` — device-local debug logs
 
@@ -159,3 +159,10 @@ By default the plugin uses a shared Azure AD app registration. For privacy or ra
 7. Under **Authentication** → enable **Allow public client flows**
 
 Then paste the client ID into Settings → OneDrive Sync → Advanced → Custom client ID.
+
+## Security & Privacy
+
+- **Authentication tokens** (OAuth access and refresh tokens) are stored using Obsidian's [SecretStorage API](https://docs.obsidian.md/plugins/guides/secret-storage), which keeps them outside of `data.json` and in a platform-appropriate secure store. They are never written to files that could be accidentally synced or exposed.
+- **The plugin's own folder** (`.obsidian/plugins/onedrive-sync/`) is always excluded from sync. Even though tokens are no longer in `data.json`, the exclusion remains to prevent self-downgrade (one device overwriting another's plugin binary) and to keep device-specific sync state separate.
+- **No data leaves your OneDrive** — the plugin communicates directly with Microsoft Graph. There is no intermediary server.
+- **Vault file enumeration** — the plugin reads your vault's file list to determine what to sync. This is inherent to any sync tool, but the information never leaves your device except as uploads to your own OneDrive.

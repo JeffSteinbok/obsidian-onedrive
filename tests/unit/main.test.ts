@@ -11,11 +11,11 @@ const mocks = vi.hoisted(() => {
 	};
 
 	const tokenStorage = {
-		loadTokens: vi.fn(),
+		setApp: vi.fn(),
+		loadTokens: vi.fn().mockResolvedValue(false),
 		hasTokens: vi.fn().mockReturnValue(false),
 		setTokens: vi.fn(),
 		clearTokens: vi.fn(),
-		prepareTokensForSave: vi.fn().mockReturnValue(undefined),
 	};
 
 	const deviceCodeClient = {
@@ -237,7 +237,6 @@ describe('OneDriveSyncPlugin', () => {
 		vi.clearAllMocks();
 
 		mocks.tokenStorage.hasTokens.mockReturnValue(false);
-		mocks.tokenStorage.prepareTokensForSave.mockReturnValue(undefined);
 		mocks.oneDriveClient.isSharedDrive.mockReturnValue(false);
 		mocks.oneDriveClient.getUserInfo.mockResolvedValue({
 			id: '1',
@@ -288,19 +287,17 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.conflictResolution).toBe(DEFAULT_SETTINGS.conflictResolution);
 	});
 
-	it('saveSettings persists prepared token and sync state data', async () => {
-		const savedTokens = { accessToken: 'saved-access' };
+	it('saveSettings persists sync state data (tokens stored in SecretStorage)', async () => {
 		const savedState = { lastSyncTime: 123, fileStates: [['note.md', { path: 'note.md' }]] };
-		mocks.tokenStorage.prepareTokensForSave.mockReturnValue(savedTokens);
 		mocks.syncStateManager.prepareForSave.mockReturnValue(savedState as any);
 
 		await plugin.onload();
 		await plugin.saveSettings();
 
-		expect(mocks.tokenStorage.prepareTokensForSave).toHaveBeenCalled();
 		expect(mocks.syncStateManager.prepareForSave).toHaveBeenCalled();
 		expect((plugin as any).saveData).toHaveBeenCalledWith(plugin.settings);
-		expect(plugin.settings.tokens).toEqual(savedTokens);
+		// Tokens should NOT be in settings — they're in SecretStorage now
+		expect(plugin.settings.tokens).toBeUndefined();
 		expect(plugin.settings.syncState).toEqual(savedState);
 	});
 
