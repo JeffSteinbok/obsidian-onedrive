@@ -189,7 +189,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				slider
 					.setLimits(0, 60, 5)
 					.setValue(this.plugin.settings.syncInterval)
-					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.syncInterval = value;
 						await this.plugin.saveSettings();
