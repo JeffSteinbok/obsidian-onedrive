@@ -1,0 +1,31 @@
+name: Mark stale issues and pull requests
+
+on:
+  schedule:
+    - cron: '30 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          days-before-stale: 30
+          days-before-close: 14
+          stale-issue-message: >
+            This issue has had no activity for 30 days.
+            It will be closed in 14 days if there is no further activity.
+            If this is still relevant, please comment or update the issue.
+          stale-pr-message: >
+            This pull request has had no activity for 30 days.
+            It will be closed in 14 days if there is no further activity.
+          stale-issue-label: 'stale'
+          stale-pr-label: 'stale'
+          exempt-issue-labels: 'triaged,enhancement'
+          exempt-pr-labels: 'work-in-progress'

@@ -2,78 +2,193 @@ name: Issue Triage
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
 
 permissions:
   issues: write
 
 jobs:
-  triage:
+  check-template:
+    if: github.event.action == 'opened'
     runs-on: ubuntu-latest
     steps:
-      - name: Triage bug report
-        if: contains(github.event.issue.labels.*.name, 'bug')
+      - name: Enforce issue template
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const author = context.payload.issue.user.login;
+
+            // Skip collaborators
+            try {
+              const { data: permLevel } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: author,
+              });
+              if (['admin', 'write'].includes(permLevel.permission)) {
+                core.info(`Collaborator ${author}. Skipping template check.`);
+                return;
+              }
+            } catch (e) {
+              core.info(`Could not check permissions: ${e.message}. Proceeding.`);
+            }
+
+            const body = context.payload.issue.body || '';
+            const templateMarkers = [
+              '### Describe the bug',
+              '### Problem or motivation',
+            ];
+
+            if (templateMarkers.some(m => body.includes(m))) {
+              core.info('Template detected.');
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['missing-template'],
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '👋 Thanks for opening an issue!',
+                '',
+                'It looks like this issue was not filed using one of our [issue templates](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/issues/new/choose).',
+                'Templates help ensure we have the information needed to help you.',
+                '',
+                'Please **close this issue** and open a new one using the appropriate template:',
+                '- 🐛 **[Bug Report](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/issues/new?template=bug_report.yml)**',
+                '- ✨ **[Feature Request](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/issues/new?template=feature_request.yml)**',
+                '',
+                '_This is an automated message._',
+              ].join('\n'),
+            });
+
+  check-logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate bug report content
         uses: actions/github-script@v7
         with:
           script: |
             const body = context.payload.issue.body || '';
-            const title = context.payload.issue.title || '';
-            const issueNumber = context.payload.issue.number;
+            const author = context.payload.issue.user.login;
+            const issueNumber = context.issue.number;
 
-            // Check for meaningful log content (not just the template placeholder)
-            const logsSection = body.match(/### Debug logs\s*\n([\s\S]*?)(?=###|$)/i);
-            const logsContent = logsSection ? logsSection[1].trim() : '';
-
-            // Logs should contain timestamps or log-level markers from our format
-            const hasRealLogs = logsContent.length > 50 &&
-              (/\[\d{4}-\d{2}-\d{2}/.test(logsContent) || /\[(DBG|INF|WRN|ERR)\]/.test(logsContent));
-
-            // Check other required fields have substance
-            const stepsSection = body.match(/### Steps to reproduce\s*\n([\s\S]*?)(?=###|$)/i);
-            const stepsContent = stepsSection ? stepsSection[1].trim() : '';
-            const hasSteps = stepsContent.length > 20;
-
-            const versionSection = body.match(/### Plugin Version\s*\n([\s\S]*?)(?=###|$)/i);
-            const versionContent = versionSection ? versionSection[1].trim() : '';
-            const hasVersion = /\d+\.\d+/.test(versionContent);
-
-            if (!hasRealLogs || !hasSteps || !hasVersion) {
-              // Missing info — ask nicely, label as needs-info
-              const missing = [];
-              if (!hasRealLogs) missing.push('- **Debug logs**: Please enable debug logging (Settings → OneDrive Sync → Log Level → Debug), reproduce the issue, and paste the contents of the log file from `_OneDriveSyncLogs/` in your vault.');
-              if (!hasSteps) missing.push('- **Steps to reproduce**: Please provide detailed steps so we can reproduce the issue.');
-              if (!hasVersion) missing.push('- **Plugin version**: Please include the plugin version number.');
-
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: `Thanks for reporting this issue! To help us investigate, we need a bit more information:\n\n${missing.join('\n')}\n\nOnce you've updated the issue with this info, we'll take a look. 🙏`
-              });
-
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                labels: ['needs-info']
-              });
-
-              core.info(`Issue #${issueNumber} is missing info, labeled needs-info`);
-            } else {
-              // Has all the info — assign to Copilot for investigation
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                labels: ['triaged']
-              });
-
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: `Thanks for the detailed report! 🔍 This issue has been triaged and is ready for investigation.`
-              });
-
-              core.info(`Issue #${issueNumber} has sufficient info, labeled copilot`);
+            // Only check bug reports
+            if (!body.includes('### Describe the bug')) {
+              core.info('Not a bug report. Skipping.');
+              return;
             }
+
+            // Skip collaborators
+            try {
+              const { data: permLevel } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: author,
+              });
+              if (['admin', 'write'].includes(permLevel.permission)) {
+                core.info(`Collaborator ${author}. Skipping.`);
+                return;
+              }
+            } catch (e) {
+              core.info(`Could not check permissions: ${e.message}. Proceeding.`);
+            }
+
+            function getSectionContent(heading) {
+              const pattern = new RegExp(
+                `###\\s*${heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\n([\\s\\S]*?)(?=\\n###\\s|$)`
+              );
+              const match = body.match(pattern);
+              return match ? match[1].trim() : '';
+            }
+
+            function isMissing(content) {
+              if (!content) return true;
+              const stripped = content
+                .replace(/<!--[\s\S]*?-->/g, '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
+              if (stripped.length < 5) return true;
+              const placeholders = ['n/a', 'na', 'none', 'no', 'tbd', 'todo', 'will add later', '_no response_'];
+              return placeholders.includes(stripped);
+            }
+
+            const logs = getSectionContent('Debug logs');
+            const steps = getSectionContent('Steps to reproduce');
+            const version = getSectionContent('Plugin Version');
+
+            const missingLogs = isMissing(logs);
+            const missingSteps = isMissing(steps);
+            const missingVersion = !(/\d+\.\d+/.test(version));
+
+            if (!missingLogs && !missingSteps && !missingVersion) {
+              core.info('All required info present.');
+              if (context.payload.action === 'edited') {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                    name: 'needs-info',
+                  });
+                } catch (e) { /* label may not exist */ }
+              }
+
+              if (context.payload.action === 'opened') {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  labels: ['triaged'],
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: 'Thanks for the detailed report! 🔍 This issue has been triaged and is ready for investigation.',
+                });
+              }
+              return;
+            }
+
+            // Don't re-comment on edits that still lack info
+            if (context.payload.action === 'edited') {
+              core.info('Edited but still missing info.');
+              return;
+            }
+
+            const missing = [];
+            if (missingLogs) missing.push('**Debug logs** — enable debug logging (Settings → OneDrive Sync → Log Level → Debug), reproduce the issue, and paste the log file from `_OneDriveSyncLogs/` in your vault');
+            if (missingSteps) missing.push('**Steps to reproduce** — detailed steps so we can reproduce the issue');
+            if (missingVersion) missing.push('**Plugin version** — the version number from the plugin settings');
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['needs-info'],
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: [
+                `👋 Hey @${author}, thanks for filing this bug report!`,
+                '',
+                'It looks like the following information is missing:',
+                ...missing.map(item => `- ${item}`),
+                '',
+                'Please update your issue with the missing information so we can investigate.',
+                '',
+                '_This is an automated message._',
+              ].join('\n'),
+            });
