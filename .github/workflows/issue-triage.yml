@@ -65,14 +65,14 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                labels: ['copilot']
+                labels: ['triaged']
               });
 
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `Thanks for the detailed report! 🔍 Assigning to Copilot for investigation.\n\n@copilot`
+                body: `Thanks for the detailed report! 🔍 This issue has been triaged and is ready for investigation.`
               });
 
               core.info(`Issue #${issueNumber} has sufficient info, labeled copilot`);
