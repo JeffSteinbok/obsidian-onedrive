@@ -72,7 +72,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `Thanks for the detailed report! 🔍 Assigning to Copilot for investigation.`
+                body: `Thanks for the detailed report! 🔍 Assigning to Copilot for investigation.\n\n@copilot`
               });
 
               core.info(`Issue #${issueNumber} has sufficient info, labeled copilot`);
