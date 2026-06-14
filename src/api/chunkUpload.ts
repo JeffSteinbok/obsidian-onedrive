@@ -184,10 +184,10 @@ export class ChunkUploader {
 					url: uploadUrl,
 					method: 'PUT',
 					headers: {
-						'Content-Length': chunk.byteLength.toString(),
 						'Content-Range': `bytes ${start}-${end}/${total}`,
 					},
 					body: chunk,
+					throw: false,
 				});
 
 				// 202 = chunk accepted, 201/200 = upload complete
