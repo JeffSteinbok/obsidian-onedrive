@@ -53,5 +53,10 @@ body:
     id: logs
     attributes:
       label: Debug logs
-      description: Enable debug logging in plugin settings, reproduce the issue, and paste logs here.
+      description: |
+        Enable debug logging in plugin settings (Settings → OneDrive Sync → Log Level → Debug), 
+        reproduce the issue, then paste the log file contents here. 
+        Logs are saved to _OneDriveSyncLogs/ in your vault.
       render: text
+    validations:
+      required: true

@@ -1,0 +1,79 @@
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Triage bug report
+        if: contains(github.event.issue.labels.*.name, 'bug')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const title = context.payload.issue.title || '';
+            const issueNumber = context.payload.issue.number;
+
+            // Check for meaningful log content (not just the template placeholder)
+            const logsSection = body.match(/### Debug logs\s*\n([\s\S]*?)(?=###|$)/i);
+            const logsContent = logsSection ? logsSection[1].trim() : '';
+
+            // Logs should contain timestamps or log-level markers from our format
+            const hasRealLogs = logsContent.length > 50 &&
+              (/\[\d{4}-\d{2}-\d{2}/.test(logsContent) || /\[(DBG|INF|WRN|ERR)\]/.test(logsContent));
+
+            // Check other required fields have substance
+            const stepsSection = body.match(/### Steps to reproduce\s*\n([\s\S]*?)(?=###|$)/i);
+            const stepsContent = stepsSection ? stepsSection[1].trim() : '';
+            const hasSteps = stepsContent.length > 20;
+
+            const versionSection = body.match(/### Plugin Version\s*\n([\s\S]*?)(?=###|$)/i);
+            const versionContent = versionSection ? versionSection[1].trim() : '';
+            const hasVersion = /\d+\.\d+/.test(versionContent);
+
+            if (!hasRealLogs || !hasSteps || !hasVersion) {
+              // Missing info — ask nicely, label as needs-info
+              const missing = [];
+              if (!hasRealLogs) missing.push('- **Debug logs**: Please enable debug logging (Settings → OneDrive Sync → Log Level → Debug), reproduce the issue, and paste the contents of the log file from `_OneDriveSyncLogs/` in your vault.');
+              if (!hasSteps) missing.push('- **Steps to reproduce**: Please provide detailed steps so we can reproduce the issue.');
+              if (!hasVersion) missing.push('- **Plugin version**: Please include the plugin version number.');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `Thanks for reporting this issue! To help us investigate, we need a bit more information:\n\n${missing.join('\n')}\n\nOnce you've updated the issue with this info, we'll take a look. 🙏`
+              });
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['needs-info']
+              });
+
+              core.info(`Issue #${issueNumber} is missing info, labeled needs-info`);
+            } else {
+              // Has all the info — assign to Copilot for investigation
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['copilot']
+              });
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `Thanks for the detailed report! 🔍 Assigning to Copilot for investigation.`
+              });
+
+              core.info(`Issue #${issueNumber} has sufficient info, labeled copilot`);
+            }

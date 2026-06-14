@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/jeffsteinbok/obsidian-onedrive/actions/workflows/ci.yml/badge.svg)](https://github.com/jeffsteinbok/obsidian-onedrive/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Obsidian](https://img.shields.io/badge/Obsidian-Plugin-purple)](https://obsidian.md)
+[![Obsidian](https://img.shields.io/badge/Obsidian-Plugin-purple)](https://obsidian.md/plugins?id=onedrive-sync)
 
 ![Social Preview](socialPreview.png)
 
