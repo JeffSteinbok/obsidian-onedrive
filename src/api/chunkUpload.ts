@@ -119,13 +119,17 @@ export class ChunkUploader {
 		// Step 2: Upload chunks
 		let uploadedBytes = 0;
 		const chunks = Math.ceil(fileSize / chunkSize);
+		let finalItem: OneDriveItem | null = null;
 
 		for (let i = 0; i < chunks; i++) {
 			const start = i * chunkSize;
 			const end = Math.min(start + chunkSize, fileSize);
 			const chunk = content.slice(start, end);
 
-			await this.uploadChunk(session.uploadUrl, chunk, start, end - 1, fileSize);
+			const result = await this.uploadChunk(session.uploadUrl, chunk, start, end - 1, fileSize);
+			if (result) {
+				finalItem = result;
+			}
 
 			uploadedBytes = end;
 			if (onProgress) {
@@ -135,9 +139,11 @@ export class ChunkUploader {
 			logger.debug(`Uploaded chunk ${i + 1}/${chunks} (${uploadedBytes}/${fileSize} bytes)`);
 		}
 
-		// Step 3: Get final item (upload complete)
-		// The last chunk upload returns the completed item
-		const finalItem = await this.getFinalItem(session.uploadUrl);
+		// The last chunk (200/201) returns the completed item directly.
+		// Fall back to a GET only if somehow it wasn't captured.
+		if (!finalItem) {
+			finalItem = await this.getFinalItem(session.uploadUrl);
+		}
 		logger.info(`File uploaded successfully: ${filePath}`);
 
 		return finalItem;
@@ -169,7 +175,9 @@ export class ChunkUploader {
 	}
 
 	/**
-	 * Upload a single chunk
+	 * Upload a single chunk.
+	 * Returns the completed OneDriveItem when the server responds with
+	 * 200/201 (final chunk), or null for 202 (intermediate chunk accepted).
 	 */
 	private async uploadChunk(
 		uploadUrl: string,
@@ -177,23 +185,30 @@ export class ChunkUploader {
 		start: number,
 		end: number,
 		total: number
-	): Promise<void> {
+	): Promise<OneDriveItem | null> {
 		try {
-			await retryWithBackoff(async () => {
+			return await retryWithBackoff(async () => {
 				const response = await requestUrl({
 					url: uploadUrl,
 					method: 'PUT',
 					headers: {
-						'Content-Length': chunk.byteLength.toString(),
 						'Content-Range': `bytes ${start}-${end}/${total}`,
 					},
 					body: chunk,
+					throw: false,
 				});
 
 				// 202 = chunk accepted, 201/200 = upload complete
 				if (![200, 201, 202].includes(response.status)) {
 					throw new OneDriveError(`Failed to upload chunk: HTTP ${response.status}`);
 				}
+
+				// Final chunk — server returns the completed item
+				if (response.status === 200 || response.status === 201) {
+					return response.json as unknown as OneDriveItem;
+				}
+
+				return null;
 			});
 		} catch (error) {
 			logger.error(`Failed to upload chunk ${start}-${end}:`, error);

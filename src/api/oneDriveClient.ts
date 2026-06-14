@@ -522,8 +522,9 @@ export class OneDriveClient {
 			}
 
 			// If the delta token is invalid/expired, do a full resync
-			if (deltaLink && error instanceof Error &&
-				(error.message.includes('resyncRequired') || error.message.includes('invalidToken'))) {
+			const msg = error instanceof Error ? error.message.toLowerCase() : '';
+			if (deltaLink &&
+				(msg.includes('resyncrequired') || msg.includes('resync required') || msg.includes('invalidtoken'))) {
 				logger.warn('Delta token expired, performing full resync');
 				return this.getDelta(undefined, remotePath, subPath); // Retry without token
 			}
