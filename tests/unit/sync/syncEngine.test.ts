@@ -43,7 +43,7 @@ vi.mock('obsidian', async () => {
 	};
 });
 
-import { Notice, TFile } from 'obsidian';
+import { Notice, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
 import '../../setup';
 import { mockApp, makeTFile } from '../../setup';
 import { SyncEngine } from '../../../src/sync/syncEngine';
@@ -520,9 +520,10 @@ describe('SyncEngine', () => {
 			deltaLink: 'delta-link-2',
 		});
 		// Simulate the file being open in an editor leaf
-		mockApp.workspace.getLeavesOfType.mockReturnValue([
-			{ view: { file: { path: 'notes/test.md' } } },
-		]);
+		const mockLeaf = new WorkspaceLeaf();
+		const mockView = new MarkdownView(mockLeaf);
+		mockView.file = makeTFile('notes/test.md', 100, Date.now() - 60_000);
+		mockApp.workspace.getLeavesOfType.mockReturnValue([{ view: mockView }]);
 
 		await syncEngine.performSync();
 

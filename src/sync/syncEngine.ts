@@ -3,7 +3,7 @@
  * Uses OneDrive delta API for remote changes and vault events for local changes
  */
 
-import { App, Notice, TFile, TFolder } from 'obsidian';
+import { App, MarkdownView, Notice, TFile, TFolder } from 'obsidian';
 import { FileOperations } from '../api/fileOperations';
 import { OneDriveClient } from '../api/oneDriveClient';
 import { SyncStateManager } from './syncState';
@@ -137,8 +137,8 @@ export class SyncEngine {
 	 */
 	private isFileOpenInEditor(path: string): boolean {
 		return this.app.workspace.getLeavesOfType('markdown').some((leaf) => {
-			const file = (leaf.view as { file?: { path?: string } } | undefined)?.file;
-			return file?.path === path;
+			const view = leaf.view instanceof MarkdownView ? leaf.view : null;
+			return view?.file?.path === path;
 		});
 	}
 
