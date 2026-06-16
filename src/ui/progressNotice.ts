@@ -8,6 +8,8 @@
 
 import { Notice, ProgressBarComponent } from 'obsidian';
 
+import { t } from '../i18n';
+
 export class ProgressNotice {
 	private notice: Notice;
 	private textEl: HTMLElement | null = null;
@@ -21,7 +23,10 @@ export class ProgressNotice {
 			const fragment = activeDocument.createDocumentFragment();
 
 			this.textEl = fragment.createEl('div', {
-				text: `${label}: 0/${total} files`,
+				text: t('progress.notice', {
+					label,
+					progress: t('progress.files', { completed: 0, total }),
+				}),
 				cls: 'onedrive-sync-progress-notice-text',
 			});
 
@@ -33,17 +38,24 @@ export class ProgressNotice {
 
 			this.notice = new Notice(fragment, 0);
 		} else {
-			this.notice = new Notice(`${label}: 0/${total} files...`, 0);
+			this.notice = new Notice(
+				t('progress.noticeWithEllipsis', {
+					label,
+					progress: t('progress.files', { completed: 0, total }),
+				}),
+				0
+			);
 		}
 	}
 
 	update(completed: number, label: string): void {
 		const pct = this.total > 0 ? Math.round((completed / this.total) * 100) : 0;
+		const progress = t('progress.files', { completed, total: this.total });
 		if (this.textEl && this.progressBar) {
-			this.textEl.setText(`${label}: ${completed}/${this.total} files`);
+			this.textEl.setText(t('progress.notice', { label, progress }));
 			this.progressBar.setValue(pct);
 		} else {
-			this.notice.setMessage(`${label}: ${completed}/${this.total} files...`);
+			this.notice.setMessage(t('progress.noticeWithEllipsis', { label, progress }));
 		}
 	}
 

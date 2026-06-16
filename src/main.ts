@@ -43,6 +43,7 @@ import { LargeDeleteWarningModal } from './ui/modals';
 
 import { LargeDeleteWarningInfo, LargeDeleteDecision } from './types';
 
+import { t } from './i18n';
 import { timerApi } from './utils/timerApi';
 
 export interface SyncStatusInfo {
@@ -67,7 +68,9 @@ function isVaultLogAdapter(adapter: unknown): adapter is VaultLogAdapter {
 	}
 
 	const candidate = adapter as Record<string, unknown>;
-	return ['exists', 'mkdir', 'write', 'append'].every((key) => typeof candidate[key] === 'function');
+	return ['exists', 'mkdir', 'write', 'append'].every(
+		(key) => typeof candidate[key] === 'function'
+	);
 }
 
 /**
@@ -138,14 +141,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		// Add ribbon icon for manual sync
-		this.addRibbonIcon('cloud', 'OneDrive: Sync now', async () => {
+		this.addRibbonIcon('cloud', t('ribbon.syncNow'), async () => {
 			await this.triggerManualSync();
 		});
 
 		// Add commands
 		this.addCommand({
 			id: 'sync-now',
-			name: 'Sync now',
+			name: t('commands.syncNow'),
 			callback: async () => {
 				await this.triggerManualSync();
 			},
@@ -153,7 +156,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'connect-onedrive',
-			name: 'Connect to OneDrive',
+			name: t('commands.connect'),
 			callback: async () => {
 				await this.authenticate();
 			},
@@ -161,7 +164,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'disconnect-onedrive',
-			name: 'Disconnect from OneDrive',
+			name: t('commands.disconnect'),
 			callback: async () => {
 				await this.disconnect();
 			},
@@ -169,18 +172,18 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'force-full-sync',
-			name: 'Force full sync (re-download everything)',
+			name: t('commands.forceFullSync'),
 			callback: async () => {
 				this.syncStateManager.clearState();
 				await this.saveSettings();
-				new Notice('Sync state cleared. Running full sync...');
+				new Notice(t('notices.sync.stateCleared'));
 				await this.triggerManualSync();
 			},
 		});
 
 		this.addCommand({
 			id: 'reconcile-from-cloud',
-			name: 'Reconcile from cloud (cloud-as-truth recovery)',
+			name: t('commands.reconcileFromCloud'),
 			callback: async () => {
 				await this.reconcileFromCloud();
 			},
@@ -188,7 +191,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'show-conflicts',
-			name: 'Show sync conflicts',
+			name: t('commands.showConflicts'),
 			callback: () => {
 				void this.activateConflictView();
 			},
@@ -196,7 +199,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'dev-create-test-conflict',
-			name: 'DEV: Create test conflict (for testing conflict UI)',
+			name: t('commands.devCreateTestConflict'),
 			callback: async () => {
 				await this.createTestConflict();
 			},
@@ -268,7 +271,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.deviceCodeClient,
 				async () => {
 					// Re-authentication callback
-					new Notice('OneDrive authentication expired. Please reconnect.');
+					new Notice(t('notices.auth.expired'));
 					await this.authenticate();
 				}
 			);
@@ -326,7 +329,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			const isAppFolder = this.settings.accessMode === OneDriveAccessMode.APP_FOLDER;
 			// For shared drives and app folder mode, upload paths are relative to the
 			// root (buildEndpoint handles the base). For full access, prepend remotePath.
-			const remoteRoot = (isShared || isAppFolder) ? '' : this.settings.remotePath || '';
+			const remoteRoot = isShared || isAppFolder ? '' : this.settings.remotePath || '';
 			// For path stripping of delta responses, use the FULL path on the
 			// remote drive down to the vault folder — not just the shared root.
 			// e.g. "/Documents/ObsidianVaults/JeffBrain" not just "/Documents"
@@ -360,7 +363,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 				() => this.settings.largeDeleteThreshold ?? 0,
 				(info) => this.handleLargeDeleteWarning(info),
 				(msg) => this.setSyncProgress(msg),
-				this.manifest.version,
+				this.manifest.version
 			);
 
 			// Get user info to display in settings
@@ -373,7 +376,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			logger.info('Authenticated components initialized');
 		} catch (error) {
 			logger.error('Failed to initialize authenticated components:', error);
-			new Notice('Failed to initialize OneDrive client. Please reconnect.');
+			new Notice(t('notices.auth.clientInitFailed'));
 		}
 	}
 
@@ -447,11 +450,13 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.updateStatusBar();
 
 			logger.info('Authentication successful');
-			new Notice('Successfully connected to OneDrive');
+			new Notice(t('notices.auth.connectSuccess'));
 		} catch (error) {
 			logger.error('Authentication failed:', error);
 			new Notice(
-				`Failed to connect to OneDrive: ${error instanceof Error ? error.message : 'Unknown error'}`
+				t('notices.auth.connectFailed', {
+					message: error instanceof Error ? error.message : t('notices.common.unknownError'),
+				})
 			);
 			throw error;
 		}
@@ -498,7 +503,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.updateStatusBar();
 
 		logger.info('Disconnected from OneDrive');
-		new Notice('Disconnected from OneDrive');
+		new Notice(t('notices.auth.disconnectSuccess'));
 	}
 
 	/**
@@ -516,22 +521,22 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 */
 	async triggerManualSync(): Promise<void> {
 		if (!this.tokenStorage.hasTokens()) {
-			new Notice('Not connected to OneDrive. Please connect in settings.');
+			new Notice(t('notices.sync.notConnected'));
 			return;
 		}
 
 		if (!this.isSyncConfigured()) {
-			new Notice('Please select a sync folder in settings first.');
+			new Notice(t('notices.sync.selectFolderFirst'));
 			return;
 		}
 
 		if (!this.syncEngine) {
-			new Notice('Sync engine not initialized. Please reconnect.');
+			new Notice(t('notices.sync.engineNotInitialized'));
 			return;
 		}
 
 		if (this.eventManager?.isSyncInProgress()) {
-			new Notice('Sync already in progress');
+			new Notice(t('notices.sync.alreadyInProgress'));
 			return;
 		}
 
@@ -577,8 +582,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 		} catch (error) {
 			logger.error('Sync failed:', error);
 			this.setSyncStatus(SyncStatus.ERROR);
-			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-			new Notice(`Sync failed: ${errorMsg}`);
+			const errorMsg = error instanceof Error ? error.message : t('notices.common.unknownError');
+			new Notice(t('notices.sync.failed', { message: errorMsg }));
 			throw error;
 		}
 	}
@@ -724,7 +729,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 			}
 		}
 
-		new Notice(`Sync folder set to: ${selection.path}${selection.isShared ? ' (shared)' : ''}`);
+		new Notice(
+			t(selection.isShared ? 'notices.sync.folderSetShared' : 'notices.sync.folderSet', {
+				path: selection.path,
+			})
+		);
 	}
 
 	/**
@@ -780,8 +789,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		const message = this.currentProgressMessage
-			? `OneDrive sync: ${this.currentProgressMessage}`
-			: 'OneDrive sync in progress...';
+			? t('mobileProgress.withProgress', { progress: this.currentProgressMessage })
+			: t('mobileProgress.inProgress');
 
 		if (!this.mobileProgressNotice) {
 			this.mobileProgressNotice = new Notice(message, 0);
@@ -798,8 +807,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 	}
 
 	private isMobileClient(): boolean {
-		return (Platform as { isMobile?: boolean } | undefined)?.isMobile === true ||
-			(this.app as { isMobile?: boolean }).isMobile === true;
+		return (
+			(Platform as { isMobile?: boolean } | undefined)?.isMobile === true ||
+			(this.app as { isMobile?: boolean }).isMobile === true
+		);
 	}
 
 	/**
@@ -841,7 +852,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 				: this.app.vault.getFiles().find((f: TFile) => f.extension === 'md');
 
 		if (!file) {
-			new Notice('OneDrive DEV: No file found to create a test conflict');
+			new Notice(t('notices.dev.noFileFound'));
 			return;
 		}
 
@@ -868,14 +879,18 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.updateConflictCount();
 		await this.activateConflictView();
 
-		new Notice(`OneDrive DEV: Created test conflict for "${file.path}"`);
+		new Notice(t('notices.dev.createdTestConflict', { path: file.path }));
 	}
 
 	/**
 	 * Load settings from disk
 	 */
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<PluginSettings>);
+		this.settings = Object.assign(
+			{},
+			DEFAULT_SETTINGS,
+			(await this.loadData()) as Partial<PluginSettings>
+		);
 
 		// Migrate legacy enableDebugLogging boolean → logLevel string
 		const raw = this.settings as unknown as Record<string, unknown>;
@@ -930,10 +945,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	async resetSyncToken(): Promise<void> {
 		this.syncStateManager.clearDeltaLink();
 		await this.saveSettings();
-		new Notice(
-			'Sync reset. Delta cursors, file states, and last sync time cleared. ' +
-				'Next sync will re-read from OneDrive and reconcile local files.'
-		);
+		new Notice(t('notices.sync.reset'));
 	}
 
 	/**
@@ -944,19 +956,19 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 */
 	async reconcileFromCloud(): Promise<void> {
 		if (!this.tokenStorage.hasTokens()) {
-			new Notice('Reconcile from cloud: not connected to OneDrive.');
+			new Notice(t('notices.reconcile.notConnected'));
 			return;
 		}
 		if (!this.isSyncConfigured()) {
-			new Notice('Reconcile from cloud: select a sync folder in settings first.');
+			new Notice(t('notices.reconcile.selectFolderFirst'));
 			return;
 		}
 		if (!this.syncEngine) {
-			new Notice('Reconcile from cloud: sync engine not initialized.');
+			new Notice(t('notices.reconcile.engineNotInitialized'));
 			return;
 		}
 		if (this.eventManager?.isSyncInProgress()) {
-			new Notice('Reconcile from cloud: a sync is already in progress.');
+			new Notice(t('notices.reconcile.alreadyInProgress'));
 			return;
 		}
 		try {
@@ -1039,18 +1051,18 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 * Either 'cancel' or 'disable' is returned to the sync engine, which
 	 * treats both as "abort this sync without advancing delta cursors".
 	 */
-	private handleLargeDeleteWarning(
-		info: LargeDeleteWarningInfo
-	): Promise<LargeDeleteDecision> {
+	private handleLargeDeleteWarning(info: LargeDeleteWarningInfo): Promise<LargeDeleteDecision> {
 		return new Promise((resolve) => {
 			const modal = new LargeDeleteWarningModal(this.app, info, (decision) => {
 				if (decision === 'disable') {
 					// Defer so the modal closes cleanly before unloading the plugin.
 					timerApi.setTimeout(() => {
 						try {
-							const plugins = (this.app as unknown as {
-								plugins?: { disablePlugin?: (id: string) => Promise<void> | void };
-							}).plugins;
+							const plugins = (
+								this.app as unknown as {
+									plugins?: { disablePlugin?: (id: string) => Promise<void> | void };
+								}
+							).plugins;
 							if (plugins?.disablePlugin) {
 								void plugins.disablePlugin(this.manifest.id);
 							}

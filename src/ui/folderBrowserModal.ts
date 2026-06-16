@@ -4,6 +4,7 @@
 
 import { App, Modal, Setting } from 'obsidian';
 import { OneDriveItem } from '../types';
+import { t } from '../i18n';
 
 export interface FolderSelection {
 	path: string;
@@ -55,7 +56,7 @@ export class FolderBrowserModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('onedrive-folder-browser');
 
-		contentEl.createEl('h3', { text: 'Select OneDrive Folder' });
+		contentEl.createEl('h3', { text: t('folderBrowser.title') });
 
 		this.contentEl_body = contentEl.createDiv({
 			cls: 'folder-browser-body onedrive-sync-folder-browser-body',
@@ -128,25 +129,28 @@ export class FolderBrowserModal extends Modal {
 		if (this.currentPath.length > 0) {
 			const selectRow = body.createDiv({ cls: 'onedrive-sync-folder-browser-select-row' });
 			new Setting(selectRow)
-				.setName(`Select "/${this.currentPath.join('/')}"`)
+				.setName(t('folderBrowser.selectCurrent', { path: this.currentPath.join('/') }))
 				.addButton((btn) =>
-					btn.setButtonText('Use this folder').setCta().onClick(() => {
-						const isShared = !!(this.sharedDriveId && this.sharedItemId);
-						this.onSelect({
-							path: `/${this.currentPath.join('/')}`,
-							name: this.currentPath[this.sharedAtDepth ?? this.currentPath.length - 1],
-							isShared,
-							driveId: this.sharedDriveId,
-							itemId: this.sharedItemId,
-						});
-						this.close();
-					})
+					btn
+						.setButtonText(t('folderBrowser.useThisFolder'))
+						.setCta()
+						.onClick(() => {
+							const isShared = !!(this.sharedDriveId && this.sharedItemId);
+							this.onSelect({
+								path: `/${this.currentPath.join('/')}`,
+								name: this.currentPath[this.sharedAtDepth ?? this.currentPath.length - 1],
+								isShared,
+								driveId: this.sharedDriveId,
+								itemId: this.sharedItemId,
+							});
+							this.close();
+						})
 				);
 		}
 
 		// Loading indicator
 		const loadingEl = body.createDiv({
-			text: 'Loading folders...',
+			text: t('folderBrowser.loading'),
 			cls: 'onedrive-sync-folder-browser-note',
 		});
 
@@ -170,7 +174,7 @@ export class FolderBrowserModal extends Modal {
 
 			if (folders.length === 0) {
 				body.createDiv({
-					text: 'No subfolders',
+					text: t('folderBrowser.noSubfolders'),
 					cls: 'onedrive-sync-folder-browser-note onedrive-sync-folder-browser-empty',
 				});
 			}
@@ -189,8 +193,14 @@ export class FolderBrowserModal extends Modal {
 
 				const meta = row.createEl('span', { cls: 'onedrive-sync-folder-row-meta' });
 				const parts: string[] = [];
-				if (isShared) parts.push('shared');
-				if (childCount > 0) parts.push(`${childCount} items`);
+				if (isShared) parts.push(t('folderBrowser.shared'));
+				if (childCount > 0) {
+					parts.push(
+						t(childCount === 1 ? 'folderBrowser.item' : 'folderBrowser.items', {
+							count: childCount,
+						})
+					);
+				}
 				meta.textContent = parts.join(' · ');
 
 				row.onclick = () => {
@@ -207,7 +217,9 @@ export class FolderBrowserModal extends Modal {
 		} catch (error) {
 			loadingEl.remove();
 			body.createDiv({
-				text: `Error loading folders: ${error instanceof Error ? error.message : 'Unknown error'}`,
+				text: t('folderBrowser.loadError', {
+					message: error instanceof Error ? error.message : t('folderBrowser.unknownError'),
+				}),
 				cls: 'onedrive-sync-folder-browser-error',
 			});
 		}

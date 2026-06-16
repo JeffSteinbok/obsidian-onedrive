@@ -13,6 +13,7 @@ import { DEFAULT_ONEDRIVE_CLIENT_ID } from '../constants';
 import { FolderBrowserModal, FolderSelection } from './folderBrowserModal';
 import type { SyncStatusInfo } from '../main';
 import { SyncStatus } from './statusBar';
+import { t } from '../i18n';
 
 // Forward declaration for the plugin type
 interface OneDrivePlugin {
@@ -62,24 +63,25 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 * Display authentication section
 	 */
 	private displayAuthSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Authentication').setHeading();
+		new Setting(containerEl).setName(t('settings.auth.heading')).setHeading();
 
 		// Access mode — first setting in this section
 		const isConnected = !!this.plugin.settings.connectedUser;
-		const modeDesc = this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS
-			? 'Sync to any folder, share with others. Requires more permissions.'
-			: 'Secure isolated app folder in OneDrive. No configuration needed.';
+		const modeDesc =
+			this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS
+				? t('settings.auth.accessMode.fullAccessDesc')
+				: t('settings.auth.accessMode.appFolderDesc');
 		const descWithWarning = isConnected
-			? modeDesc + ' Changing access mode requires disconnecting and reconnecting.'
+			? modeDesc + t('settings.auth.accessMode.reconnectRequired')
 			: modeDesc;
 
 		new Setting(containerEl)
-			.setName('OneDrive access mode')
+			.setName(t('settings.auth.accessMode.name'))
 			.setDesc(descWithWarning)
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption(OneDriveAccessMode.APP_FOLDER, 'App Folder (Recommended)')
-					.addOption(OneDriveAccessMode.FULL_ACCESS, 'Full Access (Advanced)')
+					.addOption(OneDriveAccessMode.APP_FOLDER, t('settings.auth.accessMode.appFolder'))
+					.addOption(OneDriveAccessMode.FULL_ACCESS, t('settings.auth.accessMode.fullAccess'))
 					.setValue(this.plugin.settings.accessMode)
 					.onChange(async (value) => {
 						this.plugin.settings.accessMode = value as OneDriveAccessMode;
@@ -89,39 +91,47 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			);
 
 		// Connection status
-		const statusSetting = new Setting(containerEl).setName('Connection status');
+		const statusSetting = new Setting(containerEl).setName(
+			t('settings.auth.connectionStatus.name')
+		);
 
 		if (this.plugin.settings.connectedUser) {
 			statusSetting.setDesc(
-				`Connected as: ${this.plugin.settings.connectedUser.displayName} (${this.plugin.settings.connectedUser.userPrincipalName})`
+				t('settings.auth.connectionStatus.connectedAs', {
+					displayName: this.plugin.settings.connectedUser.displayName,
+					userPrincipalName: this.plugin.settings.connectedUser.userPrincipalName,
+				})
 			);
 
 			// Disconnect button
 			statusSetting.addButton((button) =>
-				button
-					.setButtonText('Disconnect')
-					.onClick(async () => {
-						this.plugin.disconnect();
-						new Notice('Disconnected from OneDrive');
-						this.display(); // Refresh settings
-					})
+				button.setButtonText(t('settings.auth.connectionStatus.disconnect')).onClick(async () => {
+					this.plugin.disconnect();
+					new Notice(t('settings.auth.connectionStatus.disconnectSuccess'));
+					this.display(); // Refresh settings
+				})
 			);
 		} else {
-			statusSetting.setDesc('Not connected');
+			statusSetting.setDesc(t('settings.auth.connectionStatus.notConnected'));
 
 			// Connect button
 			statusSetting.addButton((button) =>
 				button
-					.setButtonText('Connect to OneDrive')
+					.setButtonText(t('settings.auth.connectionStatus.connect'))
 					.setCta()
 					.onClick(async () => {
 						try {
 							await this.plugin.authenticate();
-							new Notice('Successfully connected to OneDrive');
+							new Notice(t('settings.auth.connectionStatus.connectSuccess'));
 							this.display(); // Refresh settings
 						} catch (error) {
 							new Notice(
-								`Failed to connect: ${error instanceof Error ? error.message : 'Unknown error'}`
+								t('settings.auth.connectionStatus.connectFailed', {
+									message:
+										error instanceof Error
+											? error.message
+											: t('settings.auth.connectionStatus.unknownError'),
+								})
 							);
 						}
 					})
@@ -136,18 +146,20 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		const isConnected = !!this.plugin.settings.connectedUser;
 
 		if (this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS) {
-			new Setting(containerEl).setName('Sync Folder').setHeading();
+			new Setting(containerEl).setName(t('settings.syncFolder.heading')).setHeading();
 
 			if (isConnected) {
-				const currentPath = this.plugin.settings.remotePath || '(not selected)';
+				const currentPath = this.plugin.settings.remotePath || t('settings.syncFolder.notSelected');
 				const isShared = !!this.plugin.settings.remoteDriveId;
-				const desc = isShared ? `${currentPath} (shared folder)` : currentPath;
+				const desc = isShared
+					? t('settings.syncFolder.sharedFolder', { path: currentPath })
+					: currentPath;
 
 				new Setting(containerEl)
-					.setName('Remote folder')
+					.setName(t('settings.syncFolder.remoteFolder'))
 					.setDesc(desc)
 					.addButton((btn) =>
-						btn.setButtonText('Browse...').onClick(() => {
+						btn.setButtonText(t('settings.syncFolder.browse')).onClick(() => {
 							const modal = new FolderBrowserModal(
 								this.app,
 								(path, sharedDriveId?, sharedItemId?, relPath?) =>
@@ -163,8 +175,8 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					);
 			} else {
 				new Setting(containerEl)
-					.setName('Remote folder')
-					.setDesc('Connect to OneDrive first, then select a sync folder.');
+					.setName(t('settings.syncFolder.remoteFolder'))
+					.setDesc(t('settings.syncFolder.connectFirst'));
 			}
 		}
 
@@ -177,14 +189,14 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 * Display sync configuration section
 	 */
 	private displaySyncSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Sync Configuration').setHeading();
+		new Setting(containerEl).setName(t('settings.sync.heading')).setHeading();
 
 		const { configDir } = this.app.vault;
 
 		// Sync interval
 		new Setting(containerEl)
-			.setName('Automatic sync interval')
-			.setDesc('Set to 0 for manual sync only (recommended for battery life)')
+			.setName(t('settings.sync.automaticInterval.name'))
+			.setDesc(t('settings.sync.automaticInterval.desc'))
 			.addSlider((slider) =>
 				slider
 					.setLimits(0, 60, 5)
@@ -197,7 +209,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addExtraButton((button) =>
 				button
 					.setIcon('reset')
-					.setTooltip('Reset to default')
+					.setTooltip(t('settings.sync.automaticInterval.resetTooltip'))
 					.onClick(async () => {
 						this.plugin.settings.syncInterval = 0;
 						await this.plugin.saveSettings();
@@ -207,14 +219,14 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 		// Startup sync delay
 		new Setting(containerEl)
-			.setName('Startup sync delay')
-			.setDesc('Delay before first sync after Obsidian starts (0 = disabled)')
+			.setName(t('settings.sync.startupDelay.name'))
+			.setDesc(t('settings.sync.startupDelay.desc'))
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption('0', 'Disabled')
-					.addOption('1', '1 second')
-					.addOption('10', '10 seconds (recommended)')
-					.addOption('30', '30 seconds')
+					.addOption('0', t('settings.sync.startupDelay.disabled'))
+					.addOption('1', t('settings.sync.startupDelay.oneSecond'))
+					.addOption('10', t('settings.sync.startupDelay.tenSeconds'))
+					.addOption('30', t('settings.sync.startupDelay.thirtySeconds'))
 					.setValue(String(this.plugin.settings.startupSyncDelay))
 					.onChange(async (value) => {
 						this.plugin.settings.startupSyncDelay = parseInt(value);
@@ -224,13 +236,22 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 		// Conflict resolution strategy
 		new Setting(containerEl)
-			.setName('Conflict resolution')
-			.setDesc('How to handle files modified both locally and remotely')
+			.setName(t('settings.sync.conflictResolution.name'))
+			.setDesc(t('settings.sync.conflictResolution.desc'))
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption(ConflictResolutionStrategy.LAST_WRITE_WINS, 'Last write wins')
-					.addOption(ConflictResolutionStrategy.CREATE_DUPLICATE, 'Create duplicate')
-					.addOption(ConflictResolutionStrategy.MANUAL, 'Manual (review conflicts with diff)')
+					.addOption(
+						ConflictResolutionStrategy.LAST_WRITE_WINS,
+						t('settings.sync.conflictResolution.lastWriteWins')
+					)
+					.addOption(
+						ConflictResolutionStrategy.CREATE_DUPLICATE,
+						t('settings.sync.conflictResolution.createDuplicate')
+					)
+					.addOption(
+						ConflictResolutionStrategy.MANUAL,
+						t('settings.sync.conflictResolution.manual')
+					)
 					.setValue(this.plugin.settings.conflictResolution)
 					.onChange(async (value) => {
 						this.plugin.settings.conflictResolution = value as ConflictResolutionStrategy;
@@ -239,10 +260,8 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Sync app settings')
-			.setDesc(
-				`Sync ${configDir}/app.json, ${configDir}/appearance.json, and ${configDir}/hotkeys.json to keep appearance and hotkeys consistent across devices.`
-			)
+			.setName(t('settings.sync.appSettings.name'))
+			.setDesc(t('settings.sync.appSettings.desc', { configDir }))
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncAppSettings).onChange(async (value) => {
 					await this.plugin.onAppSettingsSyncChanged(value);
@@ -250,10 +269,8 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Sync plugins')
-			.setDesc(
-				`Sync ${configDir}/community-plugins.json, ${configDir}/core-plugins.json, plugin manifests, and plugin binaries (main.js, styles.css). Does not sync plugin data files.`
-			)
+			.setName(t('settings.sync.plugins.name'))
+			.setDesc(t('settings.sync.plugins.desc', { configDir }))
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncPluginManifests).onChange(async (value) => {
 					await this.plugin.onPluginManifestSyncChanged(value);
@@ -267,22 +284,29 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		const statusText = this.getSyncStatusText(syncStatus.status);
 		const lastSyncText = syncStatus.lastSyncTime
 			? new Date(syncStatus.lastSyncTime).toLocaleString()
-			: 'Not synced yet';
-		const progressText = syncStatus.status === SyncStatus.SYNCING
-			? (syncStatus.progressMessage || 'Starting...')
-			: '—';
-		const conflictText = syncStatus.conflictCount > 0
-			? `${syncStatus.conflictCount} pending`
-			: 'None';
+			: t('settings.sync.status.notSyncedYet');
+		const progressText =
+			syncStatus.status === SyncStatus.SYNCING
+				? syncStatus.progressMessage || t('settings.sync.status.starting')
+				: t('settings.sync.status.noProgress');
+		const conflictText =
+			syncStatus.conflictCount > 0
+				? t('settings.sync.status.conflictsPending', { count: syncStatus.conflictCount })
+				: t('settings.sync.status.noConflicts');
 
 		new Setting(containerEl)
-			.setName('Sync status')
+			.setName(t('settings.sync.status.name'))
 			.setDesc(
-				`Status: ${statusText} · Last sync: ${lastSyncText} · Progress: ${progressText} · Conflicts: ${conflictText}`
+				t('settings.sync.status.desc', {
+					status: statusText,
+					lastSync: lastSyncText,
+					progress: progressText,
+					conflicts: conflictText,
+				})
 			)
 			.addButton((btn) => {
 				btn
-					.setButtonText('Sync Now')
+					.setButtonText(t('settings.sync.status.syncNow'))
 					.setCta()
 					.onClick(() => {
 						void this.plugin.triggerManualSync();
@@ -294,9 +318,9 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				) {
 					btn.setDisabled(true);
 					if (!isConnected) {
-						btn.setTooltip('Connect to OneDrive first');
+						btn.setTooltip(t('settings.sync.status.connectTooltip'));
 					} else {
-						btn.setTooltip('Select a sync folder first');
+						btn.setTooltip(t('settings.sync.status.selectFolderTooltip'));
 					}
 				}
 			});
@@ -306,19 +330,19 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 * Display advanced section
 	 */
 	private displayAdvancedSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Advanced').setHeading();
+		new Setting(containerEl).setName(t('settings.advanced.heading')).setHeading();
 
 		// Log level
 		new Setting(containerEl)
-			.setName('Log level')
-			.setDesc('Controls how much detail is written to the console and vault log file')
+			.setName(t('settings.advanced.logLevel.name'))
+			.setDesc(t('settings.advanced.logLevel.desc'))
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption('off', 'Off')
-					.addOption('error', 'Error')
-					.addOption('warn', 'Warn')
-					.addOption('info', 'Info')
-					.addOption('debug', 'Debug')
+					.addOption('off', t('settings.advanced.logLevel.off'))
+					.addOption('error', t('settings.advanced.logLevel.error'))
+					.addOption('warn', t('settings.advanced.logLevel.warn'))
+					.addOption('info', t('settings.advanced.logLevel.info'))
+					.addOption('debug', t('settings.advanced.logLevel.debug'))
 					.setValue(this.plugin.settings.logLevel)
 					.onChange(async (value) => {
 						this.plugin.settings.logLevel = value as PluginSettings['logLevel'];
@@ -328,15 +352,11 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 		// Large-delete safety threshold
 		new Setting(containerEl)
-			.setName('Large delete warning threshold')
-			.setDesc(
-				'Pause and ask before a sync that would delete this many files. ' +
-					'Helps catch unintended remote deletions or accidental local deletes. ' +
-					'Set to 0 to disable.'
-			)
+			.setName(t('settings.advanced.largeDeleteThreshold.name'))
+			.setDesc(t('settings.advanced.largeDeleteThreshold.desc'))
 			.addText((text) =>
 				text
-					.setPlaceholder('25')
+					.setPlaceholder(t('settings.advanced.largeDeleteThreshold.placeholder'))
 					.setValue(String(this.plugin.settings.largeDeleteThreshold ?? 25))
 					.onChange(async (value) => {
 						const parsed = parseInt(value, 10);
@@ -349,41 +369,34 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		// Show remote path as read-only text in App Folder mode
 		if (this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
 			new Setting(containerEl)
-				.setName('Remote path')
-				.setDesc('Files sync to a dedicated app folder in OneDrive/Apps/');
+				.setName(t('settings.advanced.remotePath.name'))
+				.setDesc(t('settings.advanced.remotePath.desc'));
 		}
 
 		// Reset sync token
 		new Setting(containerEl)
-			.setName('Reset sync token')
-			.setDesc('Force a full re-read from OneDrive on the next sync. Use if files appear missing or out of date.')
+			.setName(t('settings.advanced.resetSyncToken.name'))
+			.setDesc(t('settings.advanced.resetSyncToken.desc'))
 			.addButton((button) =>
-				button
-					.setButtonText('Reset sync token')
-					.onClick(async () => {
-						await this.plugin.resetSyncToken();
-					})
+				button.setButtonText(t('settings.advanced.resetSyncToken.button')).onClick(async () => {
+					await this.plugin.resetSyncToken();
+				})
 			);
 
 		// Reconcile from cloud (cloud-as-truth recovery — issue #26)
 		new Setting(containerEl)
-			.setName('Reconcile from cloud')
-			.setDesc(
-				'Treat cloud as authoritative. Deletes local files that no longer exist in OneDrive and downloads anything missing. ' +
-					'Use when Reset Sync Token has not cleared stale local files. Destructive — confirmation required for large deletes.'
-			)
+			.setName(t('settings.advanced.reconcileFromCloud.name'))
+			.setDesc(t('settings.advanced.reconcileFromCloud.desc'))
 			.addButton((button) =>
-				button
-					.setButtonText('Reconcile from cloud')
-					.onClick(async () => {
-						await this.plugin.reconcileFromCloud();
-					})
+				button.setButtonText(t('settings.advanced.reconcileFromCloud.button')).onClick(async () => {
+					await this.plugin.reconcileFromCloud();
+				})
 			);
 
 		// Custom client ID toggle
 		new Setting(containerEl)
-			.setName('Use custom client ID')
-			.setDesc('Use your own Azure AD app registration. See the README for setup instructions.')
+			.setName(t('settings.advanced.customClientId.toggleName'))
+			.setDesc(t('settings.advanced.customClientId.toggleDesc'))
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.useCustomClientId).onChange(async (value) => {
 					this.plugin.settings.useCustomClientId = value;
@@ -394,8 +407,8 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 		if (this.plugin.settings.useCustomClientId) {
 			new Setting(containerEl)
-				.setName('Custom client ID')
-				.setDesc('Your Azure AD Application (client) ID')
+				.setName(t('settings.advanced.customClientId.name'))
+				.setDesc(t('settings.advanced.customClientId.desc'))
 				.addText((text) =>
 					text
 						.setPlaceholder(DEFAULT_ONEDRIVE_CLIENT_ID)
@@ -409,26 +422,26 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			const helpDiv = containerEl.createDiv({
 				cls: 'setting-item-description onedrive-sync-settings-help',
 			});
-			helpDiv.appendText('See ');
+			helpDiv.appendText(t('settings.advanced.customClientId.helpPrefix'));
 			helpDiv.createEl('a', {
-				text: 'Custom Client ID setup guide',
+				text: t('settings.advanced.customClientId.helpLink'),
 				href: 'https://github.com/jeffsteinbok/obsidian-onedrive#custom-client-id',
 				attr: { target: '_blank' },
 			});
-			helpDiv.appendText(' in the README.');
+			helpDiv.appendText(t('settings.advanced.customClientId.helpSuffix'));
 		}
 	}
 
 	private getSyncStatusText(status: SyncStatus): string {
 		switch (status) {
 			case SyncStatus.SYNCING:
-				return 'Syncing';
+				return t('settings.sync.status.syncing');
 			case SyncStatus.IDLE:
-				return 'Idle';
+				return t('settings.sync.status.idle');
 			case SyncStatus.ERROR:
-				return 'Error';
+				return t('settings.sync.status.error');
 			case SyncStatus.DISCONNECTED:
-				return 'Disconnected';
+				return t('settings.sync.status.disconnected');
 			default:
 				return status;
 		}
