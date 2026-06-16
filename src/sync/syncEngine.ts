@@ -131,6 +131,18 @@ export class SyncEngine {
 	}
 
 	/**
+	 * Check whether a vault file is currently open in any markdown editor leaf.
+	 * Used to protect actively-edited files from being overwritten by a download
+	 * during conflict resolution.
+	 */
+	private isFileOpenInEditor(path: string): boolean {
+		return this.app.workspace.getLeavesOfType('markdown').some((leaf) => {
+			const file = (leaf.view as { file?: { path?: string } } | undefined)?.file;
+			return file?.path === path;
+		});
+	}
+
+	/**
 	 * Perform a sync using delta API + local dirty files.
 	 *
 	 * Orchestrates five phases:
@@ -858,20 +870,37 @@ export class SyncEngine {
 				const knownState = this.stateManager.getFileState(change.path);
 				const file = this.app.vault.getAbstractFileByPath(change.path);
 				if (file instanceof TFile && knownState) {
-					const conflictInfo: ConflictInfo = {
-						path: change.path,
-						localModifiedTime: file.stat.mtime,
-						remoteModifiedTime: new Date(remoteItem.lastModifiedDateTime).getTime(),
-						localSize: file.stat.size,
-						remoteSize: remoteItem.size || 0,
-					};
-					const resolution = this.conflictResolver.resolveConflict(conflictInfo);
-					operations.push({
-						path: resolution.newPath || change.path,
-						direction: resolution.direction,
-						localState: knownState,
-						remoteState: this.itemToFileState(remoteItem),
-					});
+					// If the file is currently open in an editor, always prefer the local
+					// version to prevent overwriting active edits. The remote timestamp
+					// can be newer than the local mtime when the user edits a file shortly
+					// after a sync upload (the upload sets the remote time, but Obsidian's
+					// auto-save may not have updated the local mtime for the latest keystrokes).
+					if (this.isFileOpenInEditor(change.path)) {
+						logger.debug(
+							`Preferring local for open file ${change.path} — file is open in editor, skipping remote overwrite`
+						);
+						operations.push({
+							path: change.path,
+							direction: SyncDirection.UPLOAD,
+							localState: knownState,
+							remoteState: this.itemToFileState(remoteItem),
+						});
+					} else {
+						const conflictInfo: ConflictInfo = {
+							path: change.path,
+							localModifiedTime: file.stat.mtime,
+							remoteModifiedTime: new Date(remoteItem.lastModifiedDateTime).getTime(),
+							localSize: file.stat.size,
+							remoteSize: remoteItem.size || 0,
+						};
+						const resolution = this.conflictResolver.resolveConflict(conflictInfo);
+						operations.push({
+							path: resolution.newPath || change.path,
+							direction: resolution.direction,
+							localState: knownState,
+							remoteState: this.itemToFileState(remoteItem),
+						});
+					}
 				} else {
 					// No known state, upload local
 					operations.push({ path: change.path, direction: SyncDirection.UPLOAD });

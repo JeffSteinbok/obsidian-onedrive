@@ -440,6 +440,35 @@ describe('EventManager', () => {
 
 			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
 		});
+
+		it('still tracks dirty files but does not schedule sync when syncOnFileChange is disabled', async () => {
+			eventManager.startListening();
+			eventManager.setSyncOnFileChange(false);
+			const file = makeTFile('test.md', 100);
+
+			eventCallbacks.modify(file);
+
+			await vi.advanceTimersByTimeAsync(100);
+
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'test.md', type: LocalChangeType.MODIFY },
+			]);
+			expect(onSyncTriggered).not.toHaveBeenCalled();
+		});
+
+		it('schedules sync after re-enabling syncOnFileChange', async () => {
+			eventManager.startListening();
+			eventManager.setSyncOnFileChange(false);
+			eventCallbacks.modify(makeTFile('test.md', 100));
+			await vi.advanceTimersByTimeAsync(100);
+			expect(onSyncTriggered).not.toHaveBeenCalled();
+
+			eventManager.setSyncOnFileChange(true);
+			eventCallbacks.modify(makeTFile('test.md', 100));
+			await vi.advanceTimersByTimeAsync(100);
+
+			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	describe('periodic sync', () => {

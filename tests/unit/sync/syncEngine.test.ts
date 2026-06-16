@@ -147,6 +147,8 @@ describe('SyncEngine', () => {
 		mockApp.vault.adapter.writeBinary.mockReset().mockResolvedValue(undefined);
 		mockApp.vault.adapter.stat.mockReset().mockResolvedValue(null);
 		mockApp.vault.adapter.list.mockReset().mockResolvedValue({ files: [], folders: [] });
+		// Default: no files open in editor
+		mockApp.workspace.getLeavesOfType.mockReturnValue([]);
 
 		mockFileOps = {
 			uploadFile: vi.fn().mockResolvedValue(
@@ -491,6 +493,44 @@ describe('SyncEngine', () => {
 
 		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('remote-id');
 		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+	});
+
+	it('uploads (not downloads) when both sides changed, remote is newer, but file is open in editor', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState('notes/test.md', {
+			path: 'notes/test.md',
+			localMtime: 50,
+			remoteHash: 'known-hash',
+			size: 50,
+			remoteModifiedTime: 100,
+			oneDriveId: 'remote-id',
+		});
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		const localFile = makeTFile('notes/test.md', 100, Date.now() - 60_000);
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(localFile);
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				makeRemoteFile('notes/test.md', {
+					id: 'remote-id',
+					lastModifiedDateTime: new Date(Date.now()).toISOString(),
+				}),
+			],
+			deltaLink: 'delta-link-2',
+		});
+		// Simulate the file being open in an editor leaf
+		mockApp.workspace.getLeavesOfType.mockReturnValue([
+			{ view: { file: { path: 'notes/test.md' } } },
+		]);
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.uploadFile).toHaveBeenCalledWith(
+			'/remote/root/notes/test.md',
+			expect.any(ArrayBuffer)
+		);
+		expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
 	});
 
 	it('creates a duplicate conflict file when configured to do so', async () => {

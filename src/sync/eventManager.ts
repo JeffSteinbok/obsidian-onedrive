@@ -28,6 +28,8 @@ export class EventManager {
 	// Suppress raw config events until after the first sync completes,
 	// because Obsidian rewrites config files on startup (new mtime, same content).
 	private initialSyncDone = false;
+	// When false, vault change events mark files dirty but do not schedule auto-sync
+	private syncOnFileChange = true;
 
 	constructor(
 		private app: App,
@@ -79,6 +81,15 @@ export class EventManager {
 	 */
 	markInitialSyncDone(): void {
 		this.initialSyncDone = true;
+	}
+
+	/**
+	 * Enable or disable automatic sync scheduling when files change.
+	 * When disabled, vault events still track dirty files but do not
+	 * trigger a debounced sync — only periodic and manual syncs run.
+	 */
+	setSyncOnFileChange(enabled: boolean): void {
+		this.syncOnFileChange = enabled;
 	}
 
 	/**
@@ -235,6 +246,7 @@ export class EventManager {
 	 * Schedule a debounced sync (trailing edge)
 	 */
 	private scheduleSync(): void {
+		if (!this.syncOnFileChange) return;
 		if (this.isSyncing) return;
 
 		if (this.throttleTimer !== undefined) {
