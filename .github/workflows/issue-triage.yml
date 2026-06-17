@@ -121,11 +121,26 @@ jobs:
               return placeholders.includes(stripped);
             }
 
+            function isLogsMissing(content) {
+              if (!content) return true;
+              const stripped = content.replace(/<!--[\s\S]*?-->/g, '').trim();
+
+              // Accept URLs (gist, pastebin, etc.)
+              if (/https?:\/\/\S+/.test(stripped)) return false;
+
+              // Check for actual log format: [timestamp] [DBG|INF|WRN|ERR]
+              const logPattern = /\[\d{4}-\d{2}-\d{2}T[^\]]+\]\s*\[(DBG|INF|WRN|ERR)\]/;
+              if (logPattern.test(stripped)) return false;
+
+              // No valid logs found
+              return true;
+            }
+
             const logs = getSectionContent('Debug logs');
             const steps = getSectionContent('Steps to reproduce');
             const version = getSectionContent('Plugin Version');
 
-            const missingLogs = isMissing(logs);
+            const missingLogs = isLogsMissing(logs);
             const missingSteps = isMissing(steps);
             const missingVersion = !(/\d+\.\d+/.test(version));
 
