@@ -43,7 +43,7 @@ vi.mock('obsidian', async () => {
 	};
 });
 
-import { Notice, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
+import { Notice, TFile } from 'obsidian';
 import '../../setup';
 import { mockApp, makeTFile } from '../../setup';
 import { SyncEngine } from '../../../src/sync/syncEngine';
@@ -147,8 +147,6 @@ describe('SyncEngine', () => {
 		mockApp.vault.adapter.writeBinary.mockReset().mockResolvedValue(undefined);
 		mockApp.vault.adapter.stat.mockReset().mockResolvedValue(null);
 		mockApp.vault.adapter.list.mockReset().mockResolvedValue({ files: [], folders: [] });
-		// Default: no files open in editor
-		mockApp.workspace.getLeavesOfType.mockReturnValue([]);
 
 		mockFileOps = {
 			uploadFile: vi.fn().mockResolvedValue(
@@ -495,12 +493,12 @@ describe('SyncEngine', () => {
 		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
 	});
 
-	it('uploads (not downloads) when both sides changed, remote is newer, but file is open in editor', async () => {
+	it('uploads (not downloads) when both sides changed but remote hash matches stored hash', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		stateManager.setFileState('notes/test.md', {
 			path: 'notes/test.md',
 			localMtime: 50,
-			remoteHash: 'known-hash',
+			remoteHash: 'same-hash', // Stored hash
 			size: 50,
 			remoteModifiedTime: 100,
 			oneDriveId: 'remote-id',
@@ -510,23 +508,21 @@ describe('SyncEngine', () => {
 		]);
 		const localFile = makeTFile('notes/test.md', 100, Date.now() - 60_000);
 		mockApp.vault.getAbstractFileByPath.mockReturnValue(localFile);
+		// Remote returns same hash — this is our own upload echoing back
 		mockClient.getDelta.mockResolvedValue({
 			items: [
 				makeRemoteFile('notes/test.md', {
 					id: 'remote-id',
-					lastModifiedDateTime: new Date(Date.now()).toISOString(),
+					lastModifiedDateTime: new Date(Date.now()).toISOString(), // Remote is "newer"
+					file: { hashes: { quickXorHash: 'same-hash' } }, // Same hash
 				}),
 			],
 			deltaLink: 'delta-link-2',
 		});
-		// Simulate the file being open in an editor leaf
-		const mockLeaf = new WorkspaceLeaf();
-		const mockView = new MarkdownView(mockLeaf);
-		mockView.file = makeTFile('notes/test.md', 100, Date.now() - 60_000);
-		mockApp.workspace.getLeavesOfType.mockReturnValue([{ view: mockView }]);
 
 		await syncEngine.performSync();
 
+		// Should upload local (no real conflict) even though remote mtime is newer
 		expect(mockFileOps.uploadFile).toHaveBeenCalledWith(
 			'/remote/root/notes/test.md',
 			expect.any(ArrayBuffer)

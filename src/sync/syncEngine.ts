@@ -3,7 +3,7 @@
  * Uses OneDrive delta API for remote changes and vault events for local changes
  */
 
-import { App, MarkdownView, Notice, TFile, TFolder } from 'obsidian';
+import { App, Notice, TFile, TFolder } from 'obsidian';
 import { FileOperations } from '../api/fileOperations';
 import { OneDriveClient } from '../api/oneDriveClient';
 import { SyncStateManager } from './syncState';
@@ -128,18 +128,6 @@ export class SyncEngine {
 
 	private isObsidianPath(path: string): boolean {
 		return normalizePath(path).startsWith(`${normalizePath(this.configDir).replace(/\/+$/g, '')}/`);
-	}
-
-	/**
-	 * Check whether a vault file is currently open in any markdown editor leaf.
-	 * Used to protect actively-edited files from being overwritten by a download
-	 * during conflict resolution.
-	 */
-	private isFileOpenInEditor(path: string): boolean {
-		return this.app.workspace.getLeavesOfType('markdown').some((leaf) => {
-			const view = leaf.view instanceof MarkdownView ? leaf.view : null;
-			return view?.file?.path === path;
-		});
 	}
 
 	/**
@@ -866,41 +854,40 @@ export class SyncEngine {
 			}
 
 			if (remoteItem && !remoteItem.deleted) {
-				// Both changed — conflict
+				// Both local and remote show changes — but check if remote actually changed content
 				const knownState = this.stateManager.getFileState(change.path);
 				const file = this.app.vault.getAbstractFileByPath(change.path);
-				if (file instanceof TFile && knownState) {
-					// If the file is currently open in an editor, always prefer the local
-					// version to prevent overwriting active edits. The remote timestamp
-					// can be newer than the local mtime when the user edits a file shortly
-					// after a sync upload (the upload sets the remote time, but Obsidian's
-					// auto-save may not have updated the local mtime for the latest keystrokes).
-					if (this.isFileOpenInEditor(change.path)) {
-						logger.debug(
-							`Preferring local for open file ${change.path} — file is open in editor, skipping remote overwrite`
-						);
-						operations.push({
-							path: change.path,
-							direction: SyncDirection.UPLOAD,
-							localState: knownState,
-							remoteState: this.itemToFileState(remoteItem),
-						});
-					} else {
-						const conflictInfo: ConflictInfo = {
-							path: change.path,
-							localModifiedTime: file.stat.mtime,
-							remoteModifiedTime: new Date(remoteItem.lastModifiedDateTime).getTime(),
-							localSize: file.stat.size,
-							remoteSize: remoteItem.size || 0,
-						};
-						const resolution = this.conflictResolver.resolveConflict(conflictInfo);
-						operations.push({
-							path: resolution.newPath || change.path,
-							direction: resolution.direction,
-							localState: knownState,
-							remoteState: this.itemToFileState(remoteItem),
-						});
-					}
+
+				// Check if the remote content actually changed by comparing hashes.
+				// The delta API reports our own upload as a "change" (new mtime), but if
+				// the hash matches what we stored, the content is the same — just upload.
+				const remoteHash = remoteItem.file?.hashes?.quickXorHash || '';
+				if (knownState && knownState.remoteHash === remoteHash) {
+					logger.debug(
+						`Remote hash unchanged for ${change.path} — uploading local (no real conflict)`
+					);
+					operations.push({
+						path: change.path,
+						direction: SyncDirection.UPLOAD,
+						localState: knownState,
+						remoteState: this.itemToFileState(remoteItem),
+					});
+				} else if (file instanceof TFile && knownState) {
+					// Remote content genuinely changed — real conflict
+					const conflictInfo: ConflictInfo = {
+						path: change.path,
+						localModifiedTime: file.stat.mtime,
+						remoteModifiedTime: new Date(remoteItem.lastModifiedDateTime).getTime(),
+						localSize: file.stat.size,
+						remoteSize: remoteItem.size || 0,
+					};
+					const resolution = this.conflictResolver.resolveConflict(conflictInfo);
+					operations.push({
+						path: resolution.newPath || change.path,
+						direction: resolution.direction,
+						localState: knownState,
+						remoteState: this.itemToFileState(remoteItem),
+					});
 				} else {
 					// No known state, upload local
 					operations.push({ path: change.path, direction: SyncDirection.UPLOAD });
