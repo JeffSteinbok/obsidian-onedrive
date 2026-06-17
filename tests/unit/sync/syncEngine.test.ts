@@ -493,6 +493,43 @@ describe('SyncEngine', () => {
 		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
 	});
 
+	it('uploads (not downloads) when both sides changed but remote hash matches stored hash', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState('notes/test.md', {
+			path: 'notes/test.md',
+			localMtime: 50,
+			remoteHash: 'same-hash', // Stored hash
+			size: 50,
+			remoteModifiedTime: 100,
+			oneDriveId: 'remote-id',
+		});
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		const localFile = makeTFile('notes/test.md', 100, Date.now() - 60_000);
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(localFile);
+		// Remote returns same hash — this is our own upload echoing back
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				makeRemoteFile('notes/test.md', {
+					id: 'remote-id',
+					lastModifiedDateTime: new Date(Date.now()).toISOString(), // Remote is "newer"
+					file: { hashes: { quickXorHash: 'same-hash' } }, // Same hash
+				}),
+			],
+			deltaLink: 'delta-link-2',
+		});
+
+		await syncEngine.performSync();
+
+		// Should upload local (no real conflict) even though remote mtime is newer
+		expect(mockFileOps.uploadFile).toHaveBeenCalledWith(
+			'/remote/root/notes/test.md',
+			expect.any(ArrayBuffer)
+		);
+		expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
+	});
+
 	it('creates a duplicate conflict file when configured to do so', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		stateManager.setFileState('notes/test.md', {

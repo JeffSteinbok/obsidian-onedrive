@@ -205,6 +205,23 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					})
 			);
 
+		// Sync on file change toggle
+		new Setting(containerEl)
+			.setName('Sync on file change')
+			.setDesc(
+				'Automatically sync when files are modified. ' +
+				'Disable to prevent syncing while actively editing — ' +
+				'only the periodic interval and manual sync will run.'
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.syncOnFileChange ?? true)
+					.onChange(async (value) => {
+						this.plugin.settings.syncOnFileChange = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		// Startup sync delay
 		new Setting(containerEl)
 			.setName('Startup sync delay')

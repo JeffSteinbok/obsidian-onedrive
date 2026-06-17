@@ -989,6 +989,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.conflictResolver.setStrategy(this.settings.conflictResolution);
 		}
 
+		// Update event manager sync-on-file-change setting
+		if (this.eventManager) {
+			this.eventManager.setSyncOnFileChange(this.settings.syncOnFileChange ?? true);
+		}
+
 		// Update logger level if changed
 		this.applyLogLevel();
 		this.applyVaultLogHook();

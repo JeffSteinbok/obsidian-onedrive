@@ -37,6 +37,7 @@ export const mockApp = {
 	},
 	workspace: {
 		on: vi.fn(),
+		getLeavesOfType: vi.fn().mockReturnValue([]),
 	},
 };
 

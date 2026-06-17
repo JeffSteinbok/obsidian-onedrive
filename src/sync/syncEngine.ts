@@ -854,10 +854,26 @@ export class SyncEngine {
 			}
 
 			if (remoteItem && !remoteItem.deleted) {
-				// Both changed — conflict
+				// Both local and remote show changes — but check if remote actually changed content
 				const knownState = this.stateManager.getFileState(change.path);
 				const file = this.app.vault.getAbstractFileByPath(change.path);
-				if (file instanceof TFile && knownState) {
+
+				// Check if the remote content actually changed by comparing hashes.
+				// The delta API reports our own upload as a "change" (new mtime), but if
+				// the hash matches what we stored, the content is the same — just upload.
+				const remoteHash = remoteItem.file?.hashes?.quickXorHash || '';
+				if (knownState && knownState.remoteHash === remoteHash) {
+					logger.debug(
+						`Remote hash unchanged for ${change.path} — uploading local (no real conflict)`
+					);
+					operations.push({
+						path: change.path,
+						direction: SyncDirection.UPLOAD,
+						localState: knownState,
+						remoteState: this.itemToFileState(remoteItem),
+					});
+				} else if (file instanceof TFile && knownState) {
+					// Remote content genuinely changed — real conflict
 					const conflictInfo: ConflictInfo = {
 						path: change.path,
 						localModifiedTime: file.stat.mtime,

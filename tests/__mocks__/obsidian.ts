@@ -44,6 +44,13 @@ export class ItemView {
 	async onOpen(): Promise<void> {}
 	async onClose(): Promise<void> {}
 }
+export class MarkdownView {
+	leaf: WorkspaceLeaf;
+	file: TFile | null = null;
+	constructor(leaf: WorkspaceLeaf) {
+		this.leaf = leaf;
+	}
+}
 export class TFile {
 	path: string = '';
 	stat: { mtime: number; size: number; ctime: number } = { mtime: 0, size: 0, ctime: 0 };
