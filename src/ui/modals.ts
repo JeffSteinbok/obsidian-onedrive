@@ -4,6 +4,7 @@
 
 import { Modal, App, Setting } from 'obsidian';
 import { ConflictInfo, LargeDeleteWarningInfo, LargeDeleteDecision } from '../types';
+import { t } from '../i18n';
 
 /**
  * Conflict resolution modal
@@ -26,35 +27,41 @@ export class ConflictResolutionModal extends Modal {
 		contentEl.addClass('onedrive-conflict-modal');
 
 		// Title
-		contentEl.createEl('h2', { text: 'Sync Conflict Detected' });
+		contentEl.createEl('h2', { text: t('conflictModal.title') });
 
 		// Conflict description
 		const descDiv = contentEl.createDiv({ cls: 'conflict-description' });
 		descDiv.createEl('p', {
-			text: `The file "${this.conflictInfo.path}" has been modified both locally and on OneDrive.`,
+			text: t('conflictModal.description', { path: this.conflictInfo.path }),
 		});
 
 		// Local file info
 		const localInfo = descDiv.createDiv({ cls: 'file-info' });
-		localInfo.createEl('h3', { text: 'Local Version' });
+		localInfo.createEl('h3', { text: t('conflictModal.localVersion') });
 		localInfo.createEl('p', {
-			text: `Modified: ${new Date(this.conflictInfo.localModifiedTime).toLocaleString()}`,
+			text: t('conflictModal.modified', {
+				time: new Date(this.conflictInfo.localModifiedTime).toLocaleString(),
+			}),
 		});
-		localInfo.createEl('p', { text: `Size: ${this.formatSize(this.conflictInfo.localSize)}` });
+		localInfo.createEl('p', {
+			text: t('conflictModal.size', { size: this.formatSize(this.conflictInfo.localSize) }),
+		});
 
 		// Remote file info
 		const remoteInfo = descDiv.createDiv({ cls: 'file-info' });
-		remoteInfo.createEl('h3', { text: 'OneDrive Version' });
+		remoteInfo.createEl('h3', { text: t('conflictModal.oneDriveVersion') });
 		remoteInfo.createEl('p', {
-			text: `Modified: ${new Date(this.conflictInfo.remoteModifiedTime).toLocaleString()}`,
+			text: t('conflictModal.modified', {
+				time: new Date(this.conflictInfo.remoteModifiedTime).toLocaleString(),
+			}),
 		});
 		remoteInfo.createEl('p', {
-			text: `Size: ${this.formatSize(this.conflictInfo.remoteSize)}`,
+			text: t('conflictModal.size', { size: this.formatSize(this.conflictInfo.remoteSize) }),
 		});
 
 		// Question
 		contentEl.createEl('p', {
-			text: 'Which version would you like to keep?',
+			text: t('conflictModal.question'),
 			cls: 'conflict-question',
 		});
 
@@ -64,7 +71,7 @@ export class ConflictResolutionModal extends Modal {
 		});
 
 		const localButton = buttonContainer.createEl('button', {
-			text: 'Keep Local',
+			text: t('conflictModal.keepLocal'),
 			cls: 'mod-cta',
 		});
 		localButton.addEventListener('click', () => {
@@ -73,7 +80,7 @@ export class ConflictResolutionModal extends Modal {
 		});
 
 		const remoteButton = buttonContainer.createEl('button', {
-			text: 'Keep OneDrive',
+			text: t('conflictModal.keepOneDrive'),
 			cls: 'mod-cta',
 		});
 		remoteButton.addEventListener('click', () => {
@@ -208,7 +215,6 @@ export class ErrorModal extends Modal {
 	}
 }
 
-
 /**
  * Large-delete warning modal
  *
@@ -239,44 +245,48 @@ export class LargeDeleteWarningModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('onedrive-large-delete-modal');
 
-		contentEl.createEl('h2', { text: 'OneDrive sync: large delete detected' });
+		contentEl.createEl('h2', { text: t('largeDeleteModal.title') });
 
 		const total = this.info.localDeleteCount + this.info.remoteDeleteCount;
 		const summary = contentEl.createEl('p');
 		summary.setText(
-			`This sync would delete ${total} file${total === 1 ? '' : 's'} ` +
-				`(threshold: ${this.info.threshold}). Review before continuing — ` +
-				`this could indicate an unintended remote change or an accidental local delete.`
+			t(total === 1 ? 'largeDeleteModal.summaryFile' : 'largeDeleteModal.summaryFiles', {
+				total,
+				threshold: this.info.threshold,
+			})
 		);
 
 		if (this.info.localDeleteCount > 0) {
 			contentEl.createEl('h3', {
-				text: `${this.info.localDeleteCount} file${this.info.localDeleteCount === 1 ? '' : 's'} would be removed from this vault (driven by remote changes)`,
+				text: t(
+					this.info.localDeleteCount === 1
+						? 'largeDeleteModal.localDeletesFile'
+						: 'largeDeleteModal.localDeletesFiles',
+					{ count: this.info.localDeleteCount }
+				),
 			});
 			this.renderSamples(contentEl, this.info.sampleLocalDeletes, this.info.localDeleteCount);
 		}
 
 		if (this.info.remoteDeleteCount > 0) {
 			contentEl.createEl('h3', {
-				text: `${this.info.remoteDeleteCount} file${this.info.remoteDeleteCount === 1 ? '' : 's'} would be removed from OneDrive (driven by local deletes)`,
+				text: t(
+					this.info.remoteDeleteCount === 1
+						? 'largeDeleteModal.remoteDeletesFile'
+						: 'largeDeleteModal.remoteDeletesFiles',
+					{ count: this.info.remoteDeleteCount }
+				),
 			});
-			this.renderSamples(
-				contentEl,
-				this.info.sampleRemoteDeletes,
-				this.info.remoteDeleteCount
-			);
+			this.renderSamples(contentEl, this.info.sampleRemoteDeletes, this.info.remoteDeleteCount);
 		}
 
 		const hint = contentEl.createEl('p');
-		hint.setText(
-			'If you cancel or disable, the delta cursor is preserved so the same ' +
-				'plan will be re-checked next sync. Nothing has been deleted yet.'
-		);
+		hint.setText(t('largeDeleteModal.hint'));
 
 		new Setting(contentEl)
 			.addButton((b) =>
 				b
-					.setButtonText('Cancel sync')
+					.setButtonText(t('largeDeleteModal.cancelSync'))
 					.setCta()
 					.onClick(() => {
 						this.decision = 'cancel';
@@ -284,13 +294,13 @@ export class LargeDeleteWarningModal extends Modal {
 					})
 			)
 			.addButton((b) =>
-				b.setButtonText('Disable plugin').onClick(() => {
+				b.setButtonText(t('largeDeleteModal.disablePlugin')).onClick(() => {
 					this.decision = 'disable';
 					this.close();
 				})
 			)
 			.addButton((b) =>
-				b.setButtonText('Proceed (this sync only)').onClick(() => {
+				b.setButtonText(t('largeDeleteModal.proceed')).onClick(() => {
 					this.decision = 'proceed';
 					this.close();
 				})
@@ -303,7 +313,15 @@ export class LargeDeleteWarningModal extends Modal {
 			list.createEl('li', { text: path });
 		}
 		if (total > samples.length) {
-			parent.createEl('p', { text: `… and ${total - samples.length} more.` });
+			const remaining = total - samples.length;
+			parent.createEl('p', {
+				text: t(
+					remaining === 1
+						? 'largeDeleteModal.remainingSample'
+						: 'largeDeleteModal.remainingSamples',
+					{ count: remaining }
+				),
+			});
 		}
 	}
 

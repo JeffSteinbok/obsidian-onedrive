@@ -7,6 +7,7 @@ import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
 import { ConflictEntry, ConflictResolution } from '../types';
 import { ConflictQueue } from '../sync/conflictQueue';
 import { diffLines } from 'diff';
+import { t } from '../i18n';
 
 export const CONFLICT_VIEW_TYPE = 'onedrive-conflict-view';
 
@@ -30,7 +31,7 @@ export class ConflictView extends ItemView {
 
 	getDisplayText(): string {
 		const count = this.conflictQueue.count;
-		return count > 0 ? `Sync Conflicts (${count})` : 'Sync Conflicts';
+		return count > 0 ? t('conflictView.titleWithCount', { count }) : t('conflictView.title');
 	}
 
 	getIcon(): string {
@@ -56,19 +57,21 @@ export class ConflictView extends ItemView {
 
 		// Header
 		const header = container.createDiv({ cls: 'onedrive-sync-conflict-header' });
-		header.createEl('h4', { text: 'Sync Conflicts' });
+		header.createEl('h4', { text: t('conflictView.title') });
 
 		if (entries.length === 0) {
 			const empty = container.createDiv({ cls: 'onedrive-sync-conflict-empty' });
 			empty.createEl('p', {
-				text: 'No conflicts to resolve.',
+				text: t('conflictView.empty'),
 				cls: 'onedrive-sync-conflict-empty-text',
 			});
 			return;
 		}
 
 		header.createEl('p', {
-			text: `${entries.length} file${entries.length === 1 ? '' : 's'} with conflicts`,
+			text: t(entries.length === 1 ? 'conflictView.subtitleFile' : 'conflictView.subtitleFiles', {
+				count: entries.length,
+			}),
 			cls: 'onedrive-sync-conflict-subtitle',
 		});
 
@@ -76,7 +79,7 @@ export class ConflictView extends ItemView {
 		const bulkActions = header.createDiv({ cls: 'onedrive-sync-conflict-bulk-actions' });
 
 		const acceptAllCurrent = bulkActions.createEl('button', {
-			text: 'Accept All Current',
+			text: t('conflictView.acceptAllCurrent'),
 			cls: 'onedrive-sync-conflict-btn onedrive-sync-conflict-btn-current',
 		});
 		acceptAllCurrent.addEventListener('click', () => {
@@ -88,7 +91,7 @@ export class ConflictView extends ItemView {
 		});
 
 		const acceptAllIncoming = bulkActions.createEl('button', {
-			text: 'Accept All Incoming',
+			text: t('conflictView.acceptAllIncoming'),
 			cls: 'onedrive-sync-conflict-btn onedrive-sync-conflict-btn-incoming',
 		});
 		acceptAllIncoming.addEventListener('click', () => {
@@ -104,7 +107,6 @@ export class ConflictView extends ItemView {
 		for (const entry of entries) {
 			await this.renderConflictEntry(list, entry);
 		}
-
 	}
 
 	/**
@@ -122,32 +124,40 @@ export class ConflictView extends ItemView {
 		// Metadata
 		const meta = card.createDiv({ cls: 'onedrive-sync-conflict-meta' });
 		const currentMeta = meta.createDiv({ cls: 'onedrive-sync-conflict-meta-side' });
-		currentMeta.createEl('strong', { text: 'Current (local)' });
+		currentMeta.createEl('strong', { text: t('conflictView.currentLabel') });
 		currentMeta.createEl('span', {
-			text: `Modified: ${new Date(entry.localModifiedTime).toLocaleString()}`,
+			text: t('conflictView.modified', {
+				time: new Date(entry.localModifiedTime).toLocaleString(),
+			}),
 		});
-		currentMeta.createEl('span', { text: `Size: ${this.formatSize(entry.localSize)}` });
+		currentMeta.createEl('span', {
+			text: t('conflictView.size', { size: this.formatSize(entry.localSize) }),
+		});
 
 		const incomingMeta = meta.createDiv({ cls: 'onedrive-sync-conflict-meta-side' });
-		incomingMeta.createEl('strong', { text: 'Incoming (remote)' });
+		incomingMeta.createEl('strong', { text: t('conflictView.incomingLabel') });
 		incomingMeta.createEl('span', {
-			text: `Modified: ${new Date(entry.remoteModifiedTime).toLocaleString()}`,
+			text: t('conflictView.modified', {
+				time: new Date(entry.remoteModifiedTime).toLocaleString(),
+			}),
 		});
-		incomingMeta.createEl('span', { text: `Size: ${this.formatSize(entry.remoteSize)}` });
+		incomingMeta.createEl('span', {
+			text: t('conflictView.size', { size: this.formatSize(entry.remoteSize) }),
+		});
 
 		// Diff (for text files)
 		if (entry.isTextFile) {
 			await this.renderDiff(card, entry);
 		} else {
 			const binaryNote = card.createDiv({ cls: 'onedrive-sync-conflict-binary' });
-			binaryNote.createEl('em', { text: 'Binary file — diff not available' });
+			binaryNote.createEl('em', { text: t('conflictView.binaryDiffUnavailable') });
 		}
 
 		// Actions
 		const actions = card.createDiv({ cls: 'onedrive-sync-conflict-actions' });
 
 		const acceptCurrent = actions.createEl('button', {
-			text: 'Accept Current Change',
+			text: t('conflictView.acceptCurrent'),
 			cls: 'onedrive-sync-conflict-btn onedrive-sync-conflict-btn-current',
 		});
 		acceptCurrent.addEventListener('click', () => {
@@ -159,7 +169,7 @@ export class ConflictView extends ItemView {
 		});
 
 		const acceptIncoming = actions.createEl('button', {
-			text: 'Accept Incoming Change',
+			text: t('conflictView.acceptIncoming'),
 			cls: 'onedrive-sync-conflict-btn onedrive-sync-conflict-btn-incoming',
 		});
 		acceptIncoming.addEventListener('click', () => {
@@ -171,7 +181,7 @@ export class ConflictView extends ItemView {
 		});
 
 		const acceptBoth = actions.createEl('button', {
-			text: 'Accept Both Changes',
+			text: t('conflictView.acceptBoth'),
 			cls: 'onedrive-sync-conflict-btn onedrive-sync-conflict-btn-both',
 		});
 		acceptBoth.addEventListener('click', () => {
@@ -217,7 +227,7 @@ export class ConflictView extends ItemView {
 						const bottom = lines.slice(-3).join('\n');
 						span.textContent =
 							this.prefixLines(top, '  ') +
-							`\n  ... ${lines.length - 6} unchanged lines ...\n` +
+							`\n  ${t('conflictView.unchangedLines', { count: lines.length - 6 })}\n` +
 							this.prefixLines(bottom, '  ');
 					} else {
 						span.textContent = this.prefixLines(part.value, '  ');
@@ -226,7 +236,7 @@ export class ConflictView extends ItemView {
 			}
 		} catch {
 			const errorDiv = container.createDiv({ cls: 'onedrive-sync-conflict-diff-error' });
-			errorDiv.createEl('em', { text: 'Could not load diff' });
+			errorDiv.createEl('em', { text: t('conflictView.diffLoadError') });
 		}
 	}
 
@@ -242,5 +252,4 @@ export class ConflictView extends ItemView {
 		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
-
 }
