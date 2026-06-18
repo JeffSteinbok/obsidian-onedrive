@@ -59,6 +59,7 @@ These settings may improve performance but are not fully tested. Use at your own
 | ------- | ------- | ----------- |
 | **Skip folder existence checks** | ON | Skip API calls to verify folders exist before uploading. OneDrive auto-creates parent folders on PUT, so this is safe and reduces API calls during large syncs. |
 | **Max concurrent operations** | 4 | Maximum number of parallel upload/download operations. Higher values (8-12) may speed up large initial syncs but could hit rate limits. Values above 16 are not recommended. |
+| **Use atomic moves** | ON | Use OneDrive's native PATCH API to move/rename files instead of delete + re-upload. More efficient (no re-upload needed) and avoids duplicate files if sync state is lost. |
 
 ### When to adjust experimental settings
 
@@ -72,3 +73,7 @@ These settings may improve performance but are not fully tested. Use at your own
 
 **Upload failures with "folder not found" errors:**
 - Try disabling **Skip folder existence checks** (rare edge case)
+
+**Duplicate files appearing after moves/renames:**
+- Ensure **Use atomic moves** is ON (default)
+- If you see duplicates, check logs for "no tracked state for old path" warnings — this indicates the old location couldn't be found in sync state

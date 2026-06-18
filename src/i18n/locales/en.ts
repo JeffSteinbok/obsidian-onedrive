@@ -294,11 +294,15 @@ export const en = {
 					name: 'Skip folder existence checks',
 					desc: 'Skip API calls to verify folders exist before uploading. OneDrive auto-creates parent folders, so this is usually safe and faster.',
 				},
-				maxConcurrentOperations: {
-					name: 'Max concurrent operations',
-					desc: 'Maximum number of parallel upload/download operations. Higher values may speed up large syncs but could hit rate limits.',
-					placeholder: '4',
-				},
+					maxConcurrentOperations: {
+						name: 'Max concurrent operations',
+						desc: 'Maximum number of parallel upload/download operations. Higher values may speed up large syncs but could hit rate limits.',
+						placeholder: '4',
+					},
+					useAtomicMoves: {
+						name: 'Use atomic moves',
+						desc: 'Use OneDrive\'s native move API for file renames/moves instead of delete + re-upload. More efficient and avoids duplicate files if sync state is lost.',
+					},
 		},
 	},
 } as const;

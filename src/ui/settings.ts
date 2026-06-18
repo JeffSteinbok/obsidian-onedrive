@@ -557,5 +557,22 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		// Use atomic moves
+		new Setting(detailsEl)
+			.setName(t('settings.experimental.useAtomicMoves.name'))
+			.setDesc(t('settings.experimental.useAtomicMoves.desc'))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.getExperimentalSetting('useAtomicMoves'))
+					.onChange(async (value) => {
+						this.plugin.settings.experimental = {
+							...DEFAULT_EXPERIMENTAL_SETTINGS,
+							...this.plugin.settings.experimental,
+							useAtomicMoves: value,
+						};
+						await this.plugin.saveSettings();
+					})
+			);
 	}
 }

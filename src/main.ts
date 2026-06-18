@@ -385,7 +385,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 				(info) => this.handleLargeDeleteWarning(info),
 				(msg) => this.setSyncProgress(msg),
 				this.manifest.version,
-				this.getExperimentalSetting('maxConcurrentOperations')
+				this.getExperimentalSetting('maxConcurrentOperations'),
+				this.getExperimentalSetting('useAtomicMoves')
 			);
 
 			// Get user info to display in settings

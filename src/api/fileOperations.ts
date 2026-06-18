@@ -86,6 +86,18 @@ export class FileOperations {
 	}
 
 	/**
+	 * Move/rename a file on OneDrive using the atomic PATCH API.
+	 * More efficient than delete+upload (no re-upload) and avoids duplicate files.
+	 * @param itemId The OneDrive ID of the file to move
+	 * @param newRemotePath The new path for the file
+	 * @returns The updated file metadata
+	 */
+	async moveFile(itemId: string, newRemotePath: string): Promise<OneDriveItem> {
+		logger.debug('Moving file:', itemId, 'to', newRemotePath);
+		return this.client.moveItem(itemId, newRemotePath);
+	}
+
+	/**
 	 * List all files recursively
 	 */
 	async listAllFiles(folderPath: string = ''): Promise<OneDriveItem[]> {

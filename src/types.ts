@@ -135,6 +135,7 @@ export enum SyncDirection {
 	DOWNLOAD = 'download',
 	SKIP = 'skip',
 	CONFLICT = 'conflict',
+	MOVE = 'move', // Atomic move/rename using OneDrive PATCH API
 }
 
 export interface SyncOperation {
@@ -142,6 +143,8 @@ export interface SyncOperation {
 	direction: SyncDirection;
 	localState?: FileState;
 	remoteState?: FileState;
+	// For MOVE operations: the OneDrive ID of the item to move
+	moveFromId?: string;
 }
 
 export interface LargeDeleteWarningInfo {
@@ -212,11 +215,13 @@ export enum OneDriveAccessMode {
 export interface ExperimentalSettings {
 	skipFolderChecks: boolean; // Skip folder existence checks before uploads (OneDrive auto-creates)
 	maxConcurrentOperations: number; // Max parallel sync operations (uploads/downloads)
+	useAtomicMoves: boolean; // Use OneDrive's PATCH API for moves instead of delete+upload
 }
 
 export const DEFAULT_EXPERIMENTAL_SETTINGS: ExperimentalSettings = {
 	skipFolderChecks: true, // Default ON — relies on OneDrive auto-creating folders
 	maxConcurrentOperations: 4, // Conservative default
+	useAtomicMoves: true, // Default ON — atomic moves are more efficient and avoid duplicates
 };
 
 export interface PluginSettings {

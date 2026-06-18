@@ -420,6 +420,56 @@ export class OneDriveClient {
 	}
 
 	/**
+	 * Move/rename an item using OneDrive's PATCH API.
+	 * This is atomic and more efficient than delete+upload (no re-upload needed).
+	 * @param itemId The OneDrive ID of the item to move
+	 * @param newPath The new path (relative to remote root) for the item
+	 * @returns The updated item metadata
+	 */
+	async moveItem(itemId: string, newPath: string): Promise<OneDriveItem> {
+		logger.debug(`Moving item ${itemId} to ${newPath}`);
+
+		// Parse the new path into parent folder path and new name
+		const segments = newPath.split('/').filter((s) => s.length > 0);
+		const newName = segments.pop();
+		if (!newName) {
+			throw new OneDriveError('Invalid move destination: empty path');
+		}
+		const newParentPath = segments.join('/');
+
+		try {
+			// Build the PATCH body with new name and parent reference
+			const patchBody: Record<string, unknown> = {
+				name: newName,
+			};
+
+			// Get the parent folder ID — we always need to set parentReference
+			// to ensure the item moves to the correct location
+			if (newParentPath) {
+				const parentItem = await this.getItemByPath(newParentPath);
+				patchBody.parentReference = { id: parentItem.id };
+			} else {
+				// Moving to root — get the root folder ID
+				const rootEndpoint = this.buildEndpoint('');
+				const rootItem = await this.getGraph<OneDriveItem>(rootEndpoint);
+				patchBody.parentReference = { id: rootItem.id };
+			}
+
+			const result = await retryWithBackoff(() =>
+				this.client.api(this.getItemEndpoint(itemId)).patch(patchBody)
+			);
+
+			logger.info(`Moved item ${itemId} to ${newPath}`);
+			return result as OneDriveItem;
+		} catch (error) {
+			logger.error(`Failed to move item ${itemId} to ${newPath}:`, error);
+			throw new OneDriveError(
+				`Failed to move item: ${error instanceof Error ? error.message : 'Unknown error'}`
+			);
+		}
+	}
+
+	/**
 	 * Download a file
 	 */
 	async downloadFile(itemId: string): Promise<ArrayBuffer> {
