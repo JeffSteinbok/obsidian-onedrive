@@ -36,21 +36,44 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout main branch
+        uses: actions/checkout@v4
         with:
+          ref: main
           token: ${{ secrets.PAT_TOKEN }}
+          fetch-depth: 0  # Fetch all history for merging
 
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: 'npm'
 
-      - run: npm ci
-
       - name: Configure Git
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
+
+      - name: Merge triggering branch (if not main)
+        id: merge
+        run: |
+          TRIGGER_BRANCH="${{ github.ref_name }}"
+          echo "Triggered from: $TRIGGER_BRANCH"
+          echo "trigger_branch=$TRIGGER_BRANCH" >> $GITHUB_OUTPUT
+
+          if [[ "$TRIGGER_BRANCH" != "main" ]]; then
+            echo "Merging $TRIGGER_BRANCH into main for build..."
+            git fetch origin "$TRIGGER_BRANCH"
+            git merge --no-commit --no-ff "origin/$TRIGGER_BRANCH" || {
+              echo "::error::Merge conflict - please merge $TRIGGER_BRANCH into main first"
+              exit 1
+            }
+            echo "merged=true" >> $GITHUB_OUTPUT
+          else
+            echo "Already on main, no merge needed"
+            echo "merged=false" >> $GITHUB_OUTPUT
+          fi
+
+      - run: npm ci
 
       - name: Bump beta version
         id: bump
@@ -113,19 +136,41 @@ jobs:
             fs.writeFileSync('manifest-beta.json', JSON.stringify(m, null, '\t') + '\n');
           "
 
-      - name: Commit and tag
-        run: |
-          git add manifest-beta.json
-          git commit -m "Beta pre-release ${{ steps.bump.outputs.version }}"
-          git tag "${{ steps.bump.outputs.version }}"
-          git push origin HEAD:${{ github.ref_name }}
-          git push origin --tags
-
       - name: Build
         run: npm run build
 
       - name: Prepare beta manifest for release
         run: cp manifest-beta.json manifest.json
+
+      - name: Commit version bump to main
+        run: |
+          # Reset merge changes, keep only manifest-beta.json update
+          if [[ "${{ steps.merge.outputs.merged }}" == "true" ]]; then
+            # We merged a branch - reset to main, then apply only manifest-beta.json change
+            git reset --hard origin/main
+            # Re-apply the version bump
+            node -e "
+              const fs = require('fs');
+              const m = JSON.parse(fs.readFileSync('manifest-beta.json', 'utf8'));
+              m.version = '${{ steps.bump.outputs.version }}';
+              fs.writeFileSync('manifest-beta.json', JSON.stringify(m, null, '\t') + '\n');
+            "
+          fi
+
+          git add manifest-beta.json
+          git commit -m "Beta pre-release ${{ steps.bump.outputs.version }}"
+          git tag "${{ steps.bump.outputs.version }}"
+          git push origin main
+          git push origin --tags
+
+      - name: Rebuild with merged code for release artifacts
+        if: steps.merge.outputs.merged == 'true'
+        run: |
+          # Merge the branch again for building release artifacts
+          git merge --no-commit --no-ff "origin/${{ steps.merge.outputs.trigger_branch }}"
+          npm ci
+          npm run build
+          cp manifest-beta.json manifest.json
 
       - name: Attest build artifacts
         uses: actions/attest-build-provenance@v2
@@ -142,6 +187,8 @@ jobs:
           name: "Beta ${{ steps.bump.outputs.version }}"
           prerelease: true
           generate_release_notes: true
+          body: |
+            ${{ steps.merge.outputs.merged == 'true' && format('Built from branch: `{0}`', steps.merge.outputs.trigger_branch) || 'Built from `main`' }}
           files: |
             main.js
             manifest.json
