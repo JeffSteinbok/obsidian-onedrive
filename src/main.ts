@@ -355,13 +355,13 @@ export default class OneDriveSyncPlugin extends Plugin {
 			// remote drive down to the vault folder — not just the shared root.
 			// e.g. "/Documents/ObsidianVaults/JeffBrain" not just "/Documents"
 			let remoteRootOnDrive: string | undefined;
-			if (isShared) {
-				remoteRootOnDrive = this.getFullRemoteDrivePath();
-			} else if (isAppFolder) {
-				// Discover the actual app folder path — the name is set by Azure app
-				// registration and may differ from the hardcoded constant.
-				remoteRootOnDrive = await this.oneDriveClient.resolveAppFolderPath();
-			}
+				if (isShared) {
+					remoteRootOnDrive = this.getFullRemoteDrivePath();
+				} else if (isAppFolder) {
+					// Discover the actual app folder path — the name is set by Azure app
+					// registration and may differ from the hardcoded constant.
+					remoteRootOnDrive = await this.oneDriveClient.resolveAppFolderPath();
+				}
 
 			this.syncEngine = new SyncEngine(
 				this.app,

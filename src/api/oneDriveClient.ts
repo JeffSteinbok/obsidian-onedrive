@@ -455,12 +455,12 @@ export class OneDriveClient {
 				patchBody.parentReference = { id: rootItem.id };
 			}
 
-			const result = await retryWithBackoff(() =>
-				this.client.api(this.getItemEndpoint(itemId)).patch(patchBody)
+			const result = await retryWithBackoff<OneDriveItem>(() =>
+				this.client.api(this.getItemEndpoint(itemId)).patch(patchBody) as Promise<OneDriveItem>
 			);
 
 			logger.info(`Moved item ${itemId} to ${newPath}`);
-			return result as OneDriveItem;
+			return result;
 		} catch (error) {
 			logger.error(`Failed to move item ${itemId} to ${newPath}:`, error);
 			throw new OneDriveError(

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { retryWithBackoff, sleep } from '../../../src/utils/retry';
+import { retryWithBackoff, sleep, retry } from '../../../src/utils/retry';
 import { OneDriveError, RateLimitError } from '../../../src/types';
 
 // Import setup to initialize mocks
@@ -97,6 +97,39 @@ describe('retryWithBackoff', () => {
 		expect(onRetry).toHaveBeenCalledTimes(1);
 		expect(onRetry).toHaveBeenCalledWith(1, expect.any(Number), expect.any(OneDriveError));
 	});
+
+	it('should cap delay at maxDelay', async () => {
+		const fn = vi
+			.fn()
+			.mockRejectedValueOnce(new OneDriveError('Error 1', 'error', 500))
+			.mockRejectedValueOnce(new OneDriveError('Error 2', 'error', 500))
+			.mockResolvedValue('success');
+
+		const onRetry = vi.fn();
+		const startTime = Date.now();
+
+		await retryWithBackoff(fn, {
+			maxAttempts: 5,
+			initialDelay: 100,
+			maxDelay: 150, // Cap at 150ms even with backoff
+			backoffMultiplier: 10, // Would grow to 1000ms without cap
+			onRetry,
+		});
+
+		const endTime = Date.now();
+		// With cap, total delay should be ~250ms (100 + 150), not 1100ms (100 + 1000)
+		expect(endTime - startTime).toBeLessThan(500);
+		expect(fn).toHaveBeenCalledTimes(3);
+	});
+
+	it('should use default options when not provided', async () => {
+		const fn = vi.fn().mockResolvedValue('result');
+
+		const result = await retryWithBackoff(fn);
+
+		expect(result).toBe('result');
+		expect(fn).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe('sleep', () => {
@@ -106,5 +139,53 @@ describe('sleep', () => {
 		const endTime = Date.now();
 
 		expect(endTime - startTime).toBeGreaterThanOrEqual(90);
+	});
+
+	it('should resolve after delay', async () => {
+		const result = await Promise.race([
+			sleep(50).then(() => 'slept'),
+			new Promise((resolve) => setTimeout(() => resolve('timeout'), 200)),
+		]);
+
+		expect(result).toBe('slept');
+	});
+});
+
+describe('retry decorator', () => {
+	it('should wrap method with retry logic', async () => {
+		class TestClass {
+			callCount = 0;
+
+			@retry({ maxAttempts: 3, initialDelay: 10 })
+			async fetchData(): Promise<string> {
+				this.callCount++;
+				if (this.callCount < 2) {
+					throw new OneDriveError('Temporary failure', 'error', 500);
+				}
+				return 'data';
+			}
+		}
+
+		const instance = new TestClass();
+		const result = await instance.fetchData();
+
+		expect(result).toBe('data');
+		expect(instance.callCount).toBe(2);
+	});
+
+	it('should preserve method context (this)', async () => {
+		class TestClass {
+			value = 'test-value';
+
+			@retry({ maxAttempts: 2, initialDelay: 10 })
+			async getValue(): Promise<string> {
+				return this.value;
+			}
+		}
+
+		const instance = new TestClass();
+		const result = await instance.getValue();
+
+		expect(result).toBe('test-value');
 	});
 });
