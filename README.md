@@ -8,7 +8,7 @@
 
 Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobile-friendly, battery-efficient.
 
-📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Development](docs/DEVELOPMENT.md)
+📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Advanced Usage](docs/ADVANCED.md) · [Development](docs/DEVELOPMENT.md)
 
 > [!TIP]
 > **🦞 OpenClaw Users** - This pairs well with the [🦞🐚📝 Carapace Obsidian](https://github.com/JeffSteinbok/carapace-obsidian) toolset when integrating these vaults with OpenClaw, so synced vault content can plug directly into your broader tool-driven workflow.
@@ -70,10 +70,9 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 | **Conflict Resolution**  | Last write wins (default), create duplicate, or manual                                                                                                                    |
 | **Sync App Settings**    | Optional — sync `.obsidian/app.json`, `.obsidian/appearance.json`, and `.obsidian/hotkeys.json` to keep appearance and hotkeys consistent across devices                  |
 | **Sync Plugins**         | Optional — sync plugin lists, manifests, and binaries (`main.js`, `styles.css`). Does **not** sync plugin data files (`data.json`)                                        |
-| **Reset Sync Token**     | Clears delta cursors and tracked file state — the next sync re-reads everything from OneDrive. Upload-biased: any local-only files will be re-uploaded to cloud           |
-| **Reconcile from Cloud** | Treats cloud as authoritative. Deletes local-only files and downloads remote-only files. Use when Reset Sync Token can't clear stale local files. Large deletes confirmed |
-| **Custom Client ID**     | Optional — bring your own Azure AD app (see [GitHub docs](#custom-client-id))                                                                                             |
 | **Debug Logging**        | Enable for troubleshooting. Writes a daily note under `_OneDriveSyncLogs/YYYY-MM-DD.md` (device-local, never synced)                                                      |
+
+For advanced settings (reset sync token, reconcile from cloud, custom client ID, experimental performance options), see [Advanced Usage](docs/ADVANCED.md).
 
 ### Commands
 
@@ -145,20 +144,6 @@ This plugin is designed with mobile as a **primary target**:
 - **Event-Driven Sync** — only syncs when files change (battery-efficient)
 - **iOS**: Use Safari to complete authentication
 - **Android**: Use Chrome or your default browser
-
-## Custom Client ID
-
-By default the plugin uses a shared Azure AD app registration. For privacy or rate-limit reasons you can bring your own:
-
-1. Go to [Azure Portal](https://portal.azure.com) → Microsoft Entra ID → App registrations
-2. Click **New registration**
-3. Name: `Obsidian OneDrive Sync` (or anything you like)
-4. Supported account types: **Personal Microsoft accounts only**
-5. Redirect URI: Leave blank (not needed for device code flow)
-6. After registration, copy the **Application (client) ID**
-7. Under **Authentication** → enable **Allow public client flows**
-
-Then paste the client ID into Settings → OneDrive Sync → Advanced → Custom client ID.
 
 ## Security & Privacy
 

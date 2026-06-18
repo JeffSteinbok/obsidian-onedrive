@@ -175,6 +175,7 @@ export class EventManager {
 		this.eventRefs.push(
 			this.app.vault.on('rename', (file, oldPath) => {
 				if (file instanceof TFile && !this.shouldIgnoreEvent(file.path)) {
+					logger.debug(`Vault rename event: ${oldPath} → ${file.path}`);
 					this.dirtyFiles.delete(oldPath);
 					this.dirtyFiles.set(file.path, {
 						path: file.path,
@@ -184,6 +185,7 @@ export class EventManager {
 					this.scheduleSync();
 				} else if (file instanceof TFolder && !this.shouldIgnoreEvent(file.path)) {
 					// Update any pending folder create to use the new name
+					logger.debug(`Vault folder rename event: ${oldPath} → ${file.path}`);
 					if (this.dirtyFiles.has(oldPath)) {
 						this.dirtyFiles.delete(oldPath);
 					}

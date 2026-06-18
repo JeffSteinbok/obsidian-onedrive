@@ -4,7 +4,14 @@
  */
 
 import { Platform, Plugin, Notice, TFile } from 'obsidian';
-import { PluginSettings, DEFAULT_SETTINGS, OneDriveAccessMode, OneDriveItem } from './types';
+import {
+	PluginSettings,
+	DEFAULT_SETTINGS,
+	DEFAULT_EXPERIMENTAL_SETTINGS,
+	ExperimentalSettings,
+	OneDriveAccessMode,
+	OneDriveItem,
+} from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID } from './constants';
 import { logger, LogLevel } from './utils/logger';
 import { shouldSyncVaultPath } from './utils/pathUtils';
@@ -90,6 +97,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private conflictResolver: ConflictResolver;
 	private conflictQueue?: ConflictQueue;
 	private eventManager?: EventManager;
+
+	// Sync state
+	private isSyncing = false;
 
 	// UI components
 	private statusBarManager?: StatusBarManager;
@@ -278,7 +288,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 			// Initialize OneDrive client with access mode
 			this.oneDriveClient = new OneDriveClient(this.authProvider, this.settings.accessMode);
-			this.fileOps = new FileOperations(this.oneDriveClient);
+			this.fileOps = new FileOperations(
+				this.oneDriveClient,
+				() => this.getExperimentalSetting('skipFolderChecks')
+			);
 
 			// Configure shared drive if previously selected
 			if (
@@ -327,9 +340,17 @@ export default class OneDriveSyncPlugin extends Plugin {
 			// Initialize sync engine
 			const isShared = this.oneDriveClient.isSharedDrive();
 			const isAppFolder = this.settings.accessMode === OneDriveAccessMode.APP_FOLDER;
-			// For shared drives and app folder mode, upload paths are relative to the
-			// root (buildEndpoint handles the base). For full access, prepend remotePath.
-			const remoteRoot = isShared || isAppFolder ? '' : this.settings.remotePath || '';
+			// For shared drives, upload paths are relative to the root.
+			// For app folder mode, use the optional subfolder path.
+			// For full access, prepend remotePath.
+			let remoteRoot: string;
+			if (isShared) {
+				remoteRoot = '';
+			} else if (isAppFolder) {
+				remoteRoot = this.settings.appFolderSubpath || '';
+			} else {
+				remoteRoot = this.settings.remotePath || '';
+			}
 			// For path stripping of delta responses, use the FULL path on the
 			// remote drive down to the vault folder — not just the shared root.
 			// e.g. "/Documents/ObsidianVaults/JeffBrain" not just "/Documents"
@@ -363,7 +384,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 				() => this.settings.largeDeleteThreshold ?? 0,
 				(info) => this.handleLargeDeleteWarning(info),
 				(msg) => this.setSyncProgress(msg),
-				this.manifest.version
+				this.manifest.version,
+				this.getExperimentalSetting('maxConcurrentOperations')
 			);
 
 			// Get user info to display in settings
@@ -557,6 +579,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return;
 		}
 
+		if (this.isSyncing) {
+			logger.debug('Sync already in progress, skipping');
+			return;
+		}
+
+		this.isSyncing = true;
 		try {
 			// Update status bar
 			this.setSyncStatus(SyncStatus.SYNCING);
@@ -585,6 +613,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 			const errorMsg = error instanceof Error ? error.message : t('notices.common.unknownError');
 			new Notice(t('notices.sync.failed', { message: errorMsg }));
 			throw error;
+		} finally {
+			this.isSyncing = false;
 		}
 	}
 
@@ -734,6 +764,50 @@ export default class OneDriveSyncPlugin extends Plugin {
 				path: selection.path,
 			})
 		);
+	}
+
+	/**
+	 * List folders within the App Folder for the folder picker.
+	 */
+	async listAppFoldersForPicker(path: string): Promise<OneDriveItem[]> {
+		if (!this.oneDriveClient) {
+			throw new Error('Not connected to OneDrive');
+		}
+		return this.oneDriveClient.listAppFoldersForPicker(path);
+	}
+
+	/**
+	 * Called when the user selects a new subfolder within App Folder mode.
+	 * Stores settings, clears stale sync state, and reconfigures components.
+	 */
+	async onAppFolderSubpathChanged(subpath: string): Promise<void> {
+		logger.info('App Folder subpath changed:', subpath);
+
+		const oldSubpath = this.settings.appFolderSubpath;
+
+		// Store the new subpath (strip leading/trailing slashes)
+		this.settings.appFolderSubpath = subpath.replace(/^\/+|\/+$/g, '');
+
+		// Clear sync state when the target folder changes
+		if (oldSubpath !== this.settings.appFolderSubpath) {
+			this.syncStateManager.clearState();
+			logger.info('Cleared sync state due to App Folder subpath change');
+		}
+
+		await this.saveSettings();
+
+		// Reinitialize components with the new folder config
+		if (this.tokenStorage.hasTokens()) {
+			await this.initializeAuthenticatedComponents();
+
+			if (this.eventManager) {
+				this.eventManager.startListening();
+				this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
+			}
+		}
+
+		const displayPath = this.settings.appFolderSubpath || t('settings.syncFolder.appFolderRoot');
+		new Notice(t('notices.sync.folderSet', { path: displayPath }));
 	}
 
 	/**
@@ -900,6 +974,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 			}
 			delete raw['enableDebugLogging'];
 		}
+	}
+
+	/**
+	 * Get an experimental setting with fallback to defaults.
+	 * Experimental settings are optional and may not exist in saved data.
+	 */
+	getExperimentalSetting<K extends keyof ExperimentalSettings>(key: K): ExperimentalSettings[K] {
+		return this.settings.experimental?.[key] ?? DEFAULT_EXPERIMENTAL_SETTINGS[key];
 	}
 
 	/**

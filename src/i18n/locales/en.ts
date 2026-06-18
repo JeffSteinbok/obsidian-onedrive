@@ -172,7 +172,7 @@ export const en = {
 				fullAccess: 'Full Access (Advanced)',
 				appFolderDesc: 'Secure isolated app folder in OneDrive. No configuration needed.',
 				fullAccessDesc: 'Sync to any folder, share with others. Requires more permissions.',
-				reconnectRequired: ' Changing access mode requires disconnecting and reconnecting.',
+				reconnectRequired: ' Changing modes may require re-authentication.',
 			},
 			connectionStatus: {
 				name: 'Connection status',
@@ -193,6 +193,11 @@ export const en = {
 			sharedFolder: '{{path}} (shared folder)',
 			browse: 'Browse...',
 			connectFirst: 'Connect to OneDrive first, then select a sync folder.',
+			vaultSubfolder: 'Vault subfolder',
+			vaultSubfolderDesc: 'Current: {{path}}. Use a subfolder to isolate this vault from others.',
+			appFolderRoot: '(app folder root)',
+			appFolderLabel: 'App Folder',
+			useAppFolderRoot: 'Use app folder root',
 		},
 		sync: {
 			heading: 'Sync Configuration',
@@ -281,6 +286,19 @@ export const en = {
 				helpLink: 'Custom Client ID setup guide',
 				helpSuffix: ' in the README.',
 			},
+		},
+		experimental: {
+				heading: 'Experimental',
+				description: 'These settings may improve performance but are not fully tested. Use at your own risk.',
+				skipFolderChecks: {
+					name: 'Skip folder existence checks',
+					desc: 'Skip API calls to verify folders exist before uploading. OneDrive auto-creates parent folders, so this is usually safe and faster.',
+				},
+				maxConcurrentOperations: {
+					name: 'Max concurrent operations',
+					desc: 'Maximum number of parallel upload/download operations. Higher values may speed up large syncs but could hit rate limits.',
+					placeholder: '4',
+				},
 		},
 	},
 } as const;

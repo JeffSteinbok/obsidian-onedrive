@@ -8,6 +8,8 @@ import {
 	ConflictResolutionStrategy,
 	OneDriveAccessMode,
 	OneDriveItem,
+	ExperimentalSettings,
+	DEFAULT_EXPERIMENTAL_SETTINGS,
 } from '../types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID } from '../constants';
 import { FolderBrowserModal, FolderSelection } from './folderBrowserModal';
@@ -33,8 +35,11 @@ interface OneDrivePlugin {
 		sharedItemId?: string,
 		relativePathInShared?: string
 	): Promise<OneDriveItem[]>;
+	listAppFoldersForPicker(path: string): Promise<OneDriveItem[]>;
 	onRemoteFolderChanged(selection: FolderSelection): Promise<void>;
+	onAppFolderSubpathChanged(subpath: string): Promise<void>;
 	getSyncStatusInfo(): SyncStatusInfo;
+	getExperimentalSetting<K extends keyof ExperimentalSettings>(key: K): ExperimentalSettings[K];
 }
 
 /**
@@ -57,6 +62,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		this.displaySyncFolderSection(containerEl);
 		this.displaySyncSection(containerEl);
 		this.displayAdvancedSection(containerEl);
+		this.displayExperimentalSection(containerEl);
 	}
 
 	/**
@@ -140,12 +146,13 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Display sync folder section (only for full access mode)
+	 * Display sync folder section (for full access mode and app folder mode)
 	 */
 	private displaySyncFolderSection(containerEl: HTMLElement): void {
 		const isConnected = !!this.plugin.settings.connectedUser;
+		const accessMode = this.plugin.settings.accessMode;
 
-		if (this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS) {
+		if (accessMode === OneDriveAccessMode.FULL_ACCESS) {
 			new Setting(containerEl).setName(t('settings.syncFolder.heading')).setHeading();
 
 			if (isConnected) {
@@ -178,6 +185,44 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					.setName(t('settings.syncFolder.remoteFolder'))
 					.setDesc(t('settings.syncFolder.connectFirst'));
 			}
+		} else if (accessMode === OneDriveAccessMode.APP_FOLDER && isConnected) {
+			// App Folder mode: optional subfolder for multi-vault isolation
+			new Setting(containerEl).setName(t('settings.syncFolder.heading')).setHeading();
+
+			const currentSubpath =
+				this.plugin.settings.appFolderSubpath || t('settings.syncFolder.appFolderRoot');
+
+			new Setting(containerEl)
+				.setName(t('settings.syncFolder.vaultSubfolder'))
+				.setDesc(t('settings.syncFolder.vaultSubfolderDesc', { path: currentSubpath }))
+				.addButton((btn) =>
+					btn.setButtonText(t('settings.syncFolder.browse')).onClick(() => {
+						const modal = new FolderBrowserModal(
+							this.app,
+							(path) => this.plugin.listAppFoldersForPicker(path),
+							(selection: FolderSelection) => {
+								// selection.path is like "/MyVault" or "/" for root
+								const subpath = selection.path.replace(/^\/+|\/+$/g, '');
+								void this.plugin.onAppFolderSubpathChanged(subpath).then(() => {
+									this.display();
+								});
+							},
+							this.plugin.settings.appFolderSubpath,
+							{ rootLabel: t('settings.syncFolder.appFolderLabel') }
+						);
+						modal.open();
+					})
+				)
+				.addExtraButton((btn) =>
+					btn
+						.setIcon('reset')
+						.setTooltip(t('settings.syncFolder.useAppFolderRoot'))
+						.onClick(() => {
+							void this.plugin.onAppFolderSubpathChanged('').then(() => {
+								this.display();
+							});
+						})
+				);
 		}
 
 		if (isConnected) {
@@ -462,5 +507,55 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			default:
 				return status;
 		}
+	}
+
+	/**
+	 * Display experimental settings section
+	 */
+	private displayExperimentalSection(containerEl: HTMLElement): void {
+		// Create collapsible details element
+		const detailsEl = containerEl.createEl('details', { cls: 'onedrive-experimental-section' });
+		const summaryEl = detailsEl.createEl('summary');
+		new Setting(summaryEl).setName(t('settings.experimental.heading')).setHeading();
+
+		// Description as a proper setting item (no name, just desc)
+		new Setting(detailsEl).setDesc(t('settings.experimental.description'));
+
+		// Skip folder existence checks
+		new Setting(detailsEl)
+			.setName(t('settings.experimental.skipFolderChecks.name'))
+			.setDesc(t('settings.experimental.skipFolderChecks.desc'))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.getExperimentalSetting('skipFolderChecks'))
+					.onChange(async (value) => {
+						this.plugin.settings.experimental = {
+							...DEFAULT_EXPERIMENTAL_SETTINGS,
+							...this.plugin.settings.experimental,
+							skipFolderChecks: value,
+						};
+						await this.plugin.saveSettings();
+					})
+			);
+
+		// Max concurrent operations
+		new Setting(detailsEl)
+			.setName(t('settings.experimental.maxConcurrentOperations.name'))
+			.setDesc(t('settings.experimental.maxConcurrentOperations.desc'))
+			.addText((text) =>
+				text
+					.setPlaceholder(t('settings.experimental.maxConcurrentOperations.placeholder'))
+					.setValue(String(this.plugin.getExperimentalSetting('maxConcurrentOperations')))
+					.onChange(async (value) => {
+						const parsed = parseInt(value, 10);
+						if (Number.isNaN(parsed) || parsed < 1 || parsed > 16) return;
+						this.plugin.settings.experimental = {
+							...DEFAULT_EXPERIMENTAL_SETTINGS,
+							...this.plugin.settings.experimental,
+							maxConcurrentOperations: parsed,
+						};
+						await this.plugin.saveSettings();
+					})
+			);
 	}
 }

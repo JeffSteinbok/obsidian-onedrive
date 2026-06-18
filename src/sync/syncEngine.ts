@@ -96,9 +96,9 @@ interface SyncExecutionResult {
  * Main sync engine
  */
 export class SyncEngine {
-	// Keep a small fixed pool so new vaults sync faster without overwhelming local I/O or OneDrive.
-	// Four concurrent operations is a conservative middle ground for typical vaults and avoids bursty API usage.
-	private readonly maxConcurrentOperations = 4;
+	// Concurrent operations limit — overridable via experimental settings.
+	// Four concurrent operations is a conservative default for typical vaults.
+	private readonly maxConcurrentOperations: number;
 	private isSharedDrive: boolean;
 	private remoteRootOnDrive: string;
 	private static readonly DEFAULT_IGNORE_PATTERNS: string[] = [];
@@ -120,8 +120,10 @@ export class SyncEngine {
 		private getLargeDeleteThreshold: () => number = () => 0,
 		private largeDeleteWarningHandler?: LargeDeleteWarningHandler,
 		private onProgress?: (message: string | undefined) => void,
-		private pluginVersion: string = 'unknown'
+		private pluginVersion: string = 'unknown',
+		maxConcurrentOperations: number = 4
 	) {
+		this.maxConcurrentOperations = maxConcurrentOperations;
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
 		// so we need the folder name on that drive for path stripping
@@ -830,17 +832,28 @@ export class SyncEngine {
 			}
 
 			if (change.type === LocalChangeType.RENAME && change.oldPath) {
-				// Rename: upload to new path and delete old path from remote
+				// Rename/move: upload to new path and delete old path from remote
+				logger.info(`Processing rename: ${change.oldPath} → ${change.path}`);
 				const oldState = this.stateManager.getFileState(change.oldPath);
 				if (oldState?.oneDriveId) {
+					logger.debug(`Rename: scheduling delete of old path ${change.oldPath} (OneDrive ID: ${oldState.oneDriveId})`);
 					operations.push({
 						path: change.oldPath,
 						direction: SyncDirection.UPLOAD, // "upload" the deletion of old path
 						localState: undefined,
 						remoteState: oldState,
 					});
+				} else {
+					// No tracked state for old path — we can't delete it from OneDrive.
+					// This can happen if the file was never synced, or if sync state was lost.
+					// Log a warning so users can investigate if duplicates appear.
+					logger.warn(
+						`Rename: no tracked state for old path ${change.oldPath} — cannot delete from OneDrive. ` +
+						`This may result in a duplicate file on OneDrive if the old path exists there.`
+					);
 				}
 				// Upload the file at its new path
+				logger.debug(`Rename: scheduling upload to new path ${change.path}`);
 				operations.push({ path: change.path, direction: SyncDirection.UPLOAD });
 				this.stateManager.removeFileState(change.oldPath);
 				remoteByPath.delete(change.path);

@@ -171,7 +171,7 @@ export const zhCn = {
 				fullAccess: '完整访问权限（高级）',
 				appFolderDesc: '同步到 OneDrive 中独立的应用文件夹，无需额外配置。',
 				fullAccessDesc: '可同步到任意文件夹，也可与他人共享，需要更多权限。',
-				reconnectRequired: ' 更改访问模式需要先断开连接再重新连接。',
+				reconnectRequired: ' 更改模式可能需要重新认证。',
 			},
 			connectionStatus: {
 				name: '连接状态',
@@ -192,6 +192,11 @@ export const zhCn = {
 			sharedFolder: '{{path}}（共享文件夹）',
 			browse: '浏览...',
 			connectFirst: '请先连接 OneDrive，再选择同步文件夹。',
+			vaultSubfolder: '仓库子文件夹',
+			vaultSubfolderDesc: '当前：{{path}}。使用子文件夹将此仓库与其他仓库隔离。',
+			appFolderRoot: '（应用文件夹根目录）',
+			appFolderLabel: '应用文件夹',
+			useAppFolderRoot: '使用应用文件夹根目录',
 		},
 		sync: {
 			heading: '同步配置',
@@ -278,6 +283,19 @@ export const zhCn = {
 				helpPrefix: '查看 README 中的 ',
 				helpLink: '自定义客户端 ID 设置指南',
 				helpSuffix: '。',
+			},
+		},
+		experimental: {
+			heading: '实验性功能',
+			description: '这些设置可能会提高性能，但尚未充分测试。使用风险自负。',
+			skipFolderChecks: {
+				name: '跳过文件夹存在检查',
+				desc: '上传前跳过验证文件夹是否存在的 API 调用。OneDrive 会自动创建父文件夹，因此通常是安全且更快的。',
+			},
+			maxConcurrentOperations: {
+				name: '最大并发操作数',
+				desc: '并行上传/下载操作的最大数量。更高的值可能会加速大型同步，但可能会触发速率限制。',
+				placeholder: '4',
 			},
 		},
 	},
