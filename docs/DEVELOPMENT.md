@@ -47,6 +47,59 @@ obsidian-onedrive/
 └── package.json       # Dependencies and scripts
 ```
 
+## Release Workflows
+
+### Stable Releases
+
+Use the release workflow to create a new stable release:
+
+```bash
+gh workflow run release.yml -f bump_type=patch   # Bug fixes (1.2.3 → 1.2.4)
+gh workflow run release.yml -f bump_type=minor   # New features (1.2.3 → 1.3.0)
+gh workflow run release.yml -f bump_type=major   # Breaking changes (1.2.3 → 2.0.0)
+```
+
+The workflow:
+1. Runs tests
+2. Bumps version in `manifest.json`, `package.json`, and `versions.json`
+3. Commits and tags on `main`
+4. Builds and creates a GitHub release
+
+**Never create releases manually** with `gh release create` — always use the workflow.
+
+### Beta Pre-Releases (BRAT)
+
+Use the prerelease workflow for beta testing via [BRAT](https://github.com/TfTHacker/obsidian42-brat):
+
+```bash
+gh workflow run prerelease.yml -f bump_type=patch-beta   # 1.2.3 → 1.2.4-beta.0
+gh workflow run prerelease.yml -f bump_type=minor-beta   # 1.2.3 → 1.3.0-beta.0
+gh workflow run prerelease.yml -f bump_type=major-beta   # 1.2.3 → 2.0.0-beta.0
+```
+
+**Key feature:** You can trigger a prerelease from any branch:
+- From `main`: Builds and releases current main code
+- From a feature branch: Builds from that branch's code, but commits `manifest-beta.json` to `main`
+
+This allows testing unmerged PR code via BRAT without polluting PR branches with version bumps.
+
+The workflow:
+1. Checks out `main`
+2. Merges the triggering branch (if not main) for the build
+3. Bumps `manifest-beta.json` version
+4. Commits only `manifest-beta.json` to `main`
+5. Builds artifacts from merged code
+6. Creates a GitHub pre-release
+
+If there's a merge conflict, the workflow fails with a clear error — resolve the conflict first.
+
+### Version Files
+
+- `manifest.json` — Stable version (used by Obsidian Community Plugins)
+- `manifest-beta.json` — Beta version (used by BRAT)
+- `package.json` — NPM package version (kept in sync with stable)
+- `versions.json` — Version history for Obsidian compatibility
+
 ## Guidelines
 
 - Follow existing code style (`npm run format`)
