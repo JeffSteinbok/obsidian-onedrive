@@ -34,6 +34,7 @@ import {
 	getInstalledPluginSyncPaths,
 } from '../utils/pathUtils';
 import { ProgressNotice } from '../ui/progressNotice';
+import { t } from '../i18n';
 
 /**
  * FNV-1a 32-bit hash of binary content, returned as hex string.
@@ -114,11 +115,12 @@ export class SyncEngine {
 		private remoteRoot: string = '',
 		remoteRootOnDrive?: string,
 		private conflictQueue?: ConflictQueue,
-		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path, false, false, configDir),
+		private shouldSyncPath: (path: string) => boolean = (path) =>
+			shouldSyncVaultPath(path, false, false, configDir),
 		private getLargeDeleteThreshold: () => number = () => 0,
 		private largeDeleteWarningHandler?: LargeDeleteWarningHandler,
 		private onProgress?: (message: string | undefined) => void,
-		private pluginVersion: string = 'unknown',
+		private pluginVersion: string = 'unknown'
 	) {
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -151,7 +153,7 @@ export class SyncEngine {
 		};
 
 		try {
-			progress('starting...');
+			progress(t('progress.starting'));
 
 			// Phase 0: Log inventory drift (tracked state vs actual vault files)
 			this.logInventoryDrift();
@@ -163,12 +165,8 @@ export class SyncEngine {
 
 			// Phase 2: Fetch remote delta changes from OneDrive, expand folder
 			// deletes into per-file deletes, and filter by sync scope
-			const {
-				remoteChanges,
-				deltaResponse,
-				obsidianDeltaResponse,
-				deletedFolderPaths,
-			} = await this.fetchAndFilterRemoteChanges(ignoreMatchers, progress);
+			const { remoteChanges, deltaResponse, obsidianDeltaResponse, deletedFolderPaths } =
+				await this.fetchAndFilterRemoteChanges(ignoreMatchers, progress);
 
 			// Phase 3: Diff local vs remote to produce upload/download/conflict ops
 			const operations = this.planOperations(localChanges, remoteChanges, isFirstSync);
@@ -195,8 +193,8 @@ export class SyncEngine {
 					);
 					new Notice(
 						decision === 'disable'
-							? 'OneDrive sync: disabled. Investigate the deletes, then re-enable the plugin.'
-							: 'OneDrive sync: cancelled. The pending deletes were not applied.'
+							? t('notices.sync.disabledAfterLargeDelete')
+							: t('notices.sync.cancelledAfterLargeDelete')
 					);
 					return;
 				}
@@ -207,7 +205,7 @@ export class SyncEngine {
 					logger.info(
 						'First sync with no local dirty files and empty remote — nothing to do. Edit or create files, then sync again.'
 					);
-					new Notice('OneDrive sync: No files to sync. Edit or create files first.');
+					new Notice(t('notices.sync.noFilesToSync'));
 				} else if (folderChanges.length === 0 && deletedFolderPaths.length === 0) {
 					logger.info('Everything up to date — no operations needed');
 				}
@@ -264,14 +262,20 @@ export class SyncEngine {
 			const syncedCount = completed - conflictedPaths.length;
 			if (conflictedPaths.length > 0) {
 				new Notice(
-					`OneDrive sync: ${syncedCount} file${syncedCount === 1 ? '' : 's'} synced, ` +
-						`${conflictedPaths.length} conflict${conflictedPaths.length === 1 ? '' : 's'} need resolution`
+					t('notices.sync.conflictsNeedResolution', {
+						syncedCount,
+						fileLabel: t(syncedCount === 1 ? 'notices.sync.file' : 'notices.sync.files'),
+						conflictCount: conflictedPaths.length,
+						conflictLabel: t(
+							conflictedPaths.length === 1 ? 'notices.sync.conflict' : 'notices.sync.conflicts'
+						),
+					})
 				);
 			}
 		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+			const errorMsg = error instanceof Error ? error.message : t('notices.common.unknownError');
 			logger.error(`Sync failed: ${errorMsg}`, error);
-			new Notice(`OneDrive sync failed: ${errorMsg}`);
+			new Notice(t('notices.sync.engineFailed', { message: errorMsg }));
 			throw error;
 		}
 	}
@@ -315,7 +319,10 @@ export class SyncEngine {
 				return false;
 			}
 			// Separate folder operations from file operations
-			if (change.type === LocalChangeType.FOLDER_CREATE || change.type === LocalChangeType.FOLDER_DELETE) {
+			if (
+				change.type === LocalChangeType.FOLDER_CREATE ||
+				change.type === LocalChangeType.FOLDER_DELETE
+			) {
 				folderChanges.push(change);
 				return false;
 			}
@@ -331,7 +338,9 @@ export class SyncEngine {
 		const configChanges = await this.detectConfigFileChanges(ignoreMatchers);
 		localChanges.push(...configChanges);
 
-		logger.info(`Local changes: ${localChanges.length} dirty files (${configChanges.length} config), ${folderChanges.length} folder operations`);
+		logger.info(
+			`Local changes: ${localChanges.length} dirty files (${configChanges.length} config), ${folderChanges.length} folder operations`
+		);
 		for (const change of localChanges) {
 			logger.debug(
 				`  Local: ${change.type} ${change.path}${change.oldPath ? ` (from ${change.oldPath})` : ''}`
@@ -387,10 +396,7 @@ export class SyncEngine {
 					// File exists locally
 					if (!trackedState) {
 						changes.push({ path, type: LocalChangeType.CREATE });
-					} else if (
-						stat.mtime !== trackedState.localMtime ||
-						stat.size !== trackedState.size
-					) {
+					} else if (stat.mtime !== trackedState.localMtime || stat.size !== trackedState.size) {
 						// Mtime or size changed — read content and compare hash
 						// to avoid false positives from Obsidian touching files on startup
 						const content = await adapter.readBinary(path);
@@ -407,7 +413,9 @@ export class SyncEngine {
 									localContentHash: hash,
 								});
 							} else {
-								logger.debug(`Config file content changed: ${path} (hash ${trackedState.localContentHash} → ${hash})`);
+								logger.debug(
+									`Config file content changed: ${path} (hash ${trackedState.localContentHash} → ${hash})`
+								);
 								changes.push({ path, type: LocalChangeType.MODIFY });
 							}
 						} else {
@@ -471,7 +479,7 @@ export class SyncEngine {
 		ignoreMatchers: RegExp[],
 		progress: ProgressFn
 	): Promise<RemoteChangesResult> {
-		progress('fetching remote changes...');
+		progress(t('progress.fetchingRemoteChanges'));
 		const deltaLink = this.stateManager.getDeltaLink();
 		const shouldSyncObsidianScope =
 			this.shouldSyncPath(`${this.configDir}/community-plugins.json`) ||
@@ -484,7 +492,7 @@ export class SyncEngine {
 			? await this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot, this.configDir)
 			: undefined;
 
-		progress('planning...');
+		progress(t('progress.planning'));
 
 		for (const item of deltaResponse.items) {
 			const vaultPath = this.remotePathToVaultPath(item);
@@ -616,10 +624,7 @@ export class SyncEngine {
 			}),
 			...synthesizedDeletes.filter((item) => {
 				const vaultPath = this.remotePathToVaultPath(item);
-				return (
-					this.shouldSyncPath(vaultPath) &&
-					!this.shouldIgnorePath(vaultPath, ignoreMatchers)
-				);
+				return this.shouldSyncPath(vaultPath) && !this.shouldIgnorePath(vaultPath, ignoreMatchers);
 			}),
 		];
 	}
@@ -633,7 +638,10 @@ export class SyncEngine {
 	 *
 	 * @returns The number of local-only uploads added.
 	 */
-	private async addFirstSyncUploads(operations: SyncOperation[], ignoreMatchers: RegExp[]): Promise<number> {
+	private async addFirstSyncUploads(
+		operations: SyncOperation[],
+		ignoreMatchers: RegExp[]
+	): Promise<number> {
 		const remoteCoveredPaths = new Set<string>(operations.map((op) => op.path));
 		for (const path of this.stateManager.getTrackedPaths()) {
 			remoteCoveredPaths.add(path);
@@ -694,9 +702,9 @@ export class SyncEngine {
 		let completed = 0;
 		const downloadedPaths: string[] = [];
 		const conflictedPaths: string[] = [];
-		progress(`0/${operations.length} files`);
+		progress(t('progress.files', { completed: 0, total: operations.length }));
 		const progressNotice =
-			operations.length >= 5 ? new ProgressNotice('Syncing', operations.length) : null;
+			operations.length >= 5 ? new ProgressNotice(t('progress.syncing'), operations.length) : null;
 		await this.executeOperations(operations, (operation) => {
 			completed++;
 
@@ -707,10 +715,10 @@ export class SyncEngine {
 				conflictedPaths.push(operation.path);
 			}
 
-			const progressLabel = `${completed}/${operations.length} files`;
+			const progressLabel = t('progress.files', { completed, total: operations.length });
 			progress(progressLabel);
 			if (progressNotice) {
-				progressNotice.update(completed, 'Syncing');
+				progressNotice.update(completed, t('progress.syncing'));
 			}
 		});
 		progressNotice?.hide();
@@ -734,19 +742,14 @@ export class SyncEngine {
 	 *   - 'disable': same as cancel; caller has also been asked to disable the
 	 *                plugin via the handler.
 	 */
-	private async maybeWarnLargeDeletes(
-		operations: SyncOperation[]
-	): Promise<LargeDeleteDecision> {
+	private async maybeWarnLargeDeletes(operations: SyncOperation[]): Promise<LargeDeleteDecision> {
 		const threshold = Math.max(0, Math.floor(this.getLargeDeleteThreshold() || 0));
 		if (threshold <= 0 || !this.largeDeleteWarningHandler) return 'proceed';
 
 		const localDeletes: string[] = []; // remote-driven local deletes (data-loss risk)
 		const remoteDeletes: string[] = []; // local-driven remote deletes
 		for (const op of operations) {
-			if (
-				op.direction === SyncDirection.DOWNLOAD &&
-				op.remoteState === undefined
-			) {
+			if (op.direction === SyncDirection.DOWNLOAD && op.remoteState === undefined) {
 				localDeletes.push(op.path);
 			} else if (
 				op.direction === SyncDirection.UPLOAD &&
@@ -1102,9 +1105,7 @@ export class SyncEngine {
 				// File was deleted between planning and execution — treat as
 				// a local delete: remove the remote copy if we have an ID,
 				// then clean up tracked state.
-				logger.warn(
-					`File vanished before upload: ${operation.path} — converting to remote delete`
-				);
+				logger.warn(`File vanished before upload: ${operation.path} — converting to remote delete`);
 				const knownState = this.stateManager.getFileState(operation.path);
 				if (knownState?.oneDriveId) {
 					try {
@@ -1275,9 +1276,7 @@ export class SyncEngine {
 	private async deleteCloudDeletedFolders(folderPaths: string[]): Promise<void> {
 		// Dedupe and sort deepest-first so children are removed before parents.
 		const candidates = new Set<string>(folderPaths);
-		const sorted = Array.from(candidates).sort(
-			(a, b) => b.split('/').length - a.split('/').length
-		);
+		const sorted = Array.from(candidates).sort((a, b) => b.split('/').length - a.split('/').length);
 
 		for (const path of sorted) {
 			const folder = this.app.vault.getAbstractFileByPath(path);
@@ -1409,7 +1408,9 @@ export class SyncEngine {
 					logger.info(`Deleted remote folder (by path): ${change.path}`);
 				} catch (error) {
 					// 404 is fine — folder may not exist remotely
-					logger.debug(`Could not delete remote folder by path ${change.path}: ${error instanceof Error ? error.message : error}`);
+					logger.debug(
+						`Could not delete remote folder by path ${change.path}: ${error instanceof Error ? error.message : error}`
+					);
 				}
 			}
 		}
@@ -1566,8 +1567,8 @@ export class SyncEngine {
 		};
 
 		try {
-			progress('listing cloud...');
-			new Notice('Reconcile from cloud: listing OneDrive...', 6000);
+			progress(t('progress.listingCloud'));
+			new Notice(t('notices.reconcile.listing'), 6000);
 			const ignoreMatchers = await this.loadIgnoreMatchers();
 
 			// 1. Enumerate the entire remote vault. listAllItems recurses
@@ -1677,11 +1678,7 @@ export class SyncEngine {
 
 			// 5. Large-delete confirmation for the destructive side.
 			const threshold = this.getLargeDeleteThreshold();
-			if (
-				threshold > 0 &&
-				localOnly.length >= threshold &&
-				this.largeDeleteWarningHandler
-			) {
+			if (threshold > 0 && localOnly.length >= threshold && this.largeDeleteWarningHandler) {
 				logger.warn(
 					`Reconcile would delete ${localOnly.length} local files (threshold ${threshold}). Asking user.`
 				);
@@ -1694,26 +1691,26 @@ export class SyncEngine {
 				});
 				if (decision !== 'proceed') {
 					logger.info(`Reconcile cancelled by user (${operations.length} ops aborted)`);
-					new Notice('Reconcile from cloud cancelled.');
+					new Notice(t('notices.reconcile.cancelled'));
 					return;
 				}
 			}
 
 			if (operations.length === 0) {
 				logger.info('Reconcile: nothing to do — local already matches cloud');
-				new Notice('Reconcile from cloud: already in sync.');
+				new Notice(t('notices.reconcile.alreadyInSync'));
 				return;
 			}
 
 			// 6. Execute.
 			let completed = 0;
-			progress(`0/${operations.length} files`);
-			const progressNotice = new ProgressNotice('Reconciling', operations.length);
+			progress(t('progress.files', { completed: 0, total: operations.length }));
+			const progressNotice = new ProgressNotice(t('progress.reconciling'), operations.length);
 			await this.executeOperations(operations, () => {
 				completed++;
-				const label = `${completed}/${operations.length} files`;
+				const label = t('progress.files', { completed, total: operations.length });
 				progress(label);
-				progressNotice.update(completed, 'Reconciling');
+				progressNotice.update(completed, t('progress.reconciling'));
 			});
 			progressNotice.hide();
 			progress(undefined);
@@ -1724,7 +1721,7 @@ export class SyncEngine {
 			this.eventManager.clearDirtyFiles();
 
 			// 8. Advance delta cursors so the next normal sync starts clean.
-			progress('advancing delta cursor...');
+			progress(t('progress.advancingDeltaCursor'));
 			try {
 				const newDelta = await this.oneDriveClient.getDelta(undefined, this.remoteRoot);
 				this.stateManager.setDeltaLink(newDelta.deltaLink);
@@ -1749,11 +1746,15 @@ export class SyncEngine {
 			this.stateManager.setLastSyncTime(Date.now());
 			logger.info(`Reconcile from cloud complete: ${operations.length} operations executed`);
 			new Notice(
-				`Reconcile from cloud complete: ${remoteOnly.length} downloaded, ${localOnly.length} deleted, ${sizeMismatch.length} refreshed.`
+				t('notices.reconcile.complete', {
+					downloaded: remoteOnly.length,
+					deleted: localOnly.length,
+					refreshed: sizeMismatch.length,
+				})
 			);
 		} catch (error) {
 			logger.error('Reconcile from cloud failed:', error);
-			new Notice(`Reconcile from cloud failed: ${error}`);
+			new Notice(t('notices.reconcile.failed', { message: String(error) }));
 			throw error;
 		}
 	}

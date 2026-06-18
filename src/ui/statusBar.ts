@@ -3,6 +3,7 @@
  */
 
 import { setIcon } from 'obsidian';
+import { t } from '../i18n';
 import { logger } from '../utils/logger';
 
 export enum SyncStatus {
@@ -22,7 +23,10 @@ export class StatusBarManager {
 	private conflictCount = 0;
 	private progressMessage?: string;
 
-	constructor(statusBarItem: HTMLElement, private onSyncClick?: () => void) {
+	constructor(
+		statusBarItem: HTMLElement,
+		private onSyncClick?: () => void
+	) {
 		this.statusBarItem = statusBarItem;
 		this.statusBarItem.addClass('onedrive-status-bar', 'onedrive-sync-clickable');
 		this.statusBarItem.addEventListener('click', () => {
@@ -90,7 +94,11 @@ export class StatusBarManager {
 			case SyncStatus.IDLE:
 				setIcon(iconEl, 'cloud');
 				if (this.conflictCount > 0) {
-					textEl.setText(`${this.getLastSyncText()} ⚠ ${this.conflictCount} conflict${this.conflictCount === 1 ? '' : 's'}`);
+					const conflictText = t(
+						this.conflictCount === 1 ? 'statusBar.conflict' : 'statusBar.conflicts',
+						{ count: this.conflictCount }
+					);
+					textEl.setText(`${this.getLastSyncText()} ⚠ ${conflictText}`);
 				} else {
 					textEl.setText(this.getLastSyncText());
 				}
@@ -99,7 +107,11 @@ export class StatusBarManager {
 
 			case SyncStatus.SYNCING:
 				setIcon(iconEl, 'cloud');
-				textEl.setText(this.progressMessage ? `Syncing: ${this.progressMessage}` : 'Syncing...');
+				textEl.setText(
+					this.progressMessage
+						? t('statusBar.syncingWithProgress', { progress: this.progressMessage })
+						: t('statusBar.syncing')
+				);
 				this.statusBarItem.addClass('is-syncing');
 				this.statusBarItem.removeClass('has-error');
 				this.addLoadingAnimation(iconEl);
@@ -107,14 +119,14 @@ export class StatusBarManager {
 
 			case SyncStatus.ERROR:
 				setIcon(iconEl, 'cloud-off');
-				textEl.setText('Sync error');
+				textEl.setText(t('statusBar.syncError'));
 				this.statusBarItem.addClass('has-error');
 				this.statusBarItem.removeClass('is-syncing');
 				break;
 
 			case SyncStatus.DISCONNECTED:
 				setIcon(iconEl, 'cloud-off');
-				textEl.setText('Not connected');
+				textEl.setText(t('statusBar.notConnected'));
 				this.statusBarItem.removeClass('is-syncing', 'has-error');
 				break;
 		}
@@ -128,7 +140,7 @@ export class StatusBarManager {
 	 */
 	private getLastSyncText(): string {
 		if (!this.lastSyncTime) {
-			return 'Not synced yet';
+			return t('statusBar.notSyncedYet');
 		}
 
 		const now = Date.now();
@@ -136,19 +148,19 @@ export class StatusBarManager {
 
 		if (diff < 60000) {
 			// Less than 1 minute
-			return 'Synced just now';
+			return t('statusBar.syncedJustNow');
 		} else if (diff < 3600000) {
 			// Less than 1 hour
 			const minutes = Math.floor(diff / 60000);
-			return `Synced ${minutes}m ago`;
+			return t('statusBar.syncedMinutesAgo', { minutes });
 		} else if (diff < 86400000) {
 			// Less than 1 day
 			const hours = Math.floor(diff / 3600000);
-			return `Synced ${hours}h ago`;
+			return t('statusBar.syncedHoursAgo', { hours });
 		} else {
 			// More than 1 day
 			const days = Math.floor(diff / 86400000);
-			return `Synced ${days}d ago`;
+			return t('statusBar.syncedDaysAgo', { days });
 		}
 	}
 
@@ -159,21 +171,23 @@ export class StatusBarManager {
 		switch (this.currentStatus) {
 			case SyncStatus.IDLE:
 				if (this.lastSyncTime) {
-					return `OneDrive: Last synced at ${new Date(this.lastSyncTime).toLocaleTimeString()}`;
+					return t('statusBar.tooltipLastSynced', {
+						time: new Date(this.lastSyncTime).toLocaleTimeString(),
+					});
 				}
-				return 'OneDrive: Ready to sync';
+				return t('statusBar.tooltipReady');
 
 			case SyncStatus.SYNCING:
-				return 'OneDrive: Syncing files...';
+				return t('statusBar.tooltipSyncing');
 
 			case SyncStatus.ERROR:
-				return 'OneDrive: Sync error occurred. Check console for details.';
+				return t('statusBar.tooltipError');
 
 			case SyncStatus.DISCONNECTED:
-				return 'OneDrive: Not connected. Connect in settings.';
+				return t('statusBar.tooltipDisconnected');
 
 			default:
-				return 'OneDrive';
+				return t('statusBar.tooltipDefault');
 		}
 	}
 

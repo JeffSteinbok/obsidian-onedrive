@@ -5,6 +5,7 @@
 
 import { Modal, App, Setting } from 'obsidian';
 
+import { t } from '../i18n';
 import { timerApi } from '../utils/timerApi';
 
 export class DeviceCodeModal extends Modal {
@@ -34,58 +35,62 @@ export class DeviceCodeModal extends Modal {
 		contentEl.addClass('onedrive-auth-modal');
 
 		// Title
-		contentEl.createEl('h2', { text: 'Connect to OneDrive' });
+		contentEl.createEl('h2', { text: t('authModal.title') });
 
 		// Instructions
 		const instructions = contentEl.createDiv({ cls: 'onedrive-auth-instructions' });
 		instructions.createEl('p', {
-			text: 'To connect your OneDrive account, follow these steps:',
+			text: t('authModal.instructions'),
 		});
 
 		const steps = instructions.createEl('ol');
 		steps.createEl('li', {
-			text: `Open this link in your browser: ${this.verificationUri}`,
+			text: t('authModal.openLinkStep', { verificationUri: this.verificationUri }),
 		});
 
 		const codeStep = steps.createEl('li');
-		codeStep.appendText('Enter this code: ');
+		codeStep.appendText(t('authModal.enterCodePrefix'));
 		codeStep.createEl('strong', {
 			text: this.userCode,
 			cls: 'onedrive-user-code onedrive-sync-auth-user-code',
 		});
 
-		steps.createEl('li', { text: 'Sign in with your Microsoft account' });
-		steps.createEl('li', { text: 'Grant permissions when prompted' });
-		steps.createEl('li', { text: 'Return here and click "I\'ve completed authentication"' });
+		steps.createEl('li', { text: t('authModal.signInStep') });
+		steps.createEl('li', { text: t('authModal.grantPermissionsStep') });
+		steps.createEl('li', { text: t('authModal.returnStep') });
 
 		// Copy button for verification URL
 		new Setting(contentEl)
-			.setName('Verification URL')
+			.setName(t('authModal.verificationUrl'))
 			.setDesc(this.verificationUri)
 			.addButton((button) =>
-				button.setButtonText('Copy URL').onClick(() => {
+				button.setButtonText(t('authModal.copyUrl')).onClick(() => {
 					void navigator.clipboard.writeText(this.verificationUri);
-					button.setButtonText('Copied!');
-					timerApi.setTimeout(() => { button.setButtonText('Copy URL'); }, 2000);
+					button.setButtonText(t('authModal.copied'));
+					timerApi.setTimeout(() => {
+						button.setButtonText(t('authModal.copyUrl'));
+					}, 2000);
 				})
 			);
 
 		// Copy button for user code
 		new Setting(contentEl)
-			.setName('User Code')
+			.setName(t('authModal.userCode'))
 			.setDesc(this.userCode)
 			.addButton((button) =>
-				button.setButtonText('Copy Code').onClick(() => {
+				button.setButtonText(t('authModal.copyCode')).onClick(() => {
 					void navigator.clipboard.writeText(this.userCode);
-					button.setButtonText('Copied!');
-					timerApi.setTimeout(() => { button.setButtonText('Copy Code'); }, 2000);
+					button.setButtonText(t('authModal.copied'));
+					timerApi.setTimeout(() => {
+						button.setButtonText(t('authModal.copyCode'));
+					}, 2000);
 				})
 			);
 
 		// Open browser button
 		new Setting(contentEl).addButton((button) =>
 			button
-				.setButtonText('Open in Browser')
+				.setButtonText(t('authModal.openInBrowser'))
 				.setCta()
 				.onClick(() => {
 					window.open(this.verificationUri, '_blank');
@@ -97,14 +102,14 @@ export class DeviceCodeModal extends Modal {
 			cls: 'modal-button-container onedrive-sync-auth-actions',
 		});
 
-		const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+		const cancelButton = buttonContainer.createEl('button', { text: t('authModal.cancel') });
 		cancelButton.addEventListener('click', () => {
 			this.onCancel();
 			this.close();
 		});
 
 		const completeButton = buttonContainer.createEl('button', {
-			text: "I've completed authentication",
+			text: t('authModal.completed'),
 			cls: 'mod-cta',
 		});
 		completeButton.addEventListener('click', () => {
