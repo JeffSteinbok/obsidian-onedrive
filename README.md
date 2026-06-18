@@ -105,13 +105,7 @@ The plugin hardcodes these exclusions for safety:
 
 ### Optional: `.syncIgnore`
 
-Create a `.syncIgnore` file at your vault root to skip extra files/folders from sync (similar to `.gitignore`).
-
-- One pattern per line
-- `#` starts a comment
-- `!` negation patterns are not supported
-- Folder pattern example: `private/`
-- Wildcard example: `*.tmp`
+Create a `.syncIgnore` file at your vault root to exclude files/folders from sync. See [Advanced Usage](docs/ADVANCED.md#syncignore-file) for details.
 
 ## 🔒 Access Modes
 
