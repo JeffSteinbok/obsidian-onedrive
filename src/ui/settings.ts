@@ -110,13 +110,12 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			);
 
 			// Disconnect button
-			statusSetting.addButton((button) =>
-				button.setButtonText(t('settings.auth.connectionStatus.disconnect')).onClick(async () => {
-					this.plugin.disconnect();
-					new Notice(t('settings.auth.connectionStatus.disconnectSuccess'));
-					this.display(); // Refresh settings
-				})
-			);
+				statusSetting.addButton((button) =>
+					button.setButtonText(t('settings.auth.connectionStatus.disconnect')).onClick(async () => {
+						this.plugin.disconnect();
+						this.display(); // Refresh settings
+					})
+				);
 		} else {
 			statusSetting.setDesc(t('settings.auth.connectionStatus.notConnected'));
 
@@ -124,20 +123,19 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			statusSetting.addButton((button) =>
 				button
 					.setButtonText(t('settings.auth.connectionStatus.connect'))
-					.setCta()
-					.onClick(async () => {
-						try {
-							await this.plugin.authenticate();
-							new Notice(t('settings.auth.connectionStatus.connectSuccess'));
-							this.display(); // Refresh settings
-						} catch (error) {
-							new Notice(
-								t('settings.auth.connectionStatus.connectFailed', {
-									message:
-										error instanceof Error
-											? error.message
-											: t('settings.auth.connectionStatus.unknownError'),
-								})
+						.setCta()
+						.onClick(async () => {
+							try {
+								await this.plugin.authenticate();
+								this.display(); // Refresh settings
+							} catch (error) {
+								new Notice(
+									t('settings.auth.connectionStatus.connectFailed', {
+										message:
+											error instanceof Error
+												? error.message
+												: t('settings.auth.connectionStatus.unknownError'),
+									})
 							);
 						}
 					})
