@@ -360,7 +360,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 				} else if (isAppFolder) {
 					// Discover the actual app folder path — the name is set by Azure app
 					// registration and may differ from the hardcoded constant.
-					remoteRootOnDrive = await this.oneDriveClient.resolveAppFolderPath();
+					const appFolderPath = await this.oneDriveClient.resolveAppFolderPath();
+					// Include appFolderSubpath so delta paths get stripped correctly
+					remoteRootOnDrive = remoteRoot
+						? `${appFolderPath}/${remoteRoot}`
+						: appFolderPath;
 				}
 
 			this.syncEngine = new SyncEngine(
@@ -1050,10 +1054,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 			new Notice(t('notices.reconcile.engineNotInitialized'));
 			return;
 		}
-		if (this.eventManager?.isSyncInProgress()) {
+		if (this.isSyncing || this.eventManager?.isSyncInProgress()) {
 			new Notice(t('notices.reconcile.alreadyInProgress'));
 			return;
 		}
+		this.isSyncing = true;
 		try {
 			this.setSyncStatus(SyncStatus.SYNCING);
 			await this.syncEngine.reconcileFromCloud();
@@ -1062,6 +1067,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 		} catch (error) {
 			this.setSyncStatus(SyncStatus.ERROR);
 			throw error;
+		} finally {
+			this.isSyncing = false;
 		}
 	}
 

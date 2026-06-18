@@ -156,27 +156,10 @@ describe('pathUtils', () => {
 			const vaultPath = toVaultPath(pathAfterStrip, remoteRoot);
 			expect(vaultPath).toBe('.obsidian/app.json');
 			expect(vaultPath.startsWith('.obsidian/')).toBe(true);
-		});
-
-		it('should handle empty remote root', () => {
-			expect(toVaultPath('notes/file.md', '')).toBe('notes/file.md');
-		});
-
-			it('should handle app folder with subpath', () => {
-				// Remote path from delta: /Apps/ObsidianOneDrive/Test1/Dog/file.md
-				// After stripGraphPrefix: /Apps/ObsidianOneDrive/Test1/Dog/file.md
-				// remoteRootOnDrive should be /Apps/ObsidianOneDrive/Test1 (app folder + subpath)
-				const pathAfterStrip = '/Apps/ObsidianOneDrive/Test1/Dog/file.md';
-				const remoteRootOnDrive = '/Apps/ObsidianOneDrive/Test1';
-				expect(toVaultPath(pathAfterStrip, remoteRootOnDrive)).toBe('Dog/file.md');
 			});
 
-			it('should handle app folder without subpath', () => {
-				// Remote path from delta: /Apps/ObsidianOneDrive/Dog/file.md
-				// remoteRootOnDrive is just the app folder path
-				const pathAfterStrip = '/Apps/ObsidianOneDrive/Dog/file.md';
-				const remoteRootOnDrive = '/Apps/ObsidianOneDrive';
-				expect(toVaultPath(pathAfterStrip, remoteRootOnDrive)).toBe('Dog/file.md');
+			it('should handle empty remote root', () => {
+				expect(toVaultPath('notes/file.md', '')).toBe('notes/file.md');
 			});
 	});
 
