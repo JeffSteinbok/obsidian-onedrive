@@ -98,6 +98,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private conflictQueue?: ConflictQueue;
 	private eventManager?: EventManager;
 
+	// Sync state
+	private isSyncing = false;
+
 	// UI components
 	private statusBarManager?: StatusBarManager;
 	private currentSyncStatus: SyncStatus = SyncStatus.DISCONNECTED;
@@ -576,6 +579,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return;
 		}
 
+		if (this.isSyncing) {
+			logger.debug('Sync already in progress, skipping');
+			return;
+		}
+
+		this.isSyncing = true;
 		try {
 			// Update status bar
 			this.setSyncStatus(SyncStatus.SYNCING);
@@ -604,6 +613,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 			const errorMsg = error instanceof Error ? error.message : t('notices.common.unknownError');
 			new Notice(t('notices.sync.failed', { message: errorMsg }));
 			throw error;
+		} finally {
+			this.isSyncing = false;
 		}
 	}
 

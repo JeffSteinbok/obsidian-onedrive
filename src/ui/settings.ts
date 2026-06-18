@@ -513,49 +513,49 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 * Display experimental settings section
 	 */
 	private displayExperimentalSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName(t('settings.experimental.heading')).setHeading();
+		// Create collapsible details element
+		const detailsEl = containerEl.createEl('details', { cls: 'onedrive-experimental-section' });
+		const summaryEl = detailsEl.createEl('summary');
+		new Setting(summaryEl).setName(t('settings.experimental.heading')).setHeading();
 
-		// Description
-		containerEl.createEl('p', {
-				text: t('settings.experimental.description'),
-				cls: 'setting-item-description',
-		});
+		// Description as a proper setting item (no name, just desc)
+		new Setting(detailsEl).setDesc(t('settings.experimental.description'));
 
 		// Skip folder existence checks
-		new Setting(containerEl)
-				.setName(t('settings.experimental.skipFolderChecks.name'))
-				.setDesc(t('settings.experimental.skipFolderChecks.desc'))
-				.addToggle((toggle) =>
-					toggle
-						.setValue(this.plugin.getExperimentalSetting('skipFolderChecks'))
-						.onChange(async (value) => {
-							this.plugin.settings.experimental = {
-								...DEFAULT_EXPERIMENTAL_SETTINGS,
-								...this.plugin.settings.experimental,
-								skipFolderChecks: value,
-							};
-							await this.plugin.saveSettings();
-						})
-				);
+		new Setting(detailsEl)
+			.setName(t('settings.experimental.skipFolderChecks.name'))
+			.setDesc(t('settings.experimental.skipFolderChecks.desc'))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.getExperimentalSetting('skipFolderChecks'))
+					.onChange(async (value) => {
+						this.plugin.settings.experimental = {
+							...DEFAULT_EXPERIMENTAL_SETTINGS,
+							...this.plugin.settings.experimental,
+							skipFolderChecks: value,
+						};
+						await this.plugin.saveSettings();
+					})
+			);
 
 		// Max concurrent operations
-		new Setting(containerEl)
-				.setName(t('settings.experimental.maxConcurrentOperations.name'))
-				.setDesc(t('settings.experimental.maxConcurrentOperations.desc'))
-				.addText((text) =>
-					text
-						.setPlaceholder(t('settings.experimental.maxConcurrentOperations.placeholder'))
-						.setValue(String(this.plugin.getExperimentalSetting('maxConcurrentOperations')))
-						.onChange(async (value) => {
-							const parsed = parseInt(value, 10);
-							if (Number.isNaN(parsed) || parsed < 1 || parsed > 16) return;
-							this.plugin.settings.experimental = {
-								...DEFAULT_EXPERIMENTAL_SETTINGS,
-								...this.plugin.settings.experimental,
-								maxConcurrentOperations: parsed,
-							};
-							await this.plugin.saveSettings();
-						})
-				);
+		new Setting(detailsEl)
+			.setName(t('settings.experimental.maxConcurrentOperations.name'))
+			.setDesc(t('settings.experimental.maxConcurrentOperations.desc'))
+			.addText((text) =>
+				text
+					.setPlaceholder(t('settings.experimental.maxConcurrentOperations.placeholder'))
+					.setValue(String(this.plugin.getExperimentalSetting('maxConcurrentOperations')))
+					.onChange(async (value) => {
+						const parsed = parseInt(value, 10);
+						if (Number.isNaN(parsed) || parsed < 1 || parsed > 16) return;
+						this.plugin.settings.experimental = {
+							...DEFAULT_EXPERIMENTAL_SETTINGS,
+							...this.plugin.settings.experimental,
+							maxConcurrentOperations: parsed,
+						};
+						await this.plugin.saveSettings();
+					})
+			);
 	}
 }
