@@ -454,4 +454,52 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.getSyncStatusInfo().progressMessage).toBeUndefined();
 	});
 
+	it('SyncEngine receives remoteRootOnDrive that includes appFolderSubpath', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		mocks.oneDriveClient.resolveAppFolderPath.mockResolvedValue('/Apps/ObsidianOneDrive');
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			appFolderSubpath: 'Test1',
+		});
+
+		await plugin.onload();
+		await plugin.triggerManualSync();
+
+		// SyncEngine constructor: remoteRoot is arg 7 (index 7), remoteRootOnDrive is arg 8 (index 8)
+		const syncEngineCall = mocks.SyncEngine.mock.calls[0];
+		expect(syncEngineCall[7]).toBe('Test1'); // remoteRoot (the subpath)
+		expect(syncEngineCall[8]).toBe('/Apps/ObsidianOneDrive/Test1'); // remoteRootOnDrive (app folder + subpath)
+	});
+
+	it('SyncEngine receives correct remoteRootOnDrive for app folder without subpath', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		mocks.oneDriveClient.resolveAppFolderPath.mockResolvedValue('/Apps/ObsidianOneDrive');
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			appFolderSubpath: undefined,
+		});
+
+		await plugin.onload();
+		await plugin.triggerManualSync();
+
+		const syncEngineCall = mocks.SyncEngine.mock.calls[0];
+		expect(syncEngineCall[7]).toBe(''); // remoteRoot (empty = app folder root)
+		expect(syncEngineCall[8]).toBe('/Apps/ObsidianOneDrive'); // remoteRootOnDrive (just app folder)
+	});
+
+	it('SyncEngine receives correct paths for full access mode', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.FULL_ACCESS,
+			remotePath: '/Documents/MyVault',
+		});
+
+		await plugin.onload();
+		await plugin.triggerManualSync();
+
+		const syncEngineCall = mocks.SyncEngine.mock.calls[0];
+		expect(syncEngineCall[7]).toBe('/Documents/MyVault'); // remoteRoot
+		expect(syncEngineCall[8]).toBeUndefined(); // remoteRootOnDrive (undefined for full access)
+	});
+
 });
