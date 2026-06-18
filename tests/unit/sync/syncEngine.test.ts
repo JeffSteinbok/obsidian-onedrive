@@ -158,6 +158,13 @@ describe('SyncEngine', () => {
 			),
 			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
 			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi.fn().mockResolvedValue(
+				makeRemoteItem({
+					id: 'moved-id',
+					name: 'moved.md',
+					file: { mimeType: 'text/plain', hashes: { quickXorHash: 'hash123' } },
+				})
+			),
 		};
 
 		stateManager = new SyncStateManager();
@@ -244,7 +251,7 @@ describe('SyncEngine', () => {
 		expect(stateManager.getFileState('old.md')).toBeUndefined();
 	});
 
-	it('handles local renames by deleting old remote path and uploading new path', async () => {
+	it('handles local renames by using atomic move API', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		stateManager.setFileState('old.md', {
 			path: 'old.md',
@@ -261,11 +268,10 @@ describe('SyncEngine', () => {
 
 		await syncEngine.performSync();
 
-		expect(mockFileOps.deleteFile).toHaveBeenCalledWith('old-remote-id');
-		expect(mockFileOps.uploadFile).toHaveBeenCalledWith(
-			'/remote/root/new.md',
-			expect.any(ArrayBuffer)
-		);
+		// With atomic moves enabled (default), should use moveFile instead of delete+upload
+		expect(mockFileOps.moveFile).toHaveBeenCalledWith('old-remote-id', '/remote/root/new.md');
+		expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
 		expect(stateManager.getFileState('old.md')).toBeUndefined();
 		expect(stateManager.getFileState('new.md')).toBeDefined();
 	});
@@ -1091,6 +1097,7 @@ describe('SyncEngine large-delete circuit breaker', () => {
 			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
 			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
 			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi.fn().mockResolvedValue({ id: 'moved-id', size: 100 }),
 		};
 		mockClient = {
 			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'delta-link-1' }),
@@ -1242,6 +1249,7 @@ describe('SyncEngine first-sync local vault enumeration', () => {
 			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
 			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
 			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi.fn().mockResolvedValue({ id: 'moved-id', size: 100 }),
 		};
 		mockClient = {
 			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'first-delta' }),
@@ -1356,6 +1364,7 @@ describe('SyncEngine progress reporting', () => {
 			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
 			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
 			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi.fn().mockResolvedValue({ id: 'moved-id', size: 100 }),
 		};
 		mockClient = {
 			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'first-delta' }),
@@ -1429,6 +1438,7 @@ describe('SyncEngine remote-delete via id-only delta entries', () => {
 			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
 			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
 			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi.fn().mockResolvedValue({ id: 'moved-id', size: 100 }),
 		};
 		mockClient = {
 			getDelta: vi.fn(),
@@ -1509,6 +1519,7 @@ describe('SyncEngine remote folder-delete expansion', () => {
 			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
 			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
 			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi.fn().mockResolvedValue({ id: 'moved-id', size: 100 }),
 		};
 		mockClient = {
 			getDelta: vi.fn(),
@@ -1622,6 +1633,7 @@ describe('SyncEngine reconcile from cloud', () => {
 			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
 			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
 			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi.fn().mockResolvedValue({ id: 'moved-id', size: 100 }),
 		};
 		mockClient = {
 			listAllItems: vi.fn(),

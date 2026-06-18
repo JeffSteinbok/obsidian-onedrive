@@ -297,6 +297,10 @@ export const zhCn = {
 				desc: '并行上传/下载操作的最大数量。更高的值可能会加速大型同步，但可能会触发速率限制。',
 				placeholder: '4',
 			},
+			useAtomicMoves: {
+				name: '使用原子移动',
+				desc: '使用 OneDrive 原生移动 API 进行文件重命名/移动，而不是删除后重新上传。更高效，且避免同步状态丢失时出现重复文件。',
+			},
 		},
 	},
 } satisfies LocaleStrings;

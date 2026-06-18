@@ -99,6 +99,8 @@ export class SyncEngine {
 	// Concurrent operations limit — overridable via experimental settings.
 	// Four concurrent operations is a conservative default for typical vaults.
 	private readonly maxConcurrentOperations: number;
+	// Use atomic PATCH moves instead of delete+upload — more efficient and avoids duplicates.
+	private readonly useAtomicMoves: boolean;
 	private isSharedDrive: boolean;
 	private remoteRootOnDrive: string;
 	private static readonly DEFAULT_IGNORE_PATTERNS: string[] = [];
@@ -121,9 +123,11 @@ export class SyncEngine {
 		private largeDeleteWarningHandler?: LargeDeleteWarningHandler,
 		private onProgress?: (message: string | undefined) => void,
 		private pluginVersion: string = 'unknown',
-		maxConcurrentOperations: number = 4
+		maxConcurrentOperations: number = 4,
+		useAtomicMoves: boolean = true
 	) {
 		this.maxConcurrentOperations = maxConcurrentOperations;
+		this.useAtomicMoves = useAtomicMoves;
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
 		// so we need the folder name on that drive for path stripping
@@ -832,9 +836,26 @@ export class SyncEngine {
 			}
 
 			if (change.type === LocalChangeType.RENAME && change.oldPath) {
-				// Rename/move: upload to new path and delete old path from remote
+				// Rename/move operation
 				logger.info(`Processing rename: ${change.oldPath} → ${change.path}`);
 				const oldState = this.stateManager.getFileState(change.oldPath);
+
+				if (this.useAtomicMoves && oldState?.oneDriveId) {
+					// Use atomic move via OneDrive PATCH API — more efficient (no re-upload)
+					// and avoids duplicate files if something goes wrong
+					logger.debug(`Rename: using atomic move for ${change.oldPath} (OneDrive ID: ${oldState.oneDriveId})`);
+					operations.push({
+						path: change.path,
+						direction: SyncDirection.MOVE,
+						moveFromId: oldState.oneDriveId,
+						remoteState: oldState,
+					});
+					this.stateManager.removeFileState(change.oldPath);
+					remoteByPath.delete(change.path);
+					continue;
+				}
+
+				// Fallback: delete old + upload new (legacy behavior)
 				if (oldState?.oneDriveId) {
 					logger.debug(`Rename: scheduling delete of old path ${change.oldPath} (OneDrive ID: ${oldState.oneDriveId})`);
 					operations.push({
@@ -1022,6 +1043,27 @@ export class SyncEngine {
 				} else {
 					await this.downloadFile(operation);
 				}
+			} else if (operation.direction === SyncDirection.MOVE) {
+				// Atomic move/rename using OneDrive's PATCH API
+				if (!operation.moveFromId) {
+					throw new Error('MOVE operation requires moveFromId');
+				}
+				const remotePath = this.vaultPathToRemotePath(operation.path);
+				logger.info(`Moving item to ${remotePath}`);
+				const movedItem = await this.fileOps.moveFile(operation.moveFromId, remotePath);
+
+				// Update state with new path and item metadata
+				const localFile = this.app.vault.getAbstractFileByPath(operation.path);
+				const localMtime = localFile instanceof TFile ? localFile.stat.mtime : 0;
+				this.stateManager.setFileState(operation.path, {
+					path: operation.path,
+					localMtime,
+					remoteHash: movedItem.file?.hashes?.quickXorHash || '',
+					size: movedItem.size || 0,
+					remoteModifiedTime: new Date(movedItem.lastModifiedDateTime).getTime(),
+					oneDriveId: movedItem.id,
+				});
+				logger.debug(`Moved remote file to ${operation.path}`);
 			} else if (operation.direction === SyncDirection.CONFLICT) {
 				await this.queueConflict(operation);
 			}
