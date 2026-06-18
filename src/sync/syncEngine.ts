@@ -830,17 +830,28 @@ export class SyncEngine {
 			}
 
 			if (change.type === LocalChangeType.RENAME && change.oldPath) {
-				// Rename: upload to new path and delete old path from remote
+				// Rename/move: upload to new path and delete old path from remote
+				logger.info(`Processing rename: ${change.oldPath} → ${change.path}`);
 				const oldState = this.stateManager.getFileState(change.oldPath);
 				if (oldState?.oneDriveId) {
+					logger.debug(`Rename: scheduling delete of old path ${change.oldPath} (OneDrive ID: ${oldState.oneDriveId})`);
 					operations.push({
 						path: change.oldPath,
 						direction: SyncDirection.UPLOAD, // "upload" the deletion of old path
 						localState: undefined,
 						remoteState: oldState,
 					});
+				} else {
+					// No tracked state for old path — we can't delete it from OneDrive.
+					// This can happen if the file was never synced, or if sync state was lost.
+					// Log a warning so users can investigate if duplicates appear.
+					logger.warn(
+						`Rename: no tracked state for old path ${change.oldPath} — cannot delete from OneDrive. ` +
+						`This may result in a duplicate file on OneDrive if the old path exists there.`
+					);
 				}
 				// Upload the file at its new path
+				logger.debug(`Rename: scheduling upload to new path ${change.path}`);
 				operations.push({ path: change.path, direction: SyncDirection.UPLOAD });
 				this.stateManager.removeFileState(change.oldPath);
 				remoteByPath.delete(change.path);
