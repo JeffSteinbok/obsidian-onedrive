@@ -12,10 +12,22 @@ import { getParentPath } from '../utils/pathUtils';
  * File operations manager
  */
 export class FileOperations {
+	private client: OneDriveClient;
 	private chunkUploader: ChunkUploader;
 	private pendingFolderEnsures = new Map<string, Promise<void>>();
+	private skipFolderChecks: () => boolean;
 
-	constructor(private client: OneDriveClient) {
+	constructor(client: OneDriveClient, skipFolderChecks: () => boolean = () => true) {
+		this.client = client;
+		this.chunkUploader = new ChunkUploader(client);
+		this.skipFolderChecks = skipFolderChecks;
+	}
+
+	/**
+	 * Set the OneDrive client (used after reconnection)
+	 */
+	setClient(client: OneDriveClient): void {
+		this.client = client;
 		this.chunkUploader = new ChunkUploader(client);
 	}
 
@@ -29,8 +41,11 @@ export class FileOperations {
 	): Promise<OneDriveItem> {
 		logger.debug('Uploading file:', remotePath);
 
-		// Ensure parent folder exists
-		await this.ensureParentFolder(remotePath);
+		// Skip folder checks if experimental setting is enabled (default: ON)
+		// OneDrive auto-creates parent folders on PUT, so this is safe
+		if (!this.skipFolderChecks()) {
+			await this.ensureParentFolder(remotePath);
+		}
 
 		// Upload file
 		return this.chunkUploader.uploadFile(remotePath, content, onProgress);

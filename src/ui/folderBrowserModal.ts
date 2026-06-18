@@ -21,6 +21,11 @@ type FolderListFn = (
 	relativePathInShared?: string
 ) => Promise<OneDriveItem[]>;
 
+export interface FolderBrowserOptions {
+	/** Label for the root breadcrumb (default: "OneDrive") */
+	rootLabel?: string;
+}
+
 /**
  * Modal that lets the user browse OneDrive folders and select one
  */
@@ -30,6 +35,7 @@ export class FolderBrowserModal extends Modal {
 	private listFolders: FolderListFn;
 	private contentEl_body: HTMLElement;
 	private loading = false;
+	private rootLabel: string;
 
 	// Track the shared folder info if the user navigated into one
 	private sharedDriveId?: string;
@@ -40,11 +46,13 @@ export class FolderBrowserModal extends Modal {
 		app: App,
 		listFolders: FolderListFn,
 		onSelect: (selection: FolderSelection) => void,
-		initialPath?: string
+		initialPath?: string,
+		options?: FolderBrowserOptions
 	) {
 		super(app);
 		this.listFolders = listFolders;
 		this.onSelect = onSelect;
+		this.rootLabel = options?.rootLabel ?? 'OneDrive';
 
 		if (initialPath) {
 			this.currentPath = initialPath.split('/').filter((s) => s.length > 0);
@@ -96,7 +104,7 @@ export class FolderBrowserModal extends Modal {
 
 		// Root link
 		const rootLink = breadcrumb.createEl('span', {
-			text: '📁 OneDrive',
+			text: `📁 ${this.rootLabel}`,
 			cls: 'onedrive-sync-folder-breadcrumb-link',
 		});
 		rootLink.onclick = () => {

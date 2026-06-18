@@ -318,6 +318,35 @@ export class OneDriveClient {
 	}
 
 	/**
+	 * List folders within the App Folder for the folder picker.
+	 * Uses /me/drive/special/approot as the base.
+	 */
+	async listAppFoldersForPicker(folderPath: string = ''): Promise<OneDriveItem[]> {
+		logger.debug('Listing App Folder subfolders for picker:', { folderPath });
+
+		try {
+			const cleanPath = folderPath.replace(/^\/+|\/+$/g, '');
+			let apiPath: string;
+
+			if (!cleanPath) {
+				apiPath = '/me/drive/special/approot/children';
+			} else {
+				const encoded = encodePathForGraph(cleanPath);
+				apiPath = `/me/drive/special/approot:/${encoded}:/children`;
+			}
+
+			const response = await this.getGraph<GraphCollectionResponse<OneDriveItem>>(apiPath);
+			// Return only folders
+			return response.value.filter((item) => item.folder);
+		} catch (error) {
+			logger.error(`Failed to list App Folder subfolders at ${folderPath}:`, error);
+			throw new OneDriveError(
+				`Failed to list folders: ${error instanceof Error ? error.message : 'Unknown error'}`
+			);
+		}
+	}
+
+	/**
 	 * List all items recursively
 	 */
 	async listAllItems(folderPath: string = ''): Promise<OneDriveItem[]> {

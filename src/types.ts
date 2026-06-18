@@ -208,6 +208,17 @@ export enum OneDriveAccessMode {
 	FULL_ACCESS = 'full-access', // Access to all OneDrive files
 }
 
+/** Experimental settings — performance tuning and unstable features */
+export interface ExperimentalSettings {
+	skipFolderChecks: boolean; // Skip folder existence checks before uploads (OneDrive auto-creates)
+	maxConcurrentOperations: number; // Max parallel sync operations (uploads/downloads)
+}
+
+export const DEFAULT_EXPERIMENTAL_SETTINGS: ExperimentalSettings = {
+	skipFolderChecks: true, // Default ON — relies on OneDrive auto-creating folders
+	maxConcurrentOperations: 4, // Conservative default
+};
+
 export interface PluginSettings {
 	// Authentication
 	useCustomClientId: boolean;
@@ -235,12 +246,16 @@ export interface PluginSettings {
 
 	// Advanced
 	remotePath?: string; // Custom path (only used with Full Access mode)
+	appFolderSubpath?: string; // Subfolder within App Folder for multi-vault isolation
 	remoteDriveId?: string; // Drive ID for shared/mounted folders
 	remoteItemId?: string; // Item ID of the root folder on the remote drive
 	remoteRootName?: string; // Display name of the root folder on the remote drive
 	remoteRootPath?: string; // Full path of the folder on the remote drive (e.g. /Documents/ObsidianVaults/JeffBrain)
 	logLevel: 'off' | 'error' | 'warn' | 'info' | 'debug';
 	largeDeleteThreshold: number; // Warn if a sync would delete more than this many files (0 = disabled)
+
+	// Experimental
+	experimental?: ExperimentalSettings;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -265,8 +280,12 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 
 	// Advanced
 	remotePath: undefined, // Only used with Full Access mode
+	appFolderSubpath: undefined, // Subfolder within App Folder (empty = root)
 	logLevel: 'off',
 	largeDeleteThreshold: 25,
+
+	// Experimental — defaults applied via DEFAULT_EXPERIMENTAL_SETTINGS in main.ts
+	experimental: undefined,
 };
 
 // ============================================================================
