@@ -145,17 +145,6 @@ export const en = {
 		unchangedLines: '... {{count}} unchanged lines ...',
 		diffLoadError: 'Could not load diff',
 	},
-	conflictModal: {
-		title: 'Sync Conflict Detected',
-		description: 'The file "{{path}}" has been modified both locally and on OneDrive.',
-		localVersion: 'Local Version',
-		oneDriveVersion: 'OneDrive Version',
-		modified: 'Modified: {{time}}',
-		size: 'Size: {{size}}',
-		question: 'Which version would you like to keep?',
-		keepLocal: 'Keep Local',
-		keepOneDrive: 'Keep OneDrive',
-	},
 	largeDeleteModal: {
 		title: 'OneDrive sync: large delete detected',
 		summaryFile:

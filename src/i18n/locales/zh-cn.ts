@@ -145,17 +145,6 @@ export const zhCn = {
 		unchangedLines: '... {{count}} 行未变化 ...',
 		diffLoadError: '无法加载差异',
 	},
-	conflictModal: {
-		title: '检测到同步冲突',
-		description: '文件“{{path}}”在本地和 OneDrive 中都被修改过。',
-		localVersion: '本地版本',
-		oneDriveVersion: 'OneDrive 版本',
-		modified: '修改时间：{{time}}',
-		size: '大小：{{size}}',
-		question: '要保留哪个版本？',
-		keepLocal: '保留本地版本',
-		keepOneDrive: '保留 OneDrive 版本',
-	},
 	largeDeleteModal: {
 		title: 'OneDrive 同步：检测到大量删除',
 		summaryFile:
