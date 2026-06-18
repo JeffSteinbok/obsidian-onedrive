@@ -531,6 +531,34 @@
 	margin-left: 5px;
 }
 
+/* Collapsible experimental section */
+.onedrive-experimental-section {
+	margin-top: 1em;
+}
+
+.onedrive-experimental-section summary {
+	cursor: pointer;
+	list-style: none;
+}
+
+.onedrive-experimental-section summary::-webkit-details-marker {
+	display: none;
+}
+
+.onedrive-experimental-section summary .setting-item {
+	margin-bottom: 0;
+}
+
+.onedrive-experimental-section summary .setting-item-heading::before {
+	content: '▶ ';
+	font-size: 0.8em;
+	margin-right: 0.3em;
+}
+
+.onedrive-experimental-section[open] summary .setting-item-heading::before {
+	content: '▼ ';
+}
+
 .onedrive-sync-conflict-header {
 	padding: 12px 16px;
 	border-bottom: 1px solid var(--background-modifier-border);
