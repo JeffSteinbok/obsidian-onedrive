@@ -2,6 +2,29 @@
 
 This document covers advanced configuration options for power users.
 
+## `.syncIgnore` File
+
+Create a `.syncIgnore` file at your vault root to skip extra files/folders from sync (similar to `.gitignore`).
+
+- One pattern per line
+- `#` starts a comment
+- `!` negation patterns are not supported
+- Folder pattern example: `private/`
+- Wildcard example: `*.tmp`
+
+**Example `.syncIgnore`:**
+```
+# Don't sync my private notes
+private/
+
+# Skip temporary files
+*.tmp
+*.bak
+
+# Skip large media folder
+attachments/videos/
+```
+
 ## Custom Client ID
 
 By default the plugin uses a shared Azure AD app registration. For privacy or rate-limit reasons you can bring your own:
