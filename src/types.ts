@@ -161,6 +161,43 @@ export type LargeDeleteWarningHandler = (
 	info: LargeDeleteWarningInfo
 ) => Promise<LargeDeleteDecision>;
 
+/**
+ * Optional configuration for SyncEngine.
+ * Core dependencies (app, fileOps, client, etc.) are required positionally;
+ * these options control behavior and callbacks.
+ *
+ * Note: ConflictQueue is imported dynamically to avoid circular dependencies.
+ * The type is `any` here but callers pass the actual ConflictQueue instance.
+ */
+export interface SyncEngineOptions {
+	/** Remote folder path for uploads (empty for root) */
+	remoteRoot?: string;
+	/** Full path on the remote drive for delta path stripping (shared drives) */
+	remoteRootOnDrive?: string;
+	/**
+	 * Queue for manual conflict resolution.
+	 * Accepts the ConflictQueue class from sync/conflictQueue.ts
+	 */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	conflictQueue?: any;
+	/** Filter function to determine which paths should sync */
+	shouldSyncPath?: (path: string) => boolean;
+	/** Returns the threshold for large delete warnings (0 = disabled) */
+	getLargeDeleteThreshold?: () => number;
+	/** Handler called when large delete threshold is exceeded */
+	largeDeleteWarningHandler?: LargeDeleteWarningHandler;
+	/** Callback for sync progress updates */
+	onProgress?: (message: string | undefined) => void;
+	/** Plugin version for User-Agent headers */
+	pluginVersion?: string;
+	/** Max concurrent upload/download operations */
+	maxConcurrentOperations?: number;
+	/** Use atomic PATCH moves instead of delete+upload */
+	useAtomicMoves?: boolean;
+	/** Returns true if pull-only mode is enabled */
+	isPullOnlyMode?: () => boolean;
+}
+
 export enum ConflictResolutionStrategy {
 	LAST_WRITE_WINS = 'last-write-wins',
 	CREATE_DUPLICATE = 'create-duplicate',

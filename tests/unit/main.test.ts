@@ -466,10 +466,11 @@ describe('OneDriveSyncPlugin', () => {
 		await plugin.onload();
 		await plugin.triggerManualSync();
 
-		// SyncEngine constructor: remoteRoot is arg 7 (index 7), remoteRootOnDrive is arg 8 (index 8)
+		// SyncEngine constructor: arg 7 is the options object containing remoteRoot and remoteRootOnDrive
 		const syncEngineCall = mocks.SyncEngine.mock.calls[0];
-		expect(syncEngineCall[7]).toBe('Test1'); // remoteRoot (the subpath)
-		expect(syncEngineCall[8]).toBe('/Apps/ObsidianOneDrive/Test1'); // remoteRootOnDrive (app folder + subpath)
+		const options = syncEngineCall[7];
+		expect(options.remoteRoot).toBe('Test1'); // remoteRoot (the subpath)
+		expect(options.remoteRootOnDrive).toBe('/Apps/ObsidianOneDrive/Test1'); // remoteRootOnDrive (app folder + subpath)
 	});
 
 	it('SyncEngine receives correct remoteRootOnDrive for app folder without subpath', async () => {
@@ -484,8 +485,9 @@ describe('OneDriveSyncPlugin', () => {
 		await plugin.triggerManualSync();
 
 		const syncEngineCall = mocks.SyncEngine.mock.calls[0];
-		expect(syncEngineCall[7]).toBe(''); // remoteRoot (empty = app folder root)
-		expect(syncEngineCall[8]).toBe('/Apps/ObsidianOneDrive'); // remoteRootOnDrive (just app folder)
+		const options = syncEngineCall[7];
+		expect(options.remoteRoot).toBe(''); // remoteRoot (empty = app folder root)
+		expect(options.remoteRootOnDrive).toBe('/Apps/ObsidianOneDrive'); // remoteRootOnDrive (just app folder)
 	});
 
 	it('SyncEngine receives correct paths for full access mode', async () => {
@@ -499,8 +501,9 @@ describe('OneDriveSyncPlugin', () => {
 		await plugin.triggerManualSync();
 
 		const syncEngineCall = mocks.SyncEngine.mock.calls[0];
-		expect(syncEngineCall[7]).toBe('/Documents/MyVault'); // remoteRoot
-		expect(syncEngineCall[8]).toBeUndefined(); // remoteRootOnDrive (undefined for full access)
+		const options = syncEngineCall[7];
+		expect(options.remoteRoot).toBe('/Documents/MyVault'); // remoteRoot
+		expect(options.remoteRootOnDrive).toBeUndefined(); // remoteRootOnDrive (undefined for full access)
 	});
 
 });

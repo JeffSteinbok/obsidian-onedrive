@@ -377,23 +377,25 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.conflictResolver,
 				this.eventManager,
 				this.app.vault.configDir,
-				remoteRoot,
-				remoteRootOnDrive,
-				this.conflictQueue,
-				(path) =>
-					shouldSyncVaultPath(
-						path,
-						this.settings.syncPluginManifests,
-						this.settings.syncAppSettings,
-						this.app.vault.configDir
-					),
-				() => this.settings.largeDeleteThreshold ?? 0,
-				(info) => this.handleLargeDeleteWarning(info),
-				(msg) => this.setSyncProgress(msg),
-				this.manifest.version,
-				this.getExperimentalSetting('maxConcurrentOperations'),
-				this.getExperimentalSetting('useAtomicMoves'),
-				() => this.getExperimentalSetting('pullOnlyMode')
+				{
+					remoteRoot,
+					remoteRootOnDrive,
+					conflictQueue: this.conflictQueue,
+					shouldSyncPath: (path) =>
+						shouldSyncVaultPath(
+							path,
+							this.settings.syncPluginManifests,
+							this.settings.syncAppSettings,
+							this.app.vault.configDir
+						),
+					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
+					largeDeleteWarningHandler: (info) => this.handleLargeDeleteWarning(info),
+					onProgress: (msg) => this.setSyncProgress(msg),
+					pluginVersion: this.manifest.version,
+					maxConcurrentOperations: this.getExperimentalSetting('maxConcurrentOperations'),
+					useAtomicMoves: this.getExperimentalSetting('useAtomicMoves'),
+					isPullOnlyMode: () => this.getExperimentalSetting('pullOnlyMode'),
+				}
 			);
 
 			// Get user info to display in settings

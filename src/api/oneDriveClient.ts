@@ -1,5 +1,35 @@
 /**
- * Microsoft Graph client wrapper for OneDrive operations
+ * OneDrive Client - Microsoft Graph API wrapper for OneDrive operations
+ *
+ * This module provides a clean interface to OneDrive's REST API via the
+ * Microsoft Graph SDK. It handles authentication, retries, and path encoding.
+ *
+ * ## Supported Access Modes
+ *
+ * - **App Folder**: Isolated `/Apps/ObsidianOneDrive/` folder (default, most secure)
+ * - **Full Access**: Any folder in user's OneDrive (needed for shared folders)
+ *
+ * ## Key Operations
+ *
+ * - **Delta API** (`getDelta`): Incremental change tracking for efficient sync
+ * - **File Operations**: Upload, download, delete, move via Graph API
+ * - **Folder Browsing**: List folders for the settings UI picker
+ * - **Shared Drive Support**: Access folders shared from other users' OneDrives
+ *
+ * ## Path Handling
+ *
+ * OneDrive paths require special encoding for Graph API:
+ * - Colons in paths must be encoded (conflicts with Graph's `:` path syntax)
+ * - The `encodePathForGraph()` utility handles this
+ *
+ * ## Error Handling
+ *
+ * All operations use `retryWithBackoff()` for transient failures and rate limits.
+ * Graph API errors are normalized to `OneDriveError` with helpful messages.
+ *
+ * @see OneDriveAuthProvider for authentication
+ * @see FileOperations for higher-level file sync operations
+ * @see ChunkUploader for large file uploads
  */
 
 import { Client } from '@microsoft/microsoft-graph-client';
