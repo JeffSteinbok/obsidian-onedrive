@@ -220,6 +220,32 @@ export async function getInstalledPluginSyncPaths(
 	return paths;
 }
 
+/**
+ * Get all syncable config paths (fixed + installed plugins).
+ * Combines getFixedSyncableConfigPaths and getInstalledPluginSyncPaths
+ * into a single call for convenience.
+ *
+ * @param configDir - The vault's config directory (e.g., '.obsidian')
+ * @param adapter - Vault adapter for listing plugin directories
+ * @param shouldSyncPath - Function to check if a path should be synced
+ * @returns Array of all syncable config file paths
+ */
+export async function getAllSyncableConfigPaths(
+	configDir: string,
+	adapter: { list(path: string): Promise<{ folders: string[] }> },
+	shouldSyncPath: (path: string) => boolean
+): Promise<string[]> {
+	const syncPlugins = shouldSyncPath(`${configDir}/community-plugins.json`);
+	const syncAppSettings = shouldSyncPath(`${configDir}/app.json`);
+
+	const fixedPaths = getFixedSyncableConfigPaths(configDir, syncPlugins, syncAppSettings);
+	const pluginPaths = syncPlugins
+		? await getInstalledPluginSyncPaths(configDir, adapter)
+		: [];
+
+	return [...fixedPaths, ...pluginPaths];
+}
+
 function isInstalledPluginManifestPath(path: string, configDir: string): boolean {
 	const normalizedConfigDir = escapeRegExp(normalizeConfigDir(configDir));
 	return new RegExp(`^${normalizedConfigDir}/plugins/[^/]+/manifest\\.json$`).test(path);

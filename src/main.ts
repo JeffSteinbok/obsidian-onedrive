@@ -377,23 +377,25 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.conflictResolver,
 				this.eventManager,
 				this.app.vault.configDir,
-				remoteRoot,
-				remoteRootOnDrive,
-				this.conflictQueue,
-				(path) =>
-					shouldSyncVaultPath(
-						path,
-						this.settings.syncPluginManifests,
-						this.settings.syncAppSettings,
-						this.app.vault.configDir
-					),
-				() => this.settings.largeDeleteThreshold ?? 0,
-				(info) => this.handleLargeDeleteWarning(info),
-				(msg) => this.setSyncProgress(msg),
-				this.manifest.version,
-				this.getExperimentalSetting('maxConcurrentOperations'),
-				this.getExperimentalSetting('useAtomicMoves'),
-				() => this.getExperimentalSetting('pullOnlyMode')
+				{
+					remoteRoot,
+					remoteRootOnDrive,
+					conflictQueue: this.conflictQueue,
+					shouldSyncPath: (path) =>
+						shouldSyncVaultPath(
+							path,
+							this.settings.syncPluginManifests,
+							this.settings.syncAppSettings,
+							this.app.vault.configDir
+						),
+					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
+					largeDeleteWarningHandler: (info) => this.handleLargeDeleteWarning(info),
+					onProgress: (msg) => this.setSyncProgress(msg),
+					pluginVersion: this.manifest.version,
+					maxConcurrentOperations: this.getExperimentalSetting('maxConcurrentOperations'),
+					useAtomicMoves: this.getExperimentalSetting('useAtomicMoves'),
+					isPullOnlyMode: () => this.getExperimentalSetting('pullOnlyMode'),
+				}
 			);
 
 			// Get user info to display in settings
@@ -457,10 +459,15 @@ export default class OneDriveSyncPlugin extends Plugin {
 			// Wait for authentication to complete
 			const tokenResponse = await tokenPromise;
 
+			// Validate refresh_token is present (required for token refresh)
+			if (!tokenResponse.refresh_token) {
+				throw new Error('OAuth response missing refresh_token');
+			}
+
 			// Store tokens
 			this.tokenStorage.setTokens(
 				tokenResponse.access_token,
-				tokenResponse.refresh_token!,
+				tokenResponse.refresh_token,
 				tokenResponse.expires_in
 			);
 

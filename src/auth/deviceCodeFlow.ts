@@ -1,6 +1,32 @@
 /**
  * OAuth 2.0 Device Code Flow implementation
  * Mobile-friendly authentication without custom URL schemes
+ *
+ * ## Why we implement OAuth manually instead of using @azure/msal-node
+ *
+ * This plugin must work across all Obsidian platforms:
+ * - **Desktop (Electron)**: Has Node.js, could use msal-node
+ * - **iOS**: Runs in WebView without Node.js — msal-node fails (needs crypto, http, fs)
+ * - **Android**: Runs in WebView without Node.js — same limitation
+ *
+ * MSAL libraries have platform-specific requirements:
+ * - `@azure/msal-node` requires Node.js APIs unavailable in mobile WebViews
+ * - `@azure/msal-browser` uses redirect flows incompatible with Obsidian's sandboxed environment
+ *
+ * Our solution: Implement Device Code Flow manually using Obsidian's `requestUrl()` API,
+ * which is provided consistently across all platforms. This gives us:
+ * - Single code path for desktop + mobile
+ * - No platform-specific dependencies
+ * - Full control over token storage (using Obsidian's SecretStorage)
+ *
+ * The implementation follows the OAuth 2.0 Device Authorization Grant (RFC 8628):
+ * 1. Request device code from Microsoft
+ * 2. User visits verification URL and enters code
+ * 3. Poll token endpoint until user completes auth
+ * 4. Store tokens securely, refresh as needed
+ *
+ * @see https://datatracker.ietf.org/doc/html/rfc8628
+ * @see https://learn.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-device-code
  */
 
 import { requestUrl } from 'obsidian';

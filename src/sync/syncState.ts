@@ -233,16 +233,13 @@ export class SyncStateManager {
 	 * unnecessary re-downloads.
 	 */
 	clearDeltaLink(): void {
-		this.state = {
-			lastSyncTime: 0,
-			fileStates: new Map(),
-			folderStates: new Map(),
-		};
-		logger.debug('Sync reset — cleared delta links, file states, and last sync time');
+		// Alias for clearState() - kept for backwards compatibility
+		this.clearState();
 	}
 
 	/**
-	 * Clear all state
+	 * Clear all state (delta links, file states, folder states, last sync time).
+	 * Use when resetting sync or switching remote paths.
 	 */
 	clearState(): void {
 		this.state = {

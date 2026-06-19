@@ -1,6 +1,57 @@
 /**
- * Main sync engine
- * Uses OneDrive delta API for remote changes and vault events for local changes
+ * Sync Engine - Core synchronization logic for OneDrive ↔ Obsidian vault
+ *
+ * This is the heart of the plugin, orchestrating bidirectional sync between
+ * the local Obsidian vault and OneDrive cloud storage.
+ *
+ * ## Sync Flow Overview
+ *
+ * ```
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │                         performSync() Entry Point                       │
+ * ├─────────────────────────────────────────────────────────────────────────┤
+ * │                                                                         │
+ * │  1. gatherLocalChanges()     ──→  Collect dirty files from EventManager │
+ * │                                   + detect .obsidian config changes     │
+ * │                                                                         │
+ * │  2. fetchAndFilterRemoteChanges() ──→  OneDrive Delta API               │
+ * │                                        (incremental change tracking)    │
+ * │                                                                         │
+ * │  3. planOperations()         ──→  Diff local vs remote, decide:         │
+ * │                                   • UPLOAD (local → cloud)              │
+ * │                                   • DOWNLOAD (cloud → local)            │
+ * │                                   • CONFLICT (needs resolution)         │
+ * │                                                                         │
+ * │  4. executeSyncOperations()  ──→  Parallel upload/download with         │
+ * │                                   concurrency limit                     │
+ * │                                                                         │
+ * │  5. Finalize                 ──→  Store delta cursors, clear dirty      │
+ * │                                   queue, update sync state              │
+ * │                                                                         │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ * ```
+ *
+ * ## Key Concepts
+ *
+ * - **Delta API**: OneDrive provides incremental change tracking via delta tokens.
+ *   We store the cursor after each sync to only fetch changes since last sync.
+ *
+ * - **Dirty Files**: Local changes are tracked by EventManager via vault events.
+ *   Config files (.obsidian/) are detected by mtime/hash comparison since they
+ *   don't fire standard vault events.
+ *
+ * - **Conflict Resolution**: When both local and remote changed, we use the
+ *   configured strategy (last-write-wins, create-duplicate, or manual queue).
+ *
+ * - **Large Delete Protection**: If delta shows many deletes, we prompt user
+ *   to confirm before applying (prevents accidental data loss).
+ *
+ * - **Pull-Only Mode**: Experimental mode that skips local change detection,
+ *   only downloading remote changes (for read-only vaults).
+ *
+ * @see EventManager for local change tracking
+ * @see OneDriveClient for Graph API operations
+ * @see ConflictResolver for conflict handling strategies
  */
 
 import { App, Notice, TFile, TFolder } from 'obsidian';
@@ -21,6 +72,7 @@ import {
 	LargeDeleteWarningHandler,
 	LargeDeleteDecision,
 	DeltaResponse,
+	SyncEngineOptions,
 } from '../types';
 import { logger } from '../utils/logger';
 import {
@@ -30,8 +82,7 @@ import {
 	getParentPath,
 	stripGraphPrefix,
 	shouldSyncVaultPath,
-	getFixedSyncableConfigPaths,
-	getInstalledPluginSyncPaths,
+	getAllSyncableConfigPaths,
 } from '../utils/pathUtils';
 import { ProgressNotice } from '../ui/progressNotice';
 import { t } from '../i18n';
@@ -106,6 +157,16 @@ export class SyncEngine {
 	private static readonly DEFAULT_IGNORE_PATTERNS: string[] = [];
 	private pendingVaultFolderCreates = new Map<string, Promise<void>>();
 
+	// Options stored as instance properties
+	private readonly remoteRoot: string;
+	private readonly conflictQueue?: ConflictQueue;
+	private readonly shouldSyncPath: (path: string) => boolean;
+	private readonly getLargeDeleteThreshold: () => number;
+	private readonly largeDeleteWarningHandler?: LargeDeleteWarningHandler;
+	private readonly onProgress?: (message: string | undefined) => void;
+	private readonly pluginVersion: string;
+	private readonly isPullOnlyMode: () => boolean;
+
 	constructor(
 		private app: App,
 		private fileOps: FileOperations,
@@ -114,25 +175,24 @@ export class SyncEngine {
 		private conflictResolver: ConflictResolver,
 		private eventManager: EventManager,
 		private configDir: string,
-		private remoteRoot: string = '',
-		remoteRootOnDrive?: string,
-		private conflictQueue?: ConflictQueue,
-		private shouldSyncPath: (path: string) => boolean = (path) =>
-			shouldSyncVaultPath(path, false, false, configDir),
-		private getLargeDeleteThreshold: () => number = () => 0,
-		private largeDeleteWarningHandler?: LargeDeleteWarningHandler,
-		private onProgress?: (message: string | undefined) => void,
-		private pluginVersion: string = 'unknown',
-		maxConcurrentOperations: number = 4,
-		useAtomicMoves: boolean = true,
-		private isPullOnlyMode: () => boolean = () => false
+		options: SyncEngineOptions = {}
 	) {
-		this.maxConcurrentOperations = maxConcurrentOperations;
-		this.useAtomicMoves = useAtomicMoves;
+		// Apply options with defaults
+		this.remoteRoot = options.remoteRoot ?? '';
+		this.conflictQueue = options.conflictQueue;
+		this.shouldSyncPath = options.shouldSyncPath ?? ((path) => shouldSyncVaultPath(path, false, false, configDir));
+		this.getLargeDeleteThreshold = options.getLargeDeleteThreshold ?? (() => 0);
+		this.largeDeleteWarningHandler = options.largeDeleteWarningHandler;
+		this.onProgress = options.onProgress;
+		this.pluginVersion = options.pluginVersion ?? 'unknown';
+		this.maxConcurrentOperations = options.maxConcurrentOperations ?? 4;
+		this.useAtomicMoves = options.useAtomicMoves ?? true;
+		this.isPullOnlyMode = options.isPullOnlyMode ?? (() => false);
+
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
 		// so we need the folder name on that drive for path stripping
-		this.remoteRootOnDrive = remoteRootOnDrive || remoteRoot;
+		this.remoteRootOnDrive = options.remoteRootOnDrive ?? this.remoteRoot;
 	}
 
 	private isObsidianPath(path: string): boolean {
@@ -387,16 +447,11 @@ export class SyncEngine {
 		const changes: LocalChange[] = [];
 
 		// Gather all syncable config paths (fixed + installed plugins)
-		const fixedPaths = getFixedSyncableConfigPaths(
+		const allConfigPaths = await getAllSyncableConfigPaths(
 			this.configDir,
-			this.shouldSyncPath(`${this.configDir}/community-plugins.json`),
-			this.shouldSyncPath(`${this.configDir}/app.json`)
+			adapter,
+			this.shouldSyncPath.bind(this)
 		);
-		const pluginPaths = this.shouldSyncPath(`${this.configDir}/community-plugins.json`)
-			? await getInstalledPluginSyncPaths(this.configDir, adapter)
-			: [];
-
-		const allConfigPaths = [...fixedPaths, ...pluginPaths];
 
 		const checkedPaths = new Set<string>();
 
@@ -680,16 +735,11 @@ export class SyncEngine {
 
 		// Also enumerate config files that vault.getFiles() misses
 		const adapter = this.app.vault.adapter;
-		const configPaths = [
-			...getFixedSyncableConfigPaths(
-				this.configDir,
-				this.shouldSyncPath(`${this.configDir}/community-plugins.json`),
-				this.shouldSyncPath(`${this.configDir}/app.json`)
-			),
-			...(this.shouldSyncPath(`${this.configDir}/community-plugins.json`)
-				? await getInstalledPluginSyncPaths(this.configDir, adapter)
-				: []),
-		];
+		const configPaths = await getAllSyncableConfigPaths(
+			this.configDir,
+			adapter,
+			this.shouldSyncPath.bind(this)
+		);
 		for (const path of configPaths) {
 			if (remoteCoveredPaths.has(path)) continue;
 			if (!this.shouldSyncPath(path)) continue;
@@ -1327,23 +1377,15 @@ export class SyncEngine {
 				logger.debug(`Deleted local config file ${filePath}`);
 			}
 		}
-		this.stateManager.removeFileState(filePath);
-	}
+			this.stateManager.removeFileState(filePath);
+		}
 
-	/**
-	 * Delete folders that became empty after their descendants were removed by
-	 * folder-delete expansion. Walks deepest-first and cascades up: when a
-	 * folder is removed, its parent is reconsidered (it too may now be empty).
-	 *
-	 * Only deletes folders that are actually empty — if the user has unrelated
-	 * files in there (e.g. local-only, never synced), the folder is left alone.
-	 */
-	/**
-	 * Delete local folders that the cloud explicitly told us were deleted,
-	 * but only if they are empty after processing file deletions.
-	 * Does NOT walk up to ancestor folders.
-	 */
-	private async deleteCloudDeletedFolders(folderPaths: string[]): Promise<void> {
+		/**
+		 * Delete local folders that the cloud explicitly told us were deleted,
+		 * but only if they are empty after processing file deletions.
+		 * Does NOT walk up to ancestor folders.
+		 */
+		private async deleteCloudDeletedFolders(folderPaths: string[]): Promise<void> {
 		// Dedupe and sort deepest-first so children are removed before parents.
 		const candidates = new Set<string>(folderPaths);
 		const sorted = Array.from(candidates).sort((a, b) => b.split('/').length - a.split('/').length);
@@ -1669,16 +1711,11 @@ export class SyncEngine {
 
 			// Config files aren't in vault.getFiles() — add them via adapter
 			const adapter = this.app.vault.adapter;
-			const configPaths = [
-				...getFixedSyncableConfigPaths(
-					this.configDir,
-					this.shouldSyncPath(`${this.configDir}/community-plugins.json`),
-					this.shouldSyncPath(`${this.configDir}/app.json`)
-				),
-				...(this.shouldSyncPath(`${this.configDir}/community-plugins.json`)
-					? await getInstalledPluginSyncPaths(this.configDir, adapter)
-					: []),
-			];
+			const configPaths = await getAllSyncableConfigPaths(
+				this.configDir,
+				adapter,
+				this.shouldSyncPath.bind(this)
+			);
 			for (const path of configPaths) {
 				if (localByPath.has(path)) continue;
 				if (!this.shouldSyncPath(path)) continue;

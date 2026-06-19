@@ -193,7 +193,7 @@ describe('SyncEngine', () => {
 			conflictResolver,
 			mockEventManager as any,
 			'.obsidian',
-			'/remote/root'
+			{ remoteRoot: '/remote/root' }
 		);
 	});
 
@@ -317,8 +317,7 @@ describe('SyncEngine', () => {
 			conflictResolver,
 			mockEventManager as any,
 			'.obsidian',
-			'',
-			'/Apps/ObsidianOneDrive'
+			{ remoteRoot: '', remoteRootOnDrive: '/Apps/ObsidianOneDrive' }
 		);
 		mockApp.vault.adapter.exists.mockResolvedValue(false);
 		mockClient.getDelta.mockResolvedValue({
@@ -376,10 +375,10 @@ describe('SyncEngine', () => {
 			conflictResolver,
 			mockEventManager as any,
 			'.obsidian',
-			'/remote/root',
-			undefined,
-			undefined,
-			(path) => shouldSyncVaultPath(path, true, false, '.obsidian')
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath: (path) => shouldSyncVaultPath(path, true, false, '.obsidian'),
+			}
 		);
 		const downloadedFile = makeTFile('.obsidian/plugins/calendar/manifest.json', 10, Date.now());
 		mockClient.getDelta.mockResolvedValue({
@@ -567,7 +566,7 @@ describe('SyncEngine', () => {
 			new ConflictResolver(ConflictResolutionStrategy.CREATE_DUPLICATE),
 			mockEventManager as any,
 			'.obsidian',
-			'/remote/root'
+			{ remoteRoot: '/remote/root' }
 		);
 
 		await duplicateEngine.performSync();
@@ -689,10 +688,10 @@ describe('SyncEngine', () => {
 			conflictResolver,
 			mockEventManager as any,
 			'.obsidian',
-			'/remote/root',
-			undefined,
-			undefined,
-			(path) => shouldSyncVaultPath(path, true, false, '.obsidian')
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath: (path) => shouldSyncVaultPath(path, true, false, '.obsidian'),
+			}
 		);
 		mockClient.getDelta
 			.mockResolvedValueOnce({
@@ -737,11 +736,11 @@ describe('SyncEngine', () => {
 			conflictResolver,
 			mockEventManager as any,
 			'.obsidian',
-			'/remote/root',
-			undefined,
-			undefined,
-			// syncPluginManifests=false, syncAppSettings=true
-			(path) => shouldSyncVaultPath(path, false, true, '.obsidian')
+			{
+				remoteRoot: '/remote/root',
+				// syncPluginManifests=false, syncAppSettings=true
+				shouldSyncPath: (path) => shouldSyncVaultPath(path, false, true, '.obsidian'),
+			}
 		);
 		mockClient.getDelta
 			.mockResolvedValueOnce({ items: [], deltaLink: 'main-delta-new' })
@@ -850,10 +849,10 @@ describe('SyncEngine', () => {
 			conflictResolver,
 			mockEventManager as any,
 			'.obsidian',
-			'/remote/root',
-			undefined,
-			undefined,
-			(path) => path === configPath
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath: (path) => path === configPath,
+			}
 		);
 		mockApp.vault.adapter.stat.mockImplementation(async (path: string) =>
 			path === configPath
@@ -898,10 +897,10 @@ describe('SyncEngine', () => {
 			conflictResolver,
 			mockEventManager as any,
 			'.obsidian',
-			'/remote/root',
-			undefined,
-			undefined,
-			(path) => path === configPath
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath: (path) => path === configPath,
+			}
 		);
 		mockApp.vault.adapter.stat.mockImplementation(async (path: string) =>
 			path === configPath
@@ -947,10 +946,10 @@ describe('SyncEngine', () => {
 			conflictResolver,
 			mockEventManager as any,
 			'.obsidian',
-			'/remote/root',
-			undefined,
-			undefined,
-			(path) => path === configPath
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath: (path) => path === configPath,
+			}
 		);
 		mockApp.vault.adapter.stat.mockImplementation(async (path: string) =>
 			path === configPath
@@ -1123,12 +1122,12 @@ describe('SyncEngine large-delete circuit breaker', () => {
 			conflictResolver,
 			mockEventManager,
 			'.obsidian',
-			'/remote/root',
-			undefined,
-			undefined,
-			() => true,
-			() => threshold,
-			handler
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath: () => true,
+				getLargeDeleteThreshold: () => threshold,
+				largeDeleteWarningHandler: handler,
+			}
 		);
 	}
 
@@ -1275,7 +1274,7 @@ describe('SyncEngine first-sync local vault enumeration', () => {
 			conflictResolver,
 			mockEventManager,
 			'.obsidian',
-			'/remote/root'
+			{ remoteRoot: '/remote/root' }
 		);
 	}
 
@@ -1400,13 +1399,12 @@ describe('SyncEngine progress reporting', () => {
 			conflictResolver,
 			mockEventManager,
 			'.obsidian',
-			'/remote/root',
-			undefined,
-			undefined,
-			() => true,
-			() => 0,
-			undefined,
-			onProgress
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath: () => true,
+				getLargeDeleteThreshold: () => 0,
+				onProgress,
+			}
 		);
 
 		await engine.performSync();
@@ -1492,7 +1490,7 @@ describe('SyncEngine remote-delete via id-only delta entries', () => {
 			conflictResolver,
 			mockEventManager,
 			'.obsidian',
-			'/remote/root'
+			{ remoteRoot: '/remote/root' }
 		);
 
 		await engine.performSync();
@@ -1598,7 +1596,7 @@ describe('SyncEngine remote folder-delete expansion', () => {
 			conflictResolver,
 			mockEventManager,
 			'.obsidian',
-			'/remote/root'
+			{ remoteRoot: '/remote/root' }
 		);
 
 		await engine.performSync();
@@ -1679,7 +1677,7 @@ describe('SyncEngine reconcile from cloud', () => {
 			conflictResolver,
 			mockEventManager,
 			'.obsidian',
-			'/remote/root'
+			{ remoteRoot: '/remote/root' }
 		);
 
 		await engine.reconcileFromCloud();
@@ -1726,12 +1724,12 @@ describe('SyncEngine reconcile from cloud', () => {
 			conflictResolver,
 			mockEventManager,
 			'.obsidian',
-			'/remote/root',
-			undefined,
-			undefined,
-			(p) => shouldSyncVaultPath(p, false, false, '.obsidian'),
-			() => 5, // threshold 5
-			handler
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath: (p) => shouldSyncVaultPath(p, false, false, '.obsidian'),
+				getLargeDeleteThreshold: () => 5, // threshold 5
+				largeDeleteWarningHandler: handler,
+			}
 		);
 
 		await engine.reconcileFromCloud();
@@ -1795,17 +1793,15 @@ describe('SyncEngine pull-only mode', () => {
 			conflictResolver,
 			mockEventManager,
 			'.obsidian',
-			'/remote/root',
-			undefined, // remoteRootOnDrive
-			undefined, // conflictQueue
-			(p) => shouldSyncVaultPath(p, false, false, '.obsidian'),
-			() => 0, // largeDeleteThreshold
-			undefined, // largeDeleteWarningHandler
-			undefined, // onProgress
-			'test', // pluginVersion
-			4, // maxConcurrentOperations
-			true, // useAtomicMoves
-			isPullOnlyMode
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath: (p) => shouldSyncVaultPath(p, false, false, '.obsidian'),
+				getLargeDeleteThreshold: () => 0,
+				pluginVersion: 'test',
+				maxConcurrentOperations: 4,
+				useAtomicMoves: true,
+				isPullOnlyMode,
+			}
 		);
 	}
 

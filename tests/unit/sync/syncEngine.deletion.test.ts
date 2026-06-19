@@ -164,10 +164,10 @@ describe('SyncEngine deletion permutations', () => {
 			conflictResolver,
 			mockEventManager as any,
 			'.obsidian',
-			'/remote/root',
-			undefined,
-			undefined,
-			shouldSyncPath
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath,
+			}
 		);
 
 	beforeEach(() => {
