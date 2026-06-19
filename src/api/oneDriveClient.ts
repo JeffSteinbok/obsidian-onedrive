@@ -621,8 +621,8 @@ export class OneDriveClient {
 					};
 				}
 			}
-
-			return { items: allItems, deltaLink: '' };
+			// Loop always exits via return above; this satisfies TypeScript
+			throw new Error('Unreachable: delta pagination loop exited unexpectedly');
 		} catch (error) {
 			// If the scoped folder does not exist yet, treat as empty so first sync can create it.
 			if (cleanSubPath && !deltaLink && this.isItemNotFoundError(error)) {
