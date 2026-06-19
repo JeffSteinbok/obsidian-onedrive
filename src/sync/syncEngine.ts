@@ -59,7 +59,6 @@ import { FileOperations } from '../api/fileOperations';
 import { OneDriveClient } from '../api/oneDriveClient';
 import { SyncStateManager } from './syncState';
 import { ConflictResolver } from './conflictResolver';
-import { ConflictQueue } from './conflictQueue';
 import { EventManager } from './eventManager';
 import {
 	SyncOperation,
@@ -73,6 +72,7 @@ import {
 	LargeDeleteDecision,
 	DeltaResponse,
 	SyncEngineOptions,
+	SyncEngineConflictQueue,
 } from '../types';
 import { logger } from '../utils/logger';
 import {
@@ -159,7 +159,7 @@ export class SyncEngine {
 
 	// Options stored as instance properties
 	private readonly remoteRoot: string;
-	private readonly conflictQueue?: ConflictQueue;
+	private readonly conflictQueue?: SyncEngineConflictQueue;
 	private readonly shouldSyncPath: (path: string) => boolean;
 	private readonly getLargeDeleteThreshold: () => number;
 	private readonly largeDeleteWarningHandler?: LargeDeleteWarningHandler;
@@ -450,7 +450,7 @@ export class SyncEngine {
 		const allConfigPaths = await getAllSyncableConfigPaths(
 			this.configDir,
 			adapter,
-			this.shouldSyncPath.bind(this)
+			(path) => this.shouldSyncPath(path)
 		);
 
 		const checkedPaths = new Set<string>();
@@ -738,7 +738,7 @@ export class SyncEngine {
 		const configPaths = await getAllSyncableConfigPaths(
 			this.configDir,
 			adapter,
-			this.shouldSyncPath.bind(this)
+			(path) => this.shouldSyncPath(path)
 		);
 		for (const path of configPaths) {
 			if (remoteCoveredPaths.has(path)) continue;
@@ -1714,7 +1714,7 @@ export class SyncEngine {
 			const configPaths = await getAllSyncableConfigPaths(
 				this.configDir,
 				adapter,
-				this.shouldSyncPath.bind(this)
+				(path) => this.shouldSyncPath(path)
 			);
 			for (const path of configPaths) {
 				if (localByPath.has(path)) continue;
