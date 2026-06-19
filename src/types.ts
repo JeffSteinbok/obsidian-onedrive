@@ -162,12 +162,28 @@ export type LargeDeleteWarningHandler = (
 ) => Promise<LargeDeleteDecision>;
 
 /**
+ * Minimal interface for ConflictQueue used by SyncEngine.
+ * Avoids circular import with the full ConflictQueue class.
+ */
+export interface SyncEngineConflictQueue {
+	/** Check if a conflict exists for the given path */
+	hasConflict(path: string): boolean;
+	/** Add a new conflict to the queue */
+	add(
+		path: string,
+		localContent: ArrayBuffer,
+		remoteContent: ArrayBuffer,
+		localMtime: number,
+		remoteMtime: number,
+		remoteId: string,
+		remoteHash: string
+	): Promise<ConflictEntry>;
+}
+
+/**
  * Optional configuration for SyncEngine.
  * Core dependencies (app, fileOps, client, etc.) are required positionally;
  * these options control behavior and callbacks.
- *
- * Note: ConflictQueue is imported dynamically to avoid circular dependencies.
- * The type is `any` here but callers pass the actual ConflictQueue instance.
  */
 export interface SyncEngineOptions {
 	/** Remote folder path for uploads (empty for root) */
@@ -176,10 +192,10 @@ export interface SyncEngineOptions {
 	remoteRootOnDrive?: string;
 	/**
 	 * Queue for manual conflict resolution.
-	 * Accepts the ConflictQueue class from sync/conflictQueue.ts
+	 * Accepts the ConflictQueue class from sync/conflictQueue.ts.
+	 * Uses a minimal interface to avoid circular imports.
 	 */
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	conflictQueue?: any;
+	conflictQueue?: SyncEngineConflictQueue;
 	/** Filter function to determine which paths should sync */
 	shouldSyncPath?: (path: string) => boolean;
 	/** Returns the threshold for large delete warnings (0 = disabled) */

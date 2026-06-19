@@ -183,6 +183,188 @@ describe('Chunk Upload', () => {
 				expect(result).toEqual({ id: 'file-123', name: 'large.bin' });
 				expect(onProgress).toHaveBeenCalled();
 			});
+
+			it('should throw OneDriveError when createUploadSession fails', async () => {
+				const largeContent = new ArrayBuffer(5 * 1024 * 1024); // 5 MB
+
+				// Mock session creation to throw
+				mockClient.getClient.mockReturnValue({
+					api: vi.fn().mockReturnValue({
+						post: vi.fn().mockRejectedValue(new Error('Network error')),
+					}),
+				});
+
+				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
+					OneDriveError
+				);
+				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
+					'Failed to create upload session'
+				);
+			});
+
+			it('should throw OneDriveError when chunk upload returns error status', async () => {
+				const largeContent = new ArrayBuffer(5 * 1024 * 1024); // 5 MB
+
+				// Mock successful session creation
+				mockClient.getClient.mockReturnValue({
+					api: vi.fn().mockReturnValue({
+						post: vi.fn().mockResolvedValue({
+							uploadUrl: 'https://upload.example.com/session',
+						}),
+					}),
+				});
+
+				// Mock chunk upload to return 500 error
+				vi.mocked(requestUrl).mockResolvedValue({
+					status: 500,
+					json: { error: 'Server error' },
+				} as never);
+
+				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
+					OneDriveError
+				);
+				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
+					'Failed to upload chunk'
+				);
+			});
+
+			it('should throw OneDriveError when chunk upload throws exception', async () => {
+				const largeContent = new ArrayBuffer(5 * 1024 * 1024); // 5 MB
+
+				// Mock successful session creation
+				mockClient.getClient.mockReturnValue({
+					api: vi.fn().mockReturnValue({
+						post: vi.fn().mockResolvedValue({
+							uploadUrl: 'https://upload.example.com/session',
+						}),
+					}),
+				});
+
+				// Mock chunk upload to throw
+				vi.mocked(requestUrl).mockRejectedValue(new Error('Connection reset'));
+
+				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
+					OneDriveError
+				);
+				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
+					'Failed to upload chunk'
+				);
+			});
+
+			it('should handle 201 status as successful final chunk', async () => {
+				const largeContent = new ArrayBuffer(5 * 1024 * 1024); // 5 MB
+
+				mockClient.getClient.mockReturnValue({
+					api: vi.fn().mockReturnValue({
+						post: vi.fn().mockResolvedValue({
+							uploadUrl: 'https://upload.example.com/session',
+						}),
+					}),
+				});
+
+				// All chunks return 202 except final returns 201
+				vi.mocked(requestUrl).mockImplementation(async (options) => {
+					if (options.method === 'PUT') {
+						const contentRange = options.headers?.['Content-Range'] as string;
+						const total = parseInt(contentRange?.split('/')[1] || '0');
+						const end = parseInt(contentRange?.split('-')[1]?.split('/')[0] || '0');
+
+						if (end + 1 >= total) {
+							return { status: 201, json: { id: 'created-123', name: 'large.bin' } } as never;
+						}
+						return { status: 202, json: {} } as never;
+					}
+					return { status: 200, json: {} } as never;
+				});
+
+				const result = await uploader.uploadFile('large.bin', largeContent);
+				expect(result).toEqual({ id: 'created-123', name: 'large.bin' });
+			});
+
+			it('should fallback to getFinalItem when last chunk returns 202', async () => {
+				const largeContent = new ArrayBuffer(5 * 1024 * 1024); // 5 MB
+
+				mockClient.getClient.mockReturnValue({
+					api: vi.fn().mockReturnValue({
+						post: vi.fn().mockResolvedValue({
+							uploadUrl: 'https://upload.example.com/session',
+						}),
+					}),
+				});
+
+				// All chunks return 202 (edge case - final chunk didn't return item)
+				vi.mocked(requestUrl).mockImplementation(async (options) => {
+					if (options.method === 'PUT') {
+						return { status: 202, json: {} } as never;
+					}
+					// GET request to fetch final item
+					if (options.method === 'GET') {
+						return { status: 200, json: { id: 'final-item-123', name: 'large.bin' } } as never;
+					}
+					return { status: 200, json: {} } as never;
+				});
+
+				const result = await uploader.uploadFile('large.bin', largeContent);
+				expect(result).toEqual({ id: 'final-item-123', name: 'large.bin' });
+			});
+
+			it('should throw OneDriveError when getFinalItem fails', async () => {
+				const largeContent = new ArrayBuffer(5 * 1024 * 1024); // 5 MB
+
+				mockClient.getClient.mockReturnValue({
+					api: vi.fn().mockReturnValue({
+						post: vi.fn().mockResolvedValue({
+							uploadUrl: 'https://upload.example.com/session',
+						}),
+					}),
+				});
+
+				// All chunks return 202, then GET fails
+				vi.mocked(requestUrl).mockImplementation(async (options) => {
+					if (options.method === 'PUT') {
+						return { status: 202, json: {} } as never;
+					}
+					if (options.method === 'GET') {
+						return { status: 500, json: { error: 'Server error' } } as never;
+					}
+					return { status: 200, json: {} } as never;
+				});
+
+				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
+					OneDriveError
+				);
+				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
+					'Failed to get final item'
+				);
+			});
+
+			it('should throw OneDriveError when getFinalItem throws exception', async () => {
+				const largeContent = new ArrayBuffer(5 * 1024 * 1024); // 5 MB
+
+				mockClient.getClient.mockReturnValue({
+					api: vi.fn().mockReturnValue({
+						post: vi.fn().mockResolvedValue({
+							uploadUrl: 'https://upload.example.com/session',
+						}),
+					}),
+				});
+
+				let callCount = 0;
+				// All chunks return 202, then GET throws
+				vi.mocked(requestUrl).mockImplementation(async (options) => {
+					if (options.method === 'PUT') {
+						return { status: 202, json: {} } as never;
+					}
+					if (options.method === 'GET') {
+						throw new Error('Network timeout');
+					}
+					return { status: 200, json: {} } as never;
+				});
+
+				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
+					OneDriveError
+				);
+			});
 		});
 	});
 });
