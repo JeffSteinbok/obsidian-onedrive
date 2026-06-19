@@ -303,6 +303,10 @@ export const es = {
 				name: 'Usar movimientos atómicos',
 				desc: 'Usar la API nativa de movimiento de OneDrive para renombrar/mover archivos en lugar de eliminar + re-cargar. Más eficiente y evita archivos duplicados si se pierde el estado de sincronización.',
 			},
+			pullOnlyMode: {
+				name: 'Modo solo lectura (solo descargar)',
+				desc: 'Solo descargar cambios remotos de OneDrive. Las ediciones locales no se subirán. Útil para vaults de solo lectura o recuperación de backup. Al desactivar, los cambios locales se sincronizarán en el siguiente ciclo.',
+			},
 		},
 	},
 } as const;

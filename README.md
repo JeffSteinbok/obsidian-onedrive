@@ -23,6 +23,7 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 - **Event-Driven Sync** — Syncs on file changes, not polling. Great for battery life.
 - **Bidirectional** — Automatic two-way sync with configurable conflict resolution.
 - **Two Access Modes** — App Folder (secure, isolated) or Full Access (shareable, flexible location).
+- **Pull-Only Mode** — (Experimental) One-way sync from OneDrive for read-only vaults or backup recovery.
 
 ## Why this over native OneDrive file sync?
 
@@ -70,6 +71,7 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 | **Conflict Resolution**  | Last write wins (default), create duplicate, or manual                                                                                                                    |
 | **Sync App Settings**    | Optional — sync `.obsidian/app.json`, `.obsidian/appearance.json`, and `.obsidian/hotkeys.json` to keep appearance and hotkeys consistent across devices                  |
 | **Sync Plugins**         | Optional — sync plugin lists, manifests, and binaries (`main.js`, `styles.css`). Does **not** sync plugin data files (`data.json`)                                        |
+| **Pull-Only Mode**       | (Experimental) Download changes from OneDrive but never upload local edits. Useful for read-only vaults or backup recovery. Enable under Settings → Experimental          |
 | **Debug Logging**        | Enable for troubleshooting. Writes a daily note under `_OneDriveSyncLogs/YYYY-MM-DD.md` (device-local, never synced)                                                      |
 
 For advanced settings (reset sync token, reconcile from cloud, custom client ID, experimental performance options), see [Advanced Usage](docs/ADVANCED.md).

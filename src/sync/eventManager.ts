@@ -30,6 +30,8 @@ export class EventManager {
 	private initialSyncDone = false;
 	// When false, vault change events mark files dirty but do not schedule auto-sync
 	private syncOnFileChange = true;
+	// Callback to check if pull-only mode is enabled
+	private isPullOnlyMode: () => boolean = () => false;
 
 	constructor(
 		private app: App,
@@ -38,8 +40,22 @@ export class EventManager {
 		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path, false, false, app.vault.configDir)
 	) {}
 
+	/**
+	 * Set the callback to check if pull-only mode is enabled.
+	 * In pull-only mode, local file changes are ignored (not queued for upload).
+	 */
+	setPullOnlyModeCheck(isPullOnlyMode: () => boolean): void {
+		this.isPullOnlyMode = isPullOnlyMode;
+	}
+
 	private shouldIgnoreEvent(path: string): boolean {
 		if (!this.shouldSyncPath(path)) return true;
+
+		// In pull-only mode, ignore all local changes (don't queue for upload)
+		if (this.isPullOnlyMode()) {
+			logger.debug(`Pull-only mode: ignoring local change for: ${path}`);
+			return true;
+		}
 
 		// If we wrote this path during sync, ignore the resulting event
 		if (this.ownWritePaths.has(path)) {

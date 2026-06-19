@@ -301,6 +301,10 @@ export const zhCn = {
 				name: '使用原子移动',
 				desc: '使用 OneDrive 原生移动 API 进行文件重命名/移动，而不是删除后重新上传。更高效，且避免同步状态丢失时出现重复文件。',
 			},
+			pullOnlyMode: {
+				name: '只读模式（仅下载）',
+				desc: '仅从 OneDrive 下载远程更改。本地编辑不会上传。适用于只读保险库或备份恢复。禁用后，本地更改将在下一个周期同步。',
+			},
 		},
 	},
 } satisfies LocaleStrings;

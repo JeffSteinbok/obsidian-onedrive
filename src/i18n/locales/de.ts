@@ -303,6 +303,10 @@ export const de = {
 				name: 'Atomare Verschiebungen verwenden',
 				desc: 'OneDrives native Verschiebungs-API für Dateiumbenennung/-verschiebung verwenden, anstatt Löschen + Neu-Hochladen. Effizienter und vermeidet doppelte Dateien, wenn der Synchronisierungsstatus verloren geht.',
 			},
+			pullOnlyMode: {
+				name: 'Nur-Lesen-Modus (nur herunterladen)',
+				desc: 'Nur Remote-Änderungen von OneDrive herunterladen. Lokale Bearbeitungen werden nicht hochgeladen. Nützlich für schreibgeschützte Vaults oder Backup-Wiederherstellung. Bei Deaktivierung werden lokale Änderungen im nächsten Zyklus synchronisiert.',
+			},
 		},
 	},
 } as const;

@@ -327,6 +327,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 						this.app.vault.configDir
 					)
 			);
+			// Wire up pull-only mode check
+			this.eventManager.setPullOnlyModeCheck(() => this.getExperimentalSetting('pullOnlyMode'));
 
 			// Initialize conflict queue
 			this.conflictQueue = new ConflictQueue(
@@ -390,7 +392,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 				(msg) => this.setSyncProgress(msg),
 				this.manifest.version,
 				this.getExperimentalSetting('maxConcurrentOperations'),
-				this.getExperimentalSetting('useAtomicMoves')
+				this.getExperimentalSetting('useAtomicMoves'),
+				() => this.getExperimentalSetting('pullOnlyMode')
 			);
 
 			// Get user info to display in settings
@@ -913,6 +916,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 							this.app.vault.configDir
 						)
 				);
+				this.eventManager.setPullOnlyModeCheck(() => this.getExperimentalSetting('pullOnlyMode'));
 			}
 			this.conflictQueue = new ConflictQueue(
 				this.app,
