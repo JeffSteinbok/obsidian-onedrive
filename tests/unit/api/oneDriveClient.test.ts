@@ -462,6 +462,39 @@ describe('OneDriveClient', () => {
 			expect(result).toEqual({ items: [], deltaLink: '' });
 		});
 
+		it('treats OneDriveError with statusCode 404 as empty on first sync', async () => {
+			const error = new OneDriveError('Not found', undefined, 404);
+			mockApiGet.mockRejectedValueOnce(error);
+
+			const result = await client.getDelta(undefined, '', '.obsidian');
+			expect(result).toEqual({ items: [], deltaLink: '' });
+		});
+
+		it('treats OneDriveError with code itemNotFound as empty on first sync', async () => {
+			const error = new OneDriveError('Item not found');
+			(error as Record<string, unknown>).code = 'itemNotFound';
+			mockApiGet.mockRejectedValueOnce(error);
+
+			const result = await client.getDelta(undefined, '', '.obsidian');
+			expect(result).toEqual({ items: [], deltaLink: '' });
+		});
+
+		it('treats plain object with code itemNotFound as empty on first sync', async () => {
+			const error = { code: 'itemNotFound', message: 'Not found' };
+			mockApiGet.mockRejectedValueOnce(error);
+
+			const result = await client.getDelta(undefined, '', '.obsidian');
+			expect(result).toEqual({ items: [], deltaLink: '' });
+		});
+
+		it('treats Error with 404 in message as empty on first sync', async () => {
+			const error = new Error('HTTP 404: resource could not be found');
+			mockApiGet.mockRejectedValueOnce(error);
+
+			const result = await client.getDelta(undefined, '', '.obsidian');
+			expect(result).toEqual({ items: [], deltaLink: '' });
+		});
+
 		it('uses root delta for shared-drive when both relativePath and subPath are empty', async () => {
 			client.setRemoteDrive('drive-123', 'item-456', 'Shared', '');
 			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });
