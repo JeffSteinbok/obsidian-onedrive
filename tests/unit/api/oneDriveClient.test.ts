@@ -533,4 +533,145 @@ describe('OneDriveClient', () => {
 			expect(graphClient).toBe(mockClient);
 		});
 	});
+
+	describe('resolveAppFolderPath', () => {
+		it('returns the resolved app folder path', async () => {
+			mockApiGet.mockResolvedValue({
+				id: 'approot-id',
+				name: 'ObsidianOneDrive',
+				parentReference: { path: '/drive/root:/Apps' },
+			});
+
+			const result = await client.resolveAppFolderPath();
+			expect(result).toBe('/Apps/ObsidianOneDrive');
+			expect(mockClient.api).toHaveBeenCalledWith('/me/drive/special/approot');
+		});
+
+		it('uses default parent path when parentReference.path is missing', async () => {
+			mockApiGet.mockResolvedValue({
+				id: 'approot-id',
+				name: 'ObsidianOneDrive',
+				parentReference: {},
+			});
+
+			const result = await client.resolveAppFolderPath();
+			expect(result).toBe('/Apps/ObsidianOneDrive');
+		});
+
+		it('returns default path when the API call fails', async () => {
+			mockApiGet.mockRejectedValue(new Error('not found'));
+
+			const result = await client.resolveAppFolderPath();
+			expect(result).toBe('/Apps/ObsidianOneDrive');
+		});
+	});
+
+	describe('listAppFoldersForPicker', () => {
+		it('lists folders at the app folder root', async () => {
+			const folder = { id: 'f1', name: 'Vault1', folder: {} };
+			mockApiGet.mockResolvedValue({ value: [folder, { id: 'f2', name: 'file.md' }] });
+
+			const result = await client.listAppFoldersForPicker();
+			expect(result).toEqual([folder]);
+			expect(mockClient.api).toHaveBeenCalledWith('/me/drive/special/approot/children');
+		});
+
+		it('lists folders at a nested path', async () => {
+			const folder = { id: 'f1', name: 'SubFolder', folder: {} };
+			mockApiGet.mockResolvedValue({ value: [folder] });
+
+			const result = await client.listAppFoldersForPicker('Vault1');
+			expect(result).toEqual([folder]);
+			expect(mockClient.api).toHaveBeenCalledWith(`/me/drive/special/approot:/${encodePathForGraph('Vault1')}:/children`);
+		});
+
+		it('throws OneDriveError when the API call fails', async () => {
+			mockApiGet.mockRejectedValue(new Error('forbidden'));
+
+			await expect(client.listAppFoldersForPicker()).rejects.toBeInstanceOf(OneDriveError);
+			await expect(client.listAppFoldersForPicker()).rejects.toThrow('Failed to list folders: forbidden');
+		});
+	});
+
+	describe('listAllItems', () => {
+		it('lists all items recursively', async () => {
+			const file = { id: 'f1', name: 'doc.md' };
+			const subfolder = { id: 's1', name: 'subfolder', folder: {} };
+			const subfile = { id: 'sf1', name: 'nested.md' };
+
+			// First call returns file + subfolder, second call returns subfile
+			mockApiGet
+				.mockResolvedValueOnce({ value: [file, subfolder] })
+				.mockResolvedValueOnce({ value: [subfile] });
+
+			const result = await client.listAllItems();
+			expect(result).toEqual([file, subfolder, subfile]);
+		});
+
+		it('handles empty folders', async () => {
+			mockApiGet.mockResolvedValue({ value: [] });
+
+			const result = await client.listAllItems('empty');
+			expect(result).toEqual([]);
+		});
+	});
+
+	describe('moveItem', () => {
+		const mockApiPatch = vi.fn();
+
+		beforeEach(() => {
+			mockApiBuilder.patch = mockApiPatch;
+			mockApiPatch.mockReset();
+		});
+
+		it('moves an item to a new location', async () => {
+			// Mock getItemByPath for parent folder lookup
+			mockApiGet.mockResolvedValue({ id: 'parent-id', name: 'Documents' });
+			mockApiPatch.mockResolvedValue({ id: 'item-1', name: 'renamed.md' });
+
+			const result = await client.moveItem('item-1', 'Documents/renamed.md');
+
+			expect(result).toEqual({ id: 'item-1', name: 'renamed.md' });
+			expect(mockApiPatch).toHaveBeenCalledWith({
+				name: 'renamed.md',
+				parentReference: { id: 'parent-id' },
+			});
+		});
+
+		it('moves an item to root', async () => {
+			// Mock root folder lookup
+			mockApiGet.mockResolvedValue({ id: 'root-id', name: 'root' });
+			mockApiPatch.mockResolvedValue({ id: 'item-1', name: 'moved.md' });
+
+			const result = await client.moveItem('item-1', 'moved.md');
+
+			expect(result).toEqual({ id: 'item-1', name: 'moved.md' });
+			expect(mockApiPatch).toHaveBeenCalledWith({
+				name: 'moved.md',
+				parentReference: { id: 'root-id' },
+			});
+		});
+
+		it('throws OneDriveError for empty path', async () => {
+			await expect(client.moveItem('item-1', '')).rejects.toBeInstanceOf(OneDriveError);
+			await expect(client.moveItem('item-1', '')).rejects.toThrow('Invalid move destination: empty path');
+		});
+
+		it('throws OneDriveError when the move fails', async () => {
+			mockApiGet.mockResolvedValue({ id: 'parent-id' });
+			mockApiPatch.mockRejectedValue(new Error('conflict'));
+
+			await expect(client.moveItem('item-1', 'dest/file.md')).rejects.toBeInstanceOf(OneDriveError);
+			await expect(client.moveItem('item-1', 'other/file.md')).rejects.toThrow('Failed to move item: conflict');
+		});
+	});
+
+	describe('deleteItem', () => {
+		it('treats 404 as success (item already deleted)', async () => {
+			mockApiDelete.mockRejectedValue({ statusCode: 404 });
+
+			// Should not throw
+			await expect(client.deleteItem('item-1')).resolves.toBeUndefined();
+		});
+	});
 });

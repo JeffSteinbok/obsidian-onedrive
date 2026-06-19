@@ -17,4 +17,4 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run build
-      - run: npx vitest run
+      - run: npx vitest run --coverage

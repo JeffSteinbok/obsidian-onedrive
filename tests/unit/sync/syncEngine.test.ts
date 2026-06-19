@@ -1880,3 +1880,96 @@ describe('SyncEngine pull-only mode', () => {
 		expect(mockFileOps.uploadFile).toHaveBeenCalled();
 	});
 });
+
+describe('SyncEngine error handling', () => {
+	let stateManager: SyncStateManager;
+	let conflictResolver: ConflictResolver;
+	let mockFileOps: any;
+	let mockClient: any;
+	let mockEventManager: any;
+	type TrackingNoticeClass = typeof Notice & { calls: Array<[string, number | undefined]> };
+	const trackingNotice = Notice as TrackingNoticeClass;
+
+	beforeEach(() => {
+		trackingNotice.calls.length = 0;
+		stateManager = new SyncStateManager();
+		conflictResolver = new ConflictResolver(ConflictResolutionStrategy.LAST_WRITE_WINS);
+		mockFileOps = {
+			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
+			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi.fn().mockResolvedValue({ id: 'moved-id', size: 100 }),
+		};
+		mockClient = {
+			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'delta-link-1' }),
+			isSharedDrive: vi.fn().mockReturnValue(false),
+		};
+		mockEventManager = {
+			getDirtyFiles: vi.fn().mockReturnValue([]),
+			clearDirtyFiles: vi.fn(),
+			addDirtyFile: vi.fn(),
+			removeDirtyPaths: vi.fn(),
+			markOwnWrites: vi.fn(),
+			isOwnWrite: vi.fn().mockReturnValue(false),
+			markInitialSyncDone: vi.fn(),
+		};
+		mockApp.vault.getAbstractFileByPath.mockReset();
+		mockApp.vault.readBinary.mockReset().mockResolvedValue(new ArrayBuffer(10));
+		mockApp.vault.adapter.exists.mockReset().mockResolvedValue(true);
+		mockApp.vault.adapter.writeBinary.mockReset().mockResolvedValue(undefined);
+	});
+
+	function makeEngine() {
+		return new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'.obsidian',
+			{ remoteRoot: '/remote/root' }
+		);
+	}
+
+	it('throws and shows error notice when sync fails', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockClient.getDelta.mockRejectedValue(new Error('Network error'));
+
+		const engine = makeEngine();
+
+		await expect(engine.performSync()).rejects.toThrow('Network error');
+
+		const errorNotices = trackingNotice.calls.filter(([msg]) =>
+			msg.includes('Network error') || msg.includes('failed')
+		);
+		expect(errorNotices.length).toBeGreaterThan(0);
+	});
+
+	it('throws and shows error notice when upload fails', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('notes/test.md', 100, Date.now()));
+		mockFileOps.uploadFile.mockRejectedValue(new Error('Upload failed'));
+
+		const engine = makeEngine();
+
+		await expect(engine.performSync()).rejects.toThrow('Upload failed');
+	});
+
+	it('throws and shows error notice when download fails', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('notes/new.md', { id: 'new-id' })],
+			deltaLink: 'delta-2',
+		});
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(null); // file doesn't exist locally
+		mockFileOps.downloadFile.mockRejectedValue(new Error('Download failed'));
+
+		const engine = makeEngine();
+
+		await expect(engine.performSync()).rejects.toThrow('Download failed');
+	});
+});
