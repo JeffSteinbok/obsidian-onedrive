@@ -303,6 +303,10 @@ export const fr = {
 				name: 'Utiliser les déplacements atomiques',
 				desc: 'Utiliser l\'API de déplacement native de OneDrive pour renommer/déplacer les fichiers au lieu de supprimer + re-téléverser. Plus efficace et évite les fichiers en double si l\'état de synchronisation est perdu.',
 			},
+			pullOnlyMode: {
+				name: 'Mode lecture seule (téléchargement uniquement)',
+				desc: 'Télécharger uniquement les modifications distantes depuis OneDrive. Les modifications locales ne seront pas téléversées. Utile pour les coffres en lecture seule ou la récupération de sauvegarde. Lorsque désactivé, les modifications locales seront synchronisées au prochain cycle.',
+			},
 		},
 	},
 } as const;

@@ -124,7 +124,8 @@ export class SyncEngine {
 		private onProgress?: (message: string | undefined) => void,
 		private pluginVersion: string = 'unknown',
 		maxConcurrentOperations: number = 4,
-		useAtomicMoves: boolean = true
+		useAtomicMoves: boolean = true,
+		private isPullOnlyMode: () => boolean = () => false
 	) {
 		this.maxConcurrentOperations = maxConcurrentOperations;
 		this.useAtomicMoves = useAtomicMoves;
@@ -314,8 +315,22 @@ export class SyncEngine {
 	 * Collect local dirty files from the event manager, filtering out any
 	 * that match .syncIgnore patterns. Ignored paths are removed from the
 	 * dirty queue so they don't reappear on the next sync cycle.
+	 *
+	 * In pull-only mode, returns empty changes (local edits are not uploaded).
 	 */
 	private async gatherLocalChanges(ignoreMatchers: RegExp[]): Promise<LocalChangesResult> {
+		// In pull-only mode, skip all local change detection — we only download
+		if (this.isPullOnlyMode()) {
+			logger.info('Pull-only mode: skipping local change detection');
+			// Clear any dirty files that accumulated (they won't be uploaded)
+			// but don't delete them — they'll be picked up if mode changes to bidirectional
+			return {
+				localChanges: [],
+				folderChanges: [],
+				ignoredCount: 0,
+			};
+		}
+
 		const allLocalChanges = this.eventManager.getDirtyFiles();
 		const ignoredLocalPaths: string[] = [];
 		const folderChanges: LocalChange[] = [];

@@ -303,6 +303,10 @@ export const en = {
 						name: 'Use atomic moves',
 						desc: 'Use OneDrive\'s native move API for file renames/moves instead of delete + re-upload. More efficient and avoids duplicate files if sync state is lost.',
 					},
+					pullOnlyMode: {
+						name: 'Pull-only mode (read-only sync)',
+						desc: 'Only download remote changes from OneDrive. Local edits will not be uploaded. Useful for read-only vaults or backup recovery. When disabled, local changes will sync on the next cycle.',
+					},
 		},
 	},
 } as const;

@@ -572,5 +572,22 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		// Pull-only mode
+		new Setting(detailsEl)
+			.setName(t('settings.experimental.pullOnlyMode.name'))
+			.setDesc(t('settings.experimental.pullOnlyMode.desc'))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.getExperimentalSetting('pullOnlyMode'))
+					.onChange(async (value) => {
+						this.plugin.settings.experimental = {
+							...DEFAULT_EXPERIMENTAL_SETTINGS,
+							...this.plugin.settings.experimental,
+							pullOnlyMode: value,
+						};
+						await this.plugin.saveSettings();
+					})
+			);
 	}
 }

@@ -303,6 +303,10 @@ export const it = {
 				name: 'Usa spostamenti atomici',
 				desc: 'Usa l\'API di spostamento nativa di OneDrive per rinominare/spostare file invece di elimina + ricarica. Più efficiente e evita file duplicati se lo stato di sincronizzazione viene perso.',
 			},
+			pullOnlyMode: {
+				name: 'Modalità sola lettura (solo download)',
+				desc: 'Scarica solo le modifiche remote da OneDrive. Le modifiche locali non verranno caricate. Utile per vault di sola lettura o recupero backup. Quando disabilitato, le modifiche locali verranno sincronizzate nel prossimo ciclo.',
+			},
 		},
 	},
 } as const;

@@ -69,6 +69,7 @@ const mocks = vi.hoisted(() => {
 		isSyncInProgress: vi.fn().mockReturnValue(false),
 		getDirtyFiles: vi.fn().mockReturnValue([]),
 		clearDirtyFiles: vi.fn(),
+		setPullOnlyModeCheck: vi.fn(),
 	};
 
 	const statusBarManager = {

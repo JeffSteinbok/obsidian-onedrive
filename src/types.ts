@@ -216,12 +216,14 @@ export interface ExperimentalSettings {
 	skipFolderChecks: boolean; // Skip folder existence checks before uploads (OneDrive auto-creates)
 	maxConcurrentOperations: number; // Max parallel sync operations (uploads/downloads)
 	useAtomicMoves: boolean; // Use OneDrive's PATCH API for moves instead of delete+upload
+	pullOnlyMode: boolean; // Pull-only sync: download remote changes but never upload local changes
 }
 
 export const DEFAULT_EXPERIMENTAL_SETTINGS: ExperimentalSettings = {
 	skipFolderChecks: true, // Default ON — relies on OneDrive auto-creating folders
 	maxConcurrentOperations: 4, // Conservative default
 	useAtomicMoves: true, // Default ON — atomic moves are more efficient and avoid duplicates
+	pullOnlyMode: false, // Default OFF — bidirectional sync is the normal behavior
 };
 
 export interface PluginSettings {
