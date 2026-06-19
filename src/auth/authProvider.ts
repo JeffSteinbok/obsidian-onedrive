@@ -1,5 +1,36 @@
 /**
  * Custom Authentication Provider for Microsoft Graph Client
+ *
+ * This provider bridges our manual OAuth implementation with the Microsoft Graph SDK.
+ * The Graph SDK requires an AuthenticationProvider that supplies access tokens on demand.
+ *
+ * ## Architecture
+ *
+ * ```
+ * ┌─────────────────────────────────────────────────────────────────┐
+ * │                      Authentication Flow                        │
+ * ├─────────────────────────────────────────────────────────────────┤
+ * │                                                                 │
+ * │  DeviceCodeFlowClient        TokenStorage        OneDriveAuthProvider
+ * │  ───────────────────        ────────────        ──────────────────
+ * │  • requestDeviceCode()      • SecretStorage     • getAccessToken()
+ * │  • pollForToken()           • Token persistence • Auto-refresh
+ * │  • refreshToken()           • Expiry tracking   • Graph SDK interface
+ * │         │                          │                    │
+ * │         └──────────────────────────┴────────────────────┘
+ * │                                    │
+ * │                          OneDriveClient (Graph SDK)
+ * │                          ─────────────────────────
+ * │                          • API calls with auto-auth
+ * │                                                                 │
+ * └─────────────────────────────────────────────────────────────────┘
+ * ```
+ *
+ * ## Why custom instead of MSAL?
+ * See deviceCodeFlow.ts for detailed explanation. TL;DR: MSAL requires Node.js
+ * APIs not available on iOS/Android, so we implement OAuth manually using
+ * Obsidian's cross-platform requestUrl() API.
+ *
  * Implementation pattern based on remotely-save
  * https://github.com/remotely-save/remotely-save
  * Licensed under Apache 2.0

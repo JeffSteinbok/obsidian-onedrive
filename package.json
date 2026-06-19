@@ -44,7 +44,6 @@
 		"vitest": "^4.1.8"
 	},
 	"dependencies": {
-		"@azure/msal-node": "^5.2.5",
 		"@microsoft/microsoft-graph-client": "^3.0.7",
 		"diff": "^9.0.0"
 	}
