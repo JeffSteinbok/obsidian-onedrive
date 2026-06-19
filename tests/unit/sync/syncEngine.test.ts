@@ -1743,3 +1743,144 @@ describe('SyncEngine reconcile from cloud', () => {
 		expect(mockClient.getDelta).not.toHaveBeenCalled();
 	});
 });
+
+describe('SyncEngine pull-only mode', () => {
+	let stateManager: SyncStateManager;
+	let conflictResolver: ConflictResolver;
+	let mockFileOps: any;
+	let mockClient: any;
+	let mockEventManager: any;
+
+	beforeEach(() => {
+		mockApp.vault.getAbstractFileByPath.mockReset();
+		mockApp.vault.readBinary.mockReset().mockResolvedValue(new ArrayBuffer(10));
+		mockApp.fileManager.trashFile.mockReset().mockResolvedValue(undefined);
+		mockApp.vault.adapter.exists.mockReset().mockResolvedValue(true);
+		mockApp.vault.adapter.read.mockReset().mockRejectedValue(new Error('missing .syncIgnore'));
+		mockApp.vault.adapter.mkdir.mockReset().mockResolvedValue(undefined);
+		mockApp.vault.adapter.writeBinary.mockReset().mockResolvedValue(undefined);
+		mockApp.vault.adapter.stat.mockReset().mockResolvedValue(null);
+		mockApp.vault.adapter.list.mockReset().mockResolvedValue({ files: [], folders: [] });
+
+		stateManager = new SyncStateManager();
+		conflictResolver = new ConflictResolver(ConflictResolutionStrategy.LAST_WRITE_WINS);
+		mockFileOps = {
+			uploadFile: vi.fn().mockResolvedValue({ id: 'uploaded-id', size: 100 }),
+			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi.fn().mockResolvedValue({ id: 'moved-id', size: 100 }),
+		};
+		mockClient = {
+			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'delta-link-1' }),
+			isSharedDrive: vi.fn().mockReturnValue(false),
+		};
+		mockEventManager = {
+			getDirtyFiles: vi.fn().mockReturnValue([]),
+			clearDirtyFiles: vi.fn(),
+			addDirtyFile: vi.fn(),
+			removeDirtyPaths: vi.fn(),
+			markOwnWrites: vi.fn(),
+			removeOwnWrite: vi.fn(),
+			isOwnWrite: vi.fn().mockReturnValue(false),
+			markInitialSyncDone: vi.fn(),
+		};
+	});
+
+	function makeEngine(isPullOnlyMode: () => boolean) {
+		return new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'.obsidian',
+			'/remote/root',
+			undefined, // remoteRootOnDrive
+			undefined, // conflictQueue
+			(p) => shouldSyncVaultPath(p, false, false, '.obsidian'),
+			() => 0, // largeDeleteThreshold
+			undefined, // largeDeleteWarningHandler
+			undefined, // onProgress
+			'test', // pluginVersion
+			4, // maxConcurrentOperations
+			true, // useAtomicMoves
+			isPullOnlyMode
+		);
+	}
+
+	it('skips local changes when pull-only mode is enabled', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		// Local dirty file would normally trigger an upload
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		const localFile = makeTFile('notes/test.md', 100, Date.now());
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(localFile);
+
+		const engine = makeEngine(() => true); // pull-only enabled
+		await engine.performSync();
+
+		// Should NOT upload
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		// Delta should still be fetched and cursor advanced
+		expect(mockClient.getDelta).toHaveBeenCalled();
+		expect(stateManager.getDeltaLink()).toBe('delta-link-1');
+	});
+
+	it('still downloads remote changes when pull-only mode is enabled', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		// Remote has a new file
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('cloud-file.md')],
+			deltaLink: 'delta-link-2',
+		});
+		mockApp.vault.adapter.exists.mockResolvedValue(false);
+
+		const engine = makeEngine(() => true); // pull-only enabled
+		await engine.performSync();
+
+		// Should download the remote file
+		expect(mockFileOps.downloadFile).toHaveBeenCalled();
+		expect(stateManager.getDeltaLink()).toBe('delta-link-2');
+	});
+
+	it('uploads local changes when pull-only mode is disabled', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		const localFile = makeTFile('notes/test.md', 100, Date.now());
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(localFile);
+
+		const engine = makeEngine(() => false); // pull-only disabled
+		await engine.performSync();
+
+		// Should upload
+		expect(mockFileOps.uploadFile).toHaveBeenCalled();
+	});
+
+	it('respects dynamic pull-only mode toggle between syncs', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		let pullOnlyEnabled = true;
+		const engine = makeEngine(() => pullOnlyEnabled);
+
+		// First sync with pull-only enabled
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		const localFile = makeTFile('notes/test.md', 100, Date.now());
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(localFile);
+
+		await engine.performSync();
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+
+		// Disable pull-only mode
+		pullOnlyEnabled = false;
+		mockFileOps.uploadFile.mockClear();
+
+		// Second sync with pull-only disabled
+		await engine.performSync();
+		expect(mockFileOps.uploadFile).toHaveBeenCalled();
+	});
+});

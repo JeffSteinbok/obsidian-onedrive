@@ -317,6 +317,79 @@ describe('EventManager', () => {
 		});
 	});
 
+	describe('pull-only mode', () => {
+		it('ignores modify events when pull-only mode is enabled', () => {
+			eventManager.setPullOnlyModeCheck(() => true);
+			eventManager.startListening();
+			const file = makeTFile('test.md', 100);
+
+			eventCallbacks.modify(file);
+
+			expect(eventManager.getDirtyFiles()).toEqual([]);
+		});
+
+		it('ignores create events when pull-only mode is enabled', () => {
+			eventManager.setPullOnlyModeCheck(() => true);
+			eventManager.startListening();
+			const file = makeTFile('new.md', 100);
+
+			eventCallbacks.create(file);
+
+			expect(eventManager.getDirtyFiles()).toEqual([]);
+		});
+
+		it('ignores delete events when pull-only mode is enabled', () => {
+			eventManager.setPullOnlyModeCheck(() => true);
+			eventManager.startListening();
+			const file = makeTFile('deleted.md', 100);
+
+			eventCallbacks.delete(file);
+
+			expect(eventManager.getDirtyFiles()).toEqual([]);
+		});
+
+		it('ignores rename events when pull-only mode is enabled', () => {
+			eventManager.setPullOnlyModeCheck(() => true);
+			eventManager.startListening();
+			const file = makeTFile('renamed.md', 100);
+
+			eventCallbacks.rename(file, 'old.md');
+
+			expect(eventManager.getDirtyFiles()).toEqual([]);
+		});
+
+		it('tracks changes normally when pull-only mode is disabled', () => {
+			eventManager.setPullOnlyModeCheck(() => false);
+			eventManager.startListening();
+			const file = makeTFile('test.md', 100);
+
+			eventCallbacks.modify(file);
+
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: 'test.md', type: LocalChangeType.MODIFY },
+			]);
+		});
+
+		it('respects dynamic pull-only mode toggle', () => {
+			let pullOnlyEnabled = false;
+			eventManager.setPullOnlyModeCheck(() => pullOnlyEnabled);
+			eventManager.startListening();
+
+			// First change tracked (pull-only off)
+			eventCallbacks.modify(makeTFile('first.md', 100));
+			expect(eventManager.getDirtyFiles()).toHaveLength(1);
+
+			eventManager.clearDirtyFiles();
+
+			// Enable pull-only mode
+			pullOnlyEnabled = true;
+
+			// Second change ignored (pull-only on)
+			eventCallbacks.modify(makeTFile('second.md', 100));
+			expect(eventManager.getDirtyFiles()).toEqual([]);
+		});
+	});
+
 	describe('TFolder events', () => {
 		it('adds folder delete events to dirty files', () => {
 			eventManager.startListening();
