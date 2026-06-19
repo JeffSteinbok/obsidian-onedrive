@@ -493,4 +493,11 @@ describe('OneDriveClient', () => {
 			await expect(client.resolveSharedFolderPath('drive-123', 'item-456')).rejects.toThrow('Failed to resolve shared folder: not found');
 		});
 	});
+
+	describe('getClient', () => {
+		it('should return the Graph client instance', () => {
+			const graphClient = client.getClient();
+			expect(graphClient).toBe(mockClient);
+		});
+	});
 });
