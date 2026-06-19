@@ -82,8 +82,7 @@ import {
 	getParentPath,
 	stripGraphPrefix,
 	shouldSyncVaultPath,
-	getFixedSyncableConfigPaths,
-	getInstalledPluginSyncPaths,
+	getAllSyncableConfigPaths,
 } from '../utils/pathUtils';
 import { ProgressNotice } from '../ui/progressNotice';
 import { t } from '../i18n';
@@ -448,16 +447,11 @@ export class SyncEngine {
 		const changes: LocalChange[] = [];
 
 		// Gather all syncable config paths (fixed + installed plugins)
-		const fixedPaths = getFixedSyncableConfigPaths(
+		const allConfigPaths = await getAllSyncableConfigPaths(
 			this.configDir,
-			this.shouldSyncPath(`${this.configDir}/community-plugins.json`),
-			this.shouldSyncPath(`${this.configDir}/app.json`)
+			adapter,
+			this.shouldSyncPath.bind(this)
 		);
-		const pluginPaths = this.shouldSyncPath(`${this.configDir}/community-plugins.json`)
-			? await getInstalledPluginSyncPaths(this.configDir, adapter)
-			: [];
-
-		const allConfigPaths = [...fixedPaths, ...pluginPaths];
 
 		const checkedPaths = new Set<string>();
 
@@ -741,16 +735,11 @@ export class SyncEngine {
 
 		// Also enumerate config files that vault.getFiles() misses
 		const adapter = this.app.vault.adapter;
-		const configPaths = [
-			...getFixedSyncableConfigPaths(
-				this.configDir,
-				this.shouldSyncPath(`${this.configDir}/community-plugins.json`),
-				this.shouldSyncPath(`${this.configDir}/app.json`)
-			),
-			...(this.shouldSyncPath(`${this.configDir}/community-plugins.json`)
-				? await getInstalledPluginSyncPaths(this.configDir, adapter)
-				: []),
-		];
+		const configPaths = await getAllSyncableConfigPaths(
+			this.configDir,
+			adapter,
+			this.shouldSyncPath.bind(this)
+		);
 		for (const path of configPaths) {
 			if (remoteCoveredPaths.has(path)) continue;
 			if (!this.shouldSyncPath(path)) continue;
@@ -1722,16 +1711,11 @@ export class SyncEngine {
 
 			// Config files aren't in vault.getFiles() — add them via adapter
 			const adapter = this.app.vault.adapter;
-			const configPaths = [
-				...getFixedSyncableConfigPaths(
-					this.configDir,
-					this.shouldSyncPath(`${this.configDir}/community-plugins.json`),
-					this.shouldSyncPath(`${this.configDir}/app.json`)
-				),
-				...(this.shouldSyncPath(`${this.configDir}/community-plugins.json`)
-					? await getInstalledPluginSyncPaths(this.configDir, adapter)
-					: []),
-			];
+			const configPaths = await getAllSyncableConfigPaths(
+				this.configDir,
+				adapter,
+				this.shouldSyncPath.bind(this)
+			);
 			for (const path of configPaths) {
 				if (localByPath.has(path)) continue;
 				if (!this.shouldSyncPath(path)) continue;

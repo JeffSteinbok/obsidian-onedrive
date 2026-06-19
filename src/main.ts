@@ -459,10 +459,15 @@ export default class OneDriveSyncPlugin extends Plugin {
 			// Wait for authentication to complete
 			const tokenResponse = await tokenPromise;
 
+			// Validate refresh_token is present (required for token refresh)
+			if (!tokenResponse.refresh_token) {
+				throw new Error('OAuth response missing refresh_token');
+			}
+
 			// Store tokens
 			this.tokenStorage.setTokens(
 				tokenResponse.access_token,
-				tokenResponse.refresh_token!,
+				tokenResponse.refresh_token,
 				tokenResponse.expires_in
 			);
 

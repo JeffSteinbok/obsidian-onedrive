@@ -1,3 +1,30 @@
+/**
+ * Internationalization (i18n) Module
+ *
+ * Provides localized strings for the OneDrive Sync plugin UI. Uses Obsidian's
+ * language detection to select the appropriate locale, falling back to English.
+ *
+ * ## Adding a New Locale
+ *
+ * 1. Create `src/i18n/locales/<code>.ts` (e.g., `de.ts` for German)
+ * 2. Export a `LocaleStrings` object with all required keys (copy `en.ts` as template)
+ * 3. Import and register in the `locales` map below
+ *
+ * ## Usage
+ *
+ * ```typescript
+ * import { t } from '../i18n';
+ *
+ * // Simple string
+ * const message = t('notices.sync.started');
+ *
+ * // With interpolation
+ * const progress = t('notices.sync.progress', { current: 5, total: 10 });
+ * ```
+ *
+ * @module i18n
+ */
+
 import { getLanguage } from 'obsidian';
 import { en, type LocaleStrings } from './locales/en';
 import { zhCn } from './locales/zh-cn';
