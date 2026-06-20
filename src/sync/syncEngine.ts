@@ -486,9 +486,7 @@ export class SyncEngine {
 			}
 		};
 
-		if (root instanceof TFolder) {
-			visit(root);
-		}
+		visit(root);
 
 		return discovered;
 	}
