@@ -430,11 +430,67 @@ export class SyncEngine {
 		for (const change of folderChanges) {
 			logger.debug(`  Local folder: ${change.type} ${change.path}`);
 		}
+
+		const discoveredFolderCreates = this.discoverUntrackedLocalFolders(ignoreMatchers, folderChanges);
+		if (discoveredFolderCreates.length > 0) {
+			folderChanges.push(...discoveredFolderCreates);
+			logger.info(
+				`Local folder discovery: queued ${discoveredFolderCreates.length} existing untracked folder creates`
+			);
+			for (const change of discoveredFolderCreates) {
+				logger.debug(`  Local folder discovered: ${change.type} ${change.path}`);
+			}
+		}
+
 		return {
 			localChanges,
 			folderChanges,
 			ignoredCount: ignoredLocalPaths.length,
 		};
+	}
+
+	private discoverUntrackedLocalFolders(
+		ignoreMatchers: RegExp[],
+		existingFolderChanges: LocalChange[]
+	): LocalChange[] {
+		const pendingFolderPaths = new Set(existingFolderChanges.map((change) => change.path));
+		const configDir = normalizePath(this.configDir).replace(/\/+$/g, '');
+		const discovered: LocalChange[] = [];
+		const root = this.app.vault.getRoot();
+
+		const visit = (folder: TFolder): void => {
+			for (const child of folder.children) {
+				if (!(child instanceof TFolder)) continue;
+
+				const path = normalizePath(child.path);
+				if (!path) {
+					visit(child);
+					continue;
+				}
+
+				if (path === configDir || path.startsWith(`${configDir}/`)) {
+					continue;
+				}
+
+				if (
+					!pendingFolderPaths.has(path) &&
+					!this.stateManager.getFolderIdByPath(path) &&
+					this.shouldSyncPath(path) &&
+					!this.shouldIgnorePath(path, ignoreMatchers)
+				) {
+					discovered.push({ path, type: LocalChangeType.FOLDER_CREATE });
+					pendingFolderPaths.add(path);
+				}
+
+				visit(child);
+			}
+		};
+
+		if (root instanceof TFolder) {
+			visit(root);
+		}
+
+		return discovered;
 	}
 
 	/**
