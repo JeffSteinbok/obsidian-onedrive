@@ -454,17 +454,16 @@ export class SyncEngine {
 		existingFolderChanges: LocalChange[]
 	): LocalChange[] {
 		const pendingFolderPaths = new Set(existingFolderChanges.map((change) => change.path));
-		const configDir = normalizePath(this.configDir).replace(/\/+$/g, '');
+		const configDir = normalizePath(this.configDir).replace(/\/+$/, '');
 		const discovered: LocalChange[] = [];
 		const root = this.app.vault.getRoot();
 
-		const visit = (folder: TFolder): void => {
+		const visitFolder = (folder: TFolder): void => {
 			for (const child of folder.children) {
 				if (!(child instanceof TFolder)) continue;
 
 				const path = normalizePath(child.path);
 				if (!path) {
-					visit(child);
 					continue;
 				}
 
@@ -482,11 +481,11 @@ export class SyncEngine {
 					pendingFolderPaths.add(path);
 				}
 
-				visit(child);
+				visitFolder(child);
 			}
 		};
 
-		visit(root);
+		visitFolder(root);
 
 		return discovered;
 	}
