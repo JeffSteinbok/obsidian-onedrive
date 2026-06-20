@@ -45,7 +45,7 @@ vi.mock('obsidian', async () => {
 
 import { Notice, TFile } from 'obsidian';
 import '../../setup';
-import { mockApp, makeTFile } from '../../setup';
+import { mockApp, makeTFile, makeTFolder } from '../../setup';
 import { SyncEngine } from '../../../src/sync/syncEngine';
 import { SyncStateManager } from '../../../src/sync/syncState';
 import { ConflictResolver } from '../../../src/sync/conflictResolver';
@@ -249,6 +249,37 @@ describe('SyncEngine', () => {
 
 		expect(mockFileOps.deleteFile).toHaveBeenCalledWith('remote-old-id');
 		expect(stateManager.getFileState('old.md')).toBeUndefined();
+	});
+
+	it('creates remote folders for existing untracked empty folders', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setDeltaLink('prev-delta');
+		const root = makeTFolder('');
+		const notesFolder = makeTFolder('notes');
+		const childFolder = makeTFolder('notes/empty-child');
+		notesFolder.children = [childFolder];
+		root.children = [notesFolder];
+		mockApp.vault.getRoot.mockReturnValue(root);
+
+		mockFileOps.createFolder = vi
+			.fn()
+			.mockImplementation(async (remotePath: string) =>
+				makeRemoteItem({
+					id: `${remotePath}-id`,
+					name: remotePath.split('/').pop() ?? remotePath,
+					folder: { childCount: 0 },
+				})
+			);
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.createFolder).toHaveBeenCalledTimes(2);
+		expect(mockFileOps.createFolder).toHaveBeenNthCalledWith(1, '/remote/root/notes');
+		expect(mockFileOps.createFolder).toHaveBeenNthCalledWith(2, '/remote/root/notes/empty-child');
+		expect(stateManager.getFolderIdByPath('notes')).toBe('/remote/root/notes-id');
+		expect(stateManager.getFolderIdByPath('notes/empty-child')).toBe(
+			'/remote/root/notes/empty-child-id'
+		);
 	});
 
 	it('handles local renames by using atomic move API', async () => {
