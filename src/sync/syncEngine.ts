@@ -458,14 +458,11 @@ export class SyncEngine {
 		const discovered: LocalChange[] = [];
 		const root = this.app.vault.getRoot();
 
-		const visitFolder = (folder: TFolder): void => {
+		const traverseFolderTree = (folder: TFolder): void => {
 			for (const child of folder.children) {
 				if (!(child instanceof TFolder)) continue;
 
 				const path = normalizePath(child.path);
-				if (!path) {
-					continue;
-				}
 
 				if (path === configDir || path.startsWith(`${configDir}/`)) {
 					continue;
@@ -481,11 +478,11 @@ export class SyncEngine {
 					pendingFolderPaths.add(path);
 				}
 
-				visitFolder(child);
+				traverseFolderTree(child);
 			}
 		};
 
-		visitFolder(root);
+		traverseFolderTree(root);
 
 		return discovered;
 	}
