@@ -449,6 +449,35 @@ describe('EventManager', () => {
 			]);
 		});
 
+		it('emits FOLDER_RENAME for a tracked folder rename', () => {
+			eventManager.startListening();
+			eventManager.markInitialSyncDone();
+			// Pre-populate the folder state so it's tracked
+			stateManager.setFolderState('folder-id-123', 'old-folder');
+
+			const renamed = makeTFolder('new-folder');
+			eventCallbacks.rename(renamed, 'old-folder');
+
+			const dirty = eventManager.getDirtyFiles();
+			expect(dirty).toEqual([
+				{ path: 'new-folder', type: LocalChangeType.FOLDER_RENAME, oldPath: 'old-folder' },
+			]);
+		});
+
+		it('emits FOLDER_CREATE for an untracked folder rename', () => {
+			eventManager.startListening();
+			eventManager.markInitialSyncDone();
+			// No folder state for old-folder — simulates a new folder being renamed
+
+			const renamed = makeTFolder('MyFolder');
+			eventCallbacks.rename(renamed, 'Untitled');
+
+			const dirty = eventManager.getDirtyFiles();
+			expect(dirty).toEqual([
+				{ path: 'MyFolder', type: LocalChangeType.FOLDER_CREATE },
+			]);
+		});
+
 		it('schedules sync on folder delete', async () => {
 			eventManager.startListening();
 			eventCallbacks.delete(makeTFolder('deleted-folder'));

@@ -119,7 +119,7 @@ function hashContent(data: Uint8Array): string {
 
 describe('SyncEngine', () => {
 	let syncEngine: SyncEngine;
-	let mockFileOps: { uploadFile: Mock; downloadFile: Mock; deleteFile: Mock };
+	let mockFileOps: { uploadFile: Mock; downloadFile: Mock; deleteFile: Mock; moveFile: Mock; createFolder: Mock };
 	let mockClient: { getDelta: Mock; isSharedDrive: Mock };
 	let stateManager: SyncStateManager;
 	let conflictResolver: ConflictResolver;
@@ -163,6 +163,13 @@ describe('SyncEngine', () => {
 					id: 'moved-id',
 					name: 'moved.md',
 					file: { mimeType: 'text/plain', hashes: { quickXorHash: 'hash123' } },
+				})
+			),
+			createFolder: vi.fn().mockResolvedValue(
+				makeRemoteItem({
+					id: 'folder-id',
+					name: 'folder',
+					folder: {},
 				})
 			),
 		};
@@ -1109,6 +1116,61 @@ describe('SyncEngine', () => {
 		}
 
 		await syncPromise;
+	});
+
+	it('handles folder renames using atomic move API', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFolderState('old-folder-id', 'old-folder');
+		stateManager.setFileState('old-folder/test.md', {
+			path: 'old-folder/test.md',
+			localMtime: 1,
+			remoteHash: 'hash',
+			size: 100,
+			remoteModifiedTime: 1,
+			oneDriveId: 'file-id',
+		});
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'new-folder', type: LocalChangeType.FOLDER_RENAME, oldPath: 'old-folder' },
+		]);
+		mockFileOps.moveFile.mockResolvedValue(
+			makeRemoteItem({
+				id: 'old-folder-id',
+				name: 'new-folder',
+				folder: {},
+			})
+		);
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.moveFile).toHaveBeenCalledWith('old-folder-id', '/remote/root/new-folder');
+		// Old folder state should be removed
+		expect(stateManager.getFolderIdByPath('old-folder')).toBeUndefined();
+		// New folder state should be set
+		expect(stateManager.getFolderIdByPath('new-folder')).toBe('old-folder-id');
+		// Child file state should be updated to new path
+		expect(stateManager.getFileState('old-folder/test.md')).toBeUndefined();
+		expect(stateManager.getFileState('new-folder/test.md')).toBeDefined();
+	});
+
+	it('creates folder at new path when folder rename has no tracked state', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		// No folder state for 'untitled' - simulates untracked folder
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'MyFolder', type: LocalChangeType.FOLDER_RENAME, oldPath: 'Untitled' },
+		]);
+		mockFileOps.createFolder.mockResolvedValue(
+			makeRemoteItem({
+				id: 'new-folder-id',
+				name: 'MyFolder',
+				folder: {},
+			})
+		);
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.moveFile).not.toHaveBeenCalled();
+		expect(mockFileOps.createFolder).toHaveBeenCalledWith('/remote/root/MyFolder');
+		expect(stateManager.getFolderIdByPath('MyFolder')).toBe('new-folder-id');
 	});
 });
 

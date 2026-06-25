@@ -200,12 +200,23 @@ export class EventManager {
 					});
 					this.scheduleSync();
 				} else if (file instanceof TFolder && !this.shouldIgnoreEvent(file.path)) {
-					// Update any pending folder create to use the new name
 					logger.debug(`Vault folder rename event: ${oldPath} → ${file.path}`);
 					if (this.dirtyFiles.has(oldPath)) {
 						this.dirtyFiles.delete(oldPath);
 					}
-					this.dirtyFiles.set(file.path, { path: file.path, type: LocalChangeType.FOLDER_CREATE });
+					// Check if this is a rename of an existing tracked folder vs a new folder
+					const folderId = this.stateManager.getFolderIdByPath(oldPath);
+					if (folderId) {
+						// This is a rename of an existing synced folder — use FOLDER_RENAME
+						this.dirtyFiles.set(file.path, {
+							path: file.path,
+							type: LocalChangeType.FOLDER_RENAME,
+							oldPath,
+						});
+					} else {
+						// New folder being renamed (e.g., "Untitled" → real name) — treat as create
+						this.dirtyFiles.set(file.path, { path: file.path, type: LocalChangeType.FOLDER_CREATE });
+					}
 					this.scheduleSync();
 				}
 			})

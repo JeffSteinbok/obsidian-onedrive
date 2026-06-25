@@ -117,6 +117,7 @@ export enum LocalChangeType {
 	RENAME = 'rename',
 	FOLDER_CREATE = 'folder-create',
 	FOLDER_DELETE = 'folder-delete',
+	FOLDER_RENAME = 'folder-rename',
 }
 
 export interface LocalChange {

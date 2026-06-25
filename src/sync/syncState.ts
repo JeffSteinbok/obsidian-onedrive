@@ -203,6 +203,14 @@ export class SyncStateManager {
 	}
 
 	/**
+	 * Return all folder states as [id, path] entries.
+	 * Used to update child folder paths after a parent folder rename.
+	 */
+	getAllFolderStates(): IterableIterator<[string, string]> {
+		return this.state.folderStates.entries();
+	}
+
+	/**
 	 * Return tracked file states whose path lives under the given folder path.
 	 * Matches direct children and any deeper descendants. Used to expand a
 	 * single folder-delete delta entry into per-file delete operations.

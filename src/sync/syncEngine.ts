@@ -402,12 +402,13 @@ export class SyncEngine {
 			// Separate folder operations from file operations
 			if (
 				change.type === LocalChangeType.FOLDER_CREATE ||
-				change.type === LocalChangeType.FOLDER_DELETE
-			) {
-				folderChanges.push(change);
-				return false;
-			}
-			return true;
+					change.type === LocalChangeType.FOLDER_DELETE ||
+					change.type === LocalChangeType.FOLDER_RENAME
+				) {
+					folderChanges.push(change);
+					return false;
+				}
+				return true;
 		});
 		if (ignoredLocalPaths.length > 0) {
 			this.eventManager.removeDirtyPaths(ignoredLocalPaths);
@@ -1527,8 +1528,8 @@ export class SyncEngine {
 	}
 
 	/**
-	 * Process explicit folder create/delete events from the vault.
-	 * Creates or deletes remote folders to match user intent.
+	 * Process explicit folder create/delete/rename events from the vault.
+	 * Creates, deletes, or renames remote folders to match user intent.
 	 */
 	private async processFolderChanges(folderChanges: LocalChange[]): Promise<void> {
 		if (folderChanges.length === 0) return;
@@ -1540,6 +1541,43 @@ export class SyncEngine {
 		const deletes = folderChanges
 			.filter((c) => c.type === LocalChangeType.FOLDER_DELETE)
 			.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+		const renames = folderChanges
+			.filter((c) => c.type === LocalChangeType.FOLDER_RENAME && c.oldPath);
+
+		// Process folder renames first — they might affect child file paths
+		for (const change of renames) {
+			const oldPath = change.oldPath!;
+			const folderId = this.stateManager.getFolderIdByPath(oldPath);
+			if (folderId) {
+				try {
+					const remotePath = this.vaultPathToRemotePath(change.path);
+					logger.info(`Renaming remote folder: ${oldPath} → ${change.path}`);
+					const movedItem = await this.fileOps.moveFile(folderId, remotePath);
+					// Update folder state with new path
+					this.stateManager.removeFolderStateByPath(oldPath);
+					this.stateManager.setFolderState(movedItem.id, change.path);
+					// Update file states for all children under the old path
+					this.updateChildPathsAfterFolderRename(oldPath, change.path);
+					logger.info(`Renamed remote folder: ${oldPath} → ${change.path}`);
+				} catch (error) {
+					logger.error(`Failed to rename remote folder ${oldPath} → ${change.path}:`, error);
+				}
+			} else {
+				// Folder not tracked — may need to create it at the new path
+				logger.warn(
+					`Folder rename: no tracked state for ${oldPath} — ` +
+					`creating folder at new path ${change.path} instead`
+				);
+				try {
+					const remotePath = this.vaultPathToRemotePath(change.path);
+					const item = await this.fileOps.createFolder(remotePath);
+					this.stateManager.setFolderState(item.id, change.path);
+					logger.info(`Created remote folder (from rename): ${change.path}`);
+				} catch (error) {
+					logger.warn(`Failed to create remote folder ${change.path}:`, error);
+				}
+			}
+		}
 
 		for (const change of creates) {
 			try {
@@ -1575,6 +1613,42 @@ export class SyncEngine {
 					);
 				}
 			}
+		}
+	}
+
+	/**
+	 * After renaming a folder on OneDrive, update all tracked file states
+	 * that were under the old folder path to use the new folder path.
+	 * This keeps local state in sync so subsequent syncs don't create duplicates.
+	 */
+	private updateChildPathsAfterFolderRename(oldFolderPath: string, newFolderPath: string): void {
+		const oldPrefix = oldFolderPath.endsWith('/') ? oldFolderPath : `${oldFolderPath}/`;
+		const newPrefix = newFolderPath.endsWith('/') ? newFolderPath : `${newFolderPath}/`;
+
+		// Update file states
+		const childFiles = this.stateManager.getFileStatesUnderFolder(oldFolderPath);
+		for (const { path, state } of childFiles) {
+			const newPath = newPrefix + path.slice(oldPrefix.length);
+			this.stateManager.removeFileState(path);
+			this.stateManager.setFileState(newPath, {
+				...state,
+				path: newPath,
+			});
+			logger.debug(`Updated file state path: ${path} → ${newPath}`);
+		}
+
+		// Update child folder states - collect first to avoid mutating while iterating
+		const folderUpdates: Array<{ id: string; oldPath: string; newPath: string }> = [];
+		for (const [id, folderPath] of this.stateManager.getAllFolderStates()) {
+			if (folderPath.startsWith(oldPrefix)) {
+				const newPath = newPrefix + folderPath.slice(oldPrefix.length);
+				folderUpdates.push({ id, oldPath: folderPath, newPath });
+			}
+		}
+		for (const { id, oldPath, newPath } of folderUpdates) {
+			this.stateManager.removeFolderState(id);
+			this.stateManager.setFolderState(id, newPath);
+			logger.debug(`Updated folder state path: ${oldPath} → ${newPath}`);
 		}
 	}
 
