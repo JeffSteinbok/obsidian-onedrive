@@ -1153,24 +1153,48 @@ describe('SyncEngine', () => {
 	});
 
 	it('creates folder at new path when folder rename has no tracked state', async () => {
-		stateManager.setLastSyncTime(Date.now());
+		// Create fresh stateManager to ensure isolation
+		const freshStateManager = new SyncStateManager();
+		freshStateManager.setLastSyncTime(Date.now());
+		
+		// Reset getRoot to return empty folder tree (may be polluted by previous tests)
+		const emptyRoot = { path: '', children: [] };
+		mockApp.vault.getRoot.mockReturnValue(emptyRoot);
+		
 		// No folder state for 'untitled' - simulates untracked folder
 		mockEventManager.getDirtyFiles.mockReturnValue([
 			{ path: 'MyFolder', type: LocalChangeType.FOLDER_RENAME, oldPath: 'Untitled' },
 		]);
-		mockFileOps.createFolder.mockResolvedValue(
+		// Reset and re-mock createFolder to capture the returned item
+		const createFolderMock = vi.fn().mockResolvedValue(
 			makeRemoteItem({
 				id: 'new-folder-id',
 				name: 'MyFolder',
 				folder: {},
 			})
 		);
+		const testFileOps = {
+			...mockFileOps,
+			createFolder: createFolderMock,
+		};
 
-		await syncEngine.performSync();
+		// Create a new SyncEngine with fresh state
+		const freshSyncEngine = new SyncEngine(
+			mockApp as any,
+			testFileOps as any,
+			mockClient as any,
+			freshStateManager,
+			conflictResolver,
+			mockEventManager as any,
+			'.obsidian',
+			{ remoteRoot: '/remote/root' }
+		);
+
+		await freshSyncEngine.performSync();
 
 		expect(mockFileOps.moveFile).not.toHaveBeenCalled();
-		expect(mockFileOps.createFolder).toHaveBeenCalledWith('/remote/root/MyFolder');
-		expect(stateManager.getFolderIdByPath('MyFolder')).toBe('new-folder-id');
+		expect(createFolderMock).toHaveBeenCalledWith('/remote/root/MyFolder');
+		expect(freshStateManager.getFolderIdByPath('MyFolder')).toBe('new-folder-id');
 	});
 });
 
