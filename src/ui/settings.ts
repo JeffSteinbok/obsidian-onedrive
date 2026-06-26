@@ -373,8 +373,9 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					});
 				if (
 					!isConnected ||
-					(this.plugin.settings.accessMode !== OneDriveAccessMode.APP_FOLDER &&
-						!this.plugin.settings.remotePath)
+					(this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER
+						? this.plugin.settings.appFolderSubpathConfirmed !== true
+						: !this.plugin.settings.remotePath)
 				) {
 					btn.setDisabled(true);
 					if (!isConnected) {

@@ -308,6 +308,7 @@ export interface PluginSettings {
 	// Advanced
 	remotePath?: string; // Custom path (only used with Full Access mode)
 	appFolderSubpath?: string; // Subfolder within App Folder for multi-vault isolation
+	appFolderSubpathConfirmed?: boolean; // Require explicit subfolder/root confirmation before first App Folder sync
 	remoteDriveId?: string; // Drive ID for shared/mounted folders
 	remoteItemId?: string; // Item ID of the root folder on the remote drive
 	remoteRootName?: string; // Display name of the root folder on the remote drive
@@ -342,6 +343,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	// Advanced
 	remotePath: undefined, // Only used with Full Access mode
 	appFolderSubpath: undefined, // Subfolder within App Folder (empty = root)
+	appFolderSubpathConfirmed: false, // Must be explicitly confirmed on first App Folder setup
 	logLevel: 'off',
 	largeDeleteThreshold: 25,
 

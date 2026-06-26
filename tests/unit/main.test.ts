@@ -288,6 +288,21 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.conflictResolution).toBe(DEFAULT_SETTINGS.conflictResolution);
 	});
 
+	it('loadSettings sets appFolderSubpathConfirmed for existing connected app-folder users', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			connectedUser: {
+				id: '1',
+				displayName: 'Test User',
+				userPrincipalName: 'test@test.com',
+			},
+		});
+
+		await plugin.loadSettings();
+
+		expect(plugin.settings.appFolderSubpathConfirmed).toBe(true);
+	});
+
 	it('saveSettings persists sync state data (tokens stored in SecretStorage)', async () => {
 		const savedState = { lastSyncTime: 123, fileStates: [['note.md', { path: 'note.md' }]] };
 		mocks.syncStateManager.prepareForSave.mockReturnValue(savedState as any);
@@ -343,11 +358,26 @@ describe('OneDriveSyncPlugin', () => {
 		expect(mocks.eventManager.triggerManualSync).toHaveBeenCalledTimes(1);
 	});
 
-	it('triggerManualSync works in app-folder mode without a remote path', async () => {
+	it('triggerManualSync blocks app-folder sync until subfolder/root selection is confirmed', async () => {
 		mocks.tokenStorage.hasTokens.mockReturnValue(true);
 		(plugin as any).loadData = vi.fn().mockResolvedValue({
 			accessMode: OneDriveAccessMode.APP_FOLDER,
 			remotePath: undefined,
+			appFolderSubpathConfirmed: false,
+		});
+
+		await plugin.onload();
+		await plugin.triggerManualSync();
+
+		expect(mocks.eventManager.triggerManualSync).not.toHaveBeenCalled();
+	});
+
+	it('triggerManualSync works in app-folder mode after subfolder/root selection is confirmed', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			remotePath: undefined,
+			appFolderSubpathConfirmed: true,
 		});
 
 		await plugin.onload();
@@ -461,6 +491,7 @@ describe('OneDriveSyncPlugin', () => {
 		(plugin as any).loadData = vi.fn().mockResolvedValue({
 			accessMode: OneDriveAccessMode.APP_FOLDER,
 			appFolderSubpath: 'Test1',
+			appFolderSubpathConfirmed: true,
 		});
 
 		await plugin.onload();
@@ -479,6 +510,7 @@ describe('OneDriveSyncPlugin', () => {
 		(plugin as any).loadData = vi.fn().mockResolvedValue({
 			accessMode: OneDriveAccessMode.APP_FOLDER,
 			appFolderSubpath: undefined,
+			appFolderSubpathConfirmed: true,
 		});
 
 		await plugin.onload();

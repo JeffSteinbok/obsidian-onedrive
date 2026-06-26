@@ -478,9 +478,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 			await this.initializeAuthenticatedComponents();
 
 			// Start event listeners and periodic sync (not started in onload when no tokens exist)
-			if (this.eventManager) {
+			if (this.eventManager && this.isSyncConfigured()) {
 				this.eventManager.startListening();
 				this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
+			} else if (this.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
+				new Notice(t('notices.sync.selectFolderFirst'));
 			}
 
 			// Update status bar
@@ -548,7 +550,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 */
 	private isSyncConfigured(): boolean {
 		if (this.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
-			return true; // App folder always has a fixed path
+			return this.settings.appFolderSubpathConfirmed === true;
 		}
 		return !!this.settings.remotePath; // Full access needs a folder selected
 	}
@@ -768,7 +770,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		if (this.tokenStorage.hasTokens()) {
 			await this.initializeAuthenticatedComponents();
 
-			if (this.eventManager) {
+			if (this.eventManager && this.isSyncConfigured()) {
 				this.eventManager.startListening();
 				this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
 			}
@@ -802,6 +804,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		// Store the new subpath (strip leading/trailing slashes)
 		this.settings.appFolderSubpath = subpath.replace(/^\/+|\/+$/g, '');
+		this.settings.appFolderSubpathConfirmed = true;
 
 		// Clear sync state when the target folder changes
 		if (oldSubpath !== this.settings.appFolderSubpath) {
@@ -815,7 +818,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		if (this.tokenStorage.hasTokens()) {
 			await this.initializeAuthenticatedComponents();
 
-			if (this.eventManager) {
+			if (this.eventManager && this.isSyncConfigured()) {
 				this.eventManager.startListening();
 				this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
 			}
@@ -976,10 +979,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 * Load settings from disk
 	 */
 	async loadSettings() {
+		const loaded = ((await this.loadData()) as Partial<PluginSettings>) ?? {};
 		this.settings = Object.assign(
 			{},
 			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<PluginSettings>
+			loaded
 		);
 
 		// Migrate legacy enableDebugLogging boolean → logLevel string
@@ -989,6 +993,18 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.settings.logLevel = 'debug';
 			}
 			delete raw['enableDebugLogging'];
+		}
+
+		// Migration: existing connected users in App Folder mode should keep syncing
+		// without requiring a one-time re-selection after upgrade.
+		if (this.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
+			if (typeof loaded.appFolderSubpathConfirmed === 'boolean') {
+				this.settings.appFolderSubpathConfirmed = loaded.appFolderSubpathConfirmed;
+			} else {
+				this.settings.appFolderSubpathConfirmed = !!(
+					this.settings.connectedUser || this.settings.appFolderSubpath
+				);
+			}
 		}
 	}
 
