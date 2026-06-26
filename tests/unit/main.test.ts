@@ -288,7 +288,7 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.conflictResolution).toBe(DEFAULT_SETTINGS.conflictResolution);
 	});
 
-	it('loadSettings migrates existing connected app-folder users as configured', async () => {
+	it('loadSettings sets appFolderSubpathConfirmed for existing connected app-folder users', async () => {
 		(plugin as any).loadData = vi.fn().mockResolvedValue({
 			accessMode: OneDriveAccessMode.APP_FOLDER,
 			connectedUser: {

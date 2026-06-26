@@ -1002,7 +1002,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.settings.appFolderSubpathConfirmed = loaded.appFolderSubpathConfirmed;
 			} else {
 				this.settings.appFolderSubpathConfirmed = !!(
-					loaded.connectedUser || loaded.appFolderSubpath
+					this.settings.connectedUser || this.settings.appFolderSubpath
 				);
 			}
 		}
