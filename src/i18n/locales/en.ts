@@ -72,6 +72,8 @@ export const en = {
 				'OneDrive sync: disabled. Investigate the deletes, then re-enable the plugin.',
 			cancelledAfterLargeDelete: 'OneDrive sync: cancelled. The pending deletes were not applied.',
 			noFilesToSync: 'OneDrive sync: No files to sync. Edit or create files first.',
+			deviceTypeSyncHint:
+				'Tip: "Sync app settings" and "Sync plugins" are disabled by default. Enable them only for similar device types (desktop↔desktop or mobile↔mobile), otherwise shortcuts/layout/plugins can conflict.',
 			file: 'file',
 			files: 'files',
 			conflict: 'conflict',

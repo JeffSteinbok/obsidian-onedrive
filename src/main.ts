@@ -761,6 +761,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Clear stale sync state when the target folder changes
 		if (oldPath !== selection.path || oldDriveId !== this.settings.remoteDriveId) {
 			this.syncStateManager.clearState();
+			this.resetDeviceSpecificSyncSettings();
 			logger.info('Cleared sync state due to remote folder change');
 		}
 
@@ -781,6 +782,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 				path: selection.path,
 			})
 		);
+		new Notice(t('notices.sync.deviceTypeSyncHint'));
 	}
 
 	/**
@@ -809,6 +811,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Clear sync state when the target folder changes
 		if (oldSubpath !== this.settings.appFolderSubpath) {
 			this.syncStateManager.clearState();
+			this.resetDeviceSpecificSyncSettings();
 			logger.info('Cleared sync state due to App Folder subpath change');
 		}
 
@@ -826,6 +829,13 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		const displayPath = this.settings.appFolderSubpath || t('settings.syncFolder.appFolderRoot');
 		new Notice(t('notices.sync.folderSet', { path: displayPath }));
+		new Notice(t('notices.sync.deviceTypeSyncHint'));
+	}
+
+	private resetDeviceSpecificSyncSettings(): void {
+		// Folder-change flows call saveSettings() after applying this reset.
+		this.settings.syncAppSettings = false;
+		this.settings.syncPluginManifests = false;
 	}
 
 	/**

@@ -335,8 +335,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	syncOnFileChange: true,
 	conflictResolution: ConflictResolutionStrategy.LAST_WRITE_WINS,
 	startupSyncDelay: 10, // 10 seconds default
-	syncAppSettings: true,
-	syncPluginManifests: true,
+	syncAppSettings: false,
+	syncPluginManifests: false,
 	syncState: undefined,
 	conflictQueue: undefined,
 
