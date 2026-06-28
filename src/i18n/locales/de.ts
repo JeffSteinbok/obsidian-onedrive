@@ -72,6 +72,8 @@ export const de = {
 				'OneDrive-Synchronisierung: deaktiviert. Untersuchen Sie die Löschungen, dann aktivieren Sie das Plugin erneut.',
 			cancelledAfterLargeDelete: 'OneDrive-Synchronisierung: abgebrochen. Die ausstehenden Löschungen wurden nicht angewendet.',
 			noFilesToSync: 'OneDrive-Synchronisierung: Keine Dateien zum Synchronisieren. Erst Dateien bearbeiten oder erstellen.',
+			deviceTypeSyncHint:
+				'Hinweis: "App-Einstellungen synchronisieren" und "Plugins synchronisieren" sind standardmäßig deaktiviert. Aktivieren Sie sie nur für ähnliche Gerätetypen (Desktop↔Desktop oder Mobil↔Mobil), sonst können Konflikte bei Shortcuts/Layout/Plugins auftreten.',
 			file: 'Datei',
 			files: 'Dateien',
 			conflict: 'Konflikt',

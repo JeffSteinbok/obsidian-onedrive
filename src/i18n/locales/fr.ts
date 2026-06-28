@@ -72,6 +72,8 @@ export const fr = {
 				'Synchronisation OneDrive: désactivée. Examinez les suppressions, puis réactivez le plugin.',
 			cancelledAfterLargeDelete: 'Synchronisation OneDrive: annulée. Les suppressions en attente n\'ont pas été appliquées.',
 			noFilesToSync: 'Synchronisation OneDrive: Aucun fichier à synchroniser. Modifiez ou créez d\'abord des fichiers.',
+			deviceTypeSyncHint:
+				'Astuce : « Synchroniser les paramètres de l’application » et « Synchroniser les plugins » sont désactivés par défaut. Activez-les uniquement entre types d’appareils similaires (bureau↔bureau ou mobile↔mobile), sinon des conflits de raccourcis/mise en page/plugins peuvent survenir.',
 			file: 'fichier',
 			files: 'fichiers',
 			conflict: 'conflit',
