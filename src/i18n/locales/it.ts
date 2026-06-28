@@ -72,6 +72,8 @@ export const it = {
 				'Sincronizzazione OneDrive: disabilitata. Analizza le eliminazioni, poi riabilita il plugin.',
 			cancelledAfterLargeDelete: 'Sincronizzazione OneDrive: annullata. Le eliminazioni in sospeso non sono state applicate.',
 			noFilesToSync: 'Sincronizzazione OneDrive: Nessun file da sincronizzare. Modifica o crea prima dei file.',
+			deviceTypeSyncHint:
+				'Suggerimento: "Sincronizza impostazioni app" e "Sincronizza plugin" sono disattivati per impostazione predefinita. Attivali solo tra tipi di dispositivo simili (desktop↔desktop o mobile↔mobile), altrimenti scorciatoie/layout/plugin possono entrare in conflitto.',
 			file: 'file',
 			files: 'file',
 			conflict: 'conflitto',

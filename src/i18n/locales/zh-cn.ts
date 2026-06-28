@@ -73,6 +73,8 @@ export const zhCn = {
 			disabledAfterLargeDelete: 'OneDrive 同步已禁用。请检查待删除文件后再重新启用插件。',
 			cancelledAfterLargeDelete: 'OneDrive 同步已取消，待删除文件未被处理。',
 			noFilesToSync: 'OneDrive 同步：没有可同步的文件。请先编辑或创建文件。',
+			deviceTypeSyncHint:
+				'提示：“同步应用设置”和“同步插件”默认关闭。仅在相同设备类型之间（桌面↔桌面或移动↔移动）建议开启，否则可能导致快捷键、布局或插件冲突。',
 			file: '个文件',
 			files: '个文件',
 			conflict: '个冲突',

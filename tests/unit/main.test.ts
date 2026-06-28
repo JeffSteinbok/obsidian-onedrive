@@ -317,16 +317,54 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.syncState).toEqual(savedState);
 	});
 
-	it('onPluginManifestSyncChanged saves the new setting without resetting sync state', async () => {
+	it('onPluginManifestSyncChanged skips save when unchanged and saves when changed', async () => {
 		await plugin.onload();
+		expect(plugin.settings.syncPluginManifests).toBe(false);
 
-		// Default is now true, so toggle to false then back to true
 		await plugin.onPluginManifestSyncChanged(false);
+		expect(plugin.settings.syncPluginManifests).toBe(false);
+		expect((plugin as any).saveData).not.toHaveBeenCalled();
+
 		await plugin.onPluginManifestSyncChanged(true);
 
 		expect(plugin.settings.syncPluginManifests).toBe(true);
 		expect(mocks.syncStateManager.clearState).not.toHaveBeenCalled();
 		expect((plugin as any).saveData).toHaveBeenCalledWith(plugin.settings);
+	});
+
+	it('onRemoteFolderChanged resets app settings and plugin sync options for a new folder', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			syncAppSettings: true,
+			syncPluginManifests: true,
+			remotePath: '/OldVault',
+		});
+		await plugin.onload();
+
+		await plugin.onRemoteFolderChanged({
+			path: '/NewVault',
+			name: 'NewVault',
+			isShared: false,
+		});
+
+		expect(plugin.settings.syncAppSettings).toBe(false);
+		expect(plugin.settings.syncPluginManifests).toBe(false);
+		expect(mocks.syncStateManager.clearState).toHaveBeenCalled();
+	});
+
+	it('onAppFolderSubpathChanged resets app settings and plugin sync options for a new subpath', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			syncAppSettings: true,
+			syncPluginManifests: true,
+			appFolderSubpath: 'OldVault',
+		});
+		await plugin.onload();
+
+		await plugin.onAppFolderSubpathChanged('NewVault');
+
+		expect(plugin.settings.syncAppSettings).toBe(false);
+		expect(plugin.settings.syncPluginManifests).toBe(false);
+		expect(mocks.syncStateManager.clearState).toHaveBeenCalled();
 	});
 
 	it('triggerManualSync returns early when no tokens are available', async () => {
