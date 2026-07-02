@@ -24,6 +24,7 @@ interface OneDrivePlugin {
 	saveSettings(): Promise<void>;
 	onAppSettingsSyncChanged(enabled: boolean): Promise<void>;
 	onPluginManifestSyncChanged(enabled: boolean): Promise<void>;
+	onCssSnippetSyncChanged(enabled: boolean): Promise<void>;
 	resetSyncToken(): Promise<void>;
 	reconcileFromCloud(): Promise<void>;
 	authenticate(): Promise<void>;
@@ -334,6 +335,15 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncPluginManifests).onChange(async (value) => {
 					await this.plugin.onPluginManifestSyncChanged(value);
+				})
+			);
+
+		new Setting(containerEl)
+			.setName(t('settings.sync.cssSnippets.name'))
+			.setDesc(t('settings.sync.cssSnippets.desc', { configDir }))
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.syncCssSnippets).onChange(async (value) => {
+					await this.plugin.onCssSnippetSyncChanged(value);
 				})
 			);
 	}

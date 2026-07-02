@@ -324,7 +324,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 						path,
 						this.settings.syncPluginManifests,
 						this.settings.syncAppSettings,
-						this.app.vault.configDir
+						this.app.vault.configDir,
+						this.settings.syncCssSnippets
 					)
 			);
 			// Wire up pull-only mode check
@@ -386,7 +387,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 							path,
 							this.settings.syncPluginManifests,
 							this.settings.syncAppSettings,
-							this.app.vault.configDir
+							this.app.vault.configDir,
+							this.settings.syncCssSnippets
 						),
 					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
 					largeDeleteWarningHandler: (info) => this.handleLargeDeleteWarning(info),
@@ -836,6 +838,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Folder-change flows call saveSettings() after applying this reset.
 		this.settings.syncAppSettings = false;
 		this.settings.syncPluginManifests = false;
+		this.settings.syncCssSnippets = false;
 	}
 
 	/**
@@ -933,7 +936,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 							path,
 							this.settings.syncPluginManifests,
 							false,
-							this.app.vault.configDir
+							this.app.vault.configDir,
+							false
 						)
 				);
 				this.eventManager.setPullOnlyModeCheck(() => this.getExperimentalSetting('pullOnlyMode'));
@@ -1063,6 +1067,15 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		this.settings.syncAppSettings = enabled;
+		await this.saveSettings();
+	}
+
+	async onCssSnippetSyncChanged(enabled: boolean): Promise<void> {
+		if (this.settings.syncCssSnippets === enabled) {
+			return;
+		}
+
+		this.settings.syncCssSnippets = enabled;
 		await this.saveSettings();
 	}
 

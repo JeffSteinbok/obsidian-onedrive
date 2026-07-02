@@ -297,6 +297,7 @@ export interface PluginSettings {
 	startupSyncDelay: number; // Seconds (0 = disabled, 1, 10, 30)
 	syncAppSettings: boolean; // Opt-in sync for Obsidian app settings (app.json, appearance.json, hotkeys.json)
 	syncPluginManifests: boolean; // Opt-in sync for selected Obsidian plugin manifest files and binaries
+	syncCssSnippets: boolean; // Opt-in sync for CSS snippets in .obsidian/snippets/
 	syncState?: {
 		lastSyncTime: number;
 		fileStates: Array<[string, FileState]>;
@@ -337,6 +338,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	startupSyncDelay: 10, // 10 seconds default
 	syncAppSettings: false,
 	syncPluginManifests: false,
+	syncCssSnippets: false,
 	syncState: undefined,
 	conflictQueue: undefined,
 
