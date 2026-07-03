@@ -231,6 +231,10 @@ export const en = {
 				name: 'Sync plugins',
 				desc: 'Sync {{configDir}}/community-plugins.json, {{configDir}}/core-plugins.json, plugin manifests, and plugin binaries (main.js, styles.css). Does not sync plugin data files.',
 			},
+			cssSnippets: {
+				name: 'Sync CSS snippets',
+				desc: 'Sync CSS snippets from {{configDir}}/snippets/ to keep custom styles consistent across devices.',
+			},
 			status: {
 				name: 'Sync status',
 				desc: 'Status: {{status}} · Last sync: {{lastSync}} · Progress: {{progress}} · Conflicts: {{conflicts}}',

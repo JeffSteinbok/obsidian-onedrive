@@ -221,29 +221,57 @@ export async function getInstalledPluginSyncPaths(
 }
 
 /**
- * Get all syncable config paths (fixed + installed plugins).
- * Combines getFixedSyncableConfigPaths and getInstalledPluginSyncPaths
- * into a single call for convenience.
+ * Return the CSS snippet file paths for all snippets found inside
+ * `<configDir>/snippets/`.
+ * Requires the vault adapter to list files.
+ */
+export async function getInstalledSnippetSyncPaths(
+	configDir: string,
+	adapter: { list(path: string): Promise<{ files: string[] }> }
+): Promise<string[]> {
+	const snippetsDir = buildConfigPath(configDir, 'snippets');
+	const paths: string[] = [];
+	try {
+		const listing = await adapter.list(snippetsDir);
+		for (const file of listing.files) {
+			if (file.endsWith('.css')) {
+				paths.push(file);
+			}
+		}
+	} catch {
+		// snippets folder may not exist
+	}
+	return paths;
+}
+
+/**
+ * Get all syncable config paths (fixed + installed plugins + snippets).
+ * Combines getFixedSyncableConfigPaths, getInstalledPluginSyncPaths,
+ * and getInstalledSnippetSyncPaths into a single call for convenience.
  *
  * @param configDir - The vault's config directory (e.g., '.obsidian')
- * @param adapter - Vault adapter for listing plugin directories
+ * @param adapter - Vault adapter for listing plugin directories and snippet files
  * @param shouldSyncPath - Function to check if a path should be synced
  * @returns Array of all syncable config file paths
  */
 export async function getAllSyncableConfigPaths(
 	configDir: string,
-	adapter: { list(path: string): Promise<{ folders: string[] }> },
+	adapter: { list(path: string): Promise<{ folders: string[]; files: string[] }> },
 	shouldSyncPath: (path: string) => boolean
 ): Promise<string[]> {
 	const syncPlugins = shouldSyncPath(`${configDir}/community-plugins.json`);
 	const syncAppSettings = shouldSyncPath(`${configDir}/app.json`);
+	const syncSnippets = shouldSyncPath(`${configDir}/snippets`);
 
 	const fixedPaths = getFixedSyncableConfigPaths(configDir, syncPlugins, syncAppSettings);
 	const pluginPaths = syncPlugins
 		? await getInstalledPluginSyncPaths(configDir, adapter)
 		: [];
+	const snippetPaths = syncSnippets
+		? await getInstalledSnippetSyncPaths(configDir, adapter)
+		: [];
 
-	return [...fixedPaths, ...pluginPaths];
+	return [...fixedPaths, ...pluginPaths, ...snippetPaths];
 }
 
 function isInstalledPluginManifestPath(path: string, configDir: string): boolean {
@@ -254,6 +282,12 @@ function isInstalledPluginManifestPath(path: string, configDir: string): boolean
 function isInstalledPluginBinaryPath(path: string, configDir: string): boolean {
 	const normalizedConfigDir = escapeRegExp(normalizeConfigDir(configDir));
 	return new RegExp(`^${normalizedConfigDir}/plugins/[^/]+/(main\\.js|styles\\.css)$`).test(path);
+}
+
+function isCssSnippetPath(path: string, configDir: string): boolean {
+	const normalizedConfigDir = escapeRegExp(normalizeConfigDir(configDir));
+	// Match the snippets folder itself or any .css file directly inside it (no subdirectories)
+	return new RegExp(`^${normalizedConfigDir}/snippets(/[^/]+\\.css)?$`).test(path);
 }
 
 function getWorkspaceStatePattern(configDir: string): RegExp {
@@ -268,7 +302,8 @@ export function shouldSyncVaultPath(
 	path: string,
 	syncPluginManifests = false,
 	syncAppSettings = false,
-	configDir: string
+	configDir: string,
+	syncCssSnippets = false
 ): boolean {
 	const normalized = normalizePath(path);
 	const normalizedConfigDir = normalizeConfigDir(configDir);
@@ -308,6 +343,10 @@ export function shouldSyncVaultPath(
 	}
 
 	if (syncAppSettings && syncableObsidianAppSettings.has(normalized)) {
+		return true;
+	}
+
+	if (syncCssSnippets && isCssSnippetPath(normalized, normalizedConfigDir)) {
 		return true;
 	}
 

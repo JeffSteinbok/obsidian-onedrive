@@ -17,6 +17,7 @@ const mockPlugin = {
 		customClientId: '',
 		syncAppSettings: false,
 		syncPluginManifests: false,
+		syncCssSnippets: false,
 	},
 	async saveSettings() { console.log('Settings saved (keys:', Object.keys(this.settings).join(', '), ')'); },
 	async authenticate() { console.log('Authenticate called'); },
@@ -28,6 +29,7 @@ const mockPlugin = {
 	async triggerManualSync() { console.log('Manual sync triggered'); },
 	async onAppSettingsSyncChanged(enabled: boolean) { console.log('App settings sync changed:', enabled); },
 	async onPluginManifestSyncChanged(enabled: boolean) { console.log('Plugin manifest sync changed:', enabled); },
+	async onCssSnippetSyncChanged(enabled: boolean) { console.log('CSS snippet sync changed:', enabled); },
 	async resetSyncToken() { console.log('Sync token reset'); },
 };
 

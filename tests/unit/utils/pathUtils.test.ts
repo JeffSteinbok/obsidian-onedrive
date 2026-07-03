@@ -352,5 +352,42 @@ describe('pathUtils', () => {
 			// Other .obsidian files still follow the normal rules.
 			expect(shouldSyncVaultPath('.obsidian/app.json', false, true, '.obsidian')).toBe(true);
 		});
+
+		it('should NOT sync CSS snippets when syncCssSnippets is disabled (default)', () => {
+			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', false, false, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/snippets/another.css', false, false, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/snippets', false, false, '.obsidian')).toBe(false);
+		});
+
+		it('should sync CSS snippet files when syncCssSnippets is enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', false, false, '.obsidian', true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/snippets/another.css', false, false, '.obsidian', true)).toBe(true);
+		});
+
+		it('should sync snippets folder itself when syncCssSnippets is enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/snippets', false, false, '.obsidian', true)).toBe(true);
+		});
+
+		it('should NOT sync non-css files in snippets folder', () => {
+			expect(shouldSyncVaultPath('.obsidian/snippets/note.md', false, false, '.obsidian', true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/snippets/style.json', false, false, '.obsidian', true)).toBe(false);
+		});
+
+		it('should NOT sync files in subdirectories of snippets folder', () => {
+			expect(shouldSyncVaultPath('.obsidian/snippets/sub/style.css', false, false, '.obsidian', true)).toBe(false);
+		});
+
+		it('should sync CSS snippets independently of app settings and plugin manifests', () => {
+			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', true, true, '.obsidian', true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', false, false, '.obsidian', true)).toBe(true);
+		});
+
+		it('should work with custom configDir for snippets', () => {
+			expect(shouldSyncVaultPath('.config/snippets/my-style.css', false, false, '.config', true)).toBe(true);
+			// .obsidian/snippets/ is not in .config configDir -- treated as a regular vault file, always synced
+			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', false, false, '.config', true)).toBe(true);
+			// .obsidian/snippets/ without syncCssSnippets -- still synced as a regular vault file
+			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', false, false, '.config', false)).toBe(true);
+		});
 	});
 });

@@ -230,6 +230,10 @@ export const zhCn = {
 				name: '同步插件',
 				desc: '同步 {{configDir}}/community-plugins.json、{{configDir}}/core-plugins.json、插件清单和插件文件（main.js、styles.css）。不会同步插件数据文件。',
 			},
+			cssSnippets: {
+				name: '同步 CSS 片段',
+				desc: '同步 {{configDir}}/snippets/ 中的 CSS 片段，让自定义样式在不同设备上保持一致。',
+			},
 			status: {
 				name: '同步状态',
 				desc: '状态：{{status}} · 上次同步：{{lastSync}} · 进度：{{progress}} · 冲突：{{conflicts}}',

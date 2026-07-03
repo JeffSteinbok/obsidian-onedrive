@@ -231,6 +231,10 @@ export const fr = {
 				name: 'Synchroniser les plugins',
 				desc: 'Synchroniser {{configDir}}/community-plugins.json, {{configDir}}/core-plugins.json, les manifestes de plugins et les binaires de plugins (main.js, styles.css). Ne synchronise pas les fichiers de données des plugins.',
 			},
+			cssSnippets: {
+				name: 'Synchroniser les extraits CSS',
+				desc: 'Synchroniser les extraits CSS depuis {{configDir}}/snippets/ pour maintenir les styles personnalisés cohérents entre les appareils.',
+			},
 			status: {
 				name: 'État de la synchronisation',
 				desc: 'État: {{status}} · Dernière synchronisation: {{lastSync}} · Progression: {{progress}} · Conflits: {{conflicts}}',

@@ -231,6 +231,10 @@ export const de = {
 				name: 'Plugins synchronisieren',
 				desc: '{{configDir}}/community-plugins.json, {{configDir}}/core-plugins.json, Plugin-Manifeste und Plugin-Binärdateien (main.js, styles.css) synchronisieren. Synchronisiert keine Plugin-Datendateien.',
 			},
+			cssSnippets: {
+				name: 'CSS-Snippets synchronisieren',
+				desc: 'CSS-Snippets aus {{configDir}}/snippets/ synchronisieren, um benutzerdefinierte Stile geräteübergreifend konsistent zu halten.',
+			},
 			status: {
 				name: 'Synchronisierungsstatus',
 				desc: 'Status: {{status}} · Letzte Sync: {{lastSync}} · Fortschritt: {{progress}} · Konflikte: {{conflicts}}',

@@ -231,6 +231,10 @@ export const ja = {
 				name: 'プラグインを同期',
 				desc: '{{configDir}}/community-plugins.json、{{configDir}}/core-plugins.json、プラグインマニフェスト、プラグインバイナリ（main.js、styles.css）を同期。プラグインデータファイルは同期しません。',
 			},
+			cssSnippets: {
+				name: 'CSSスニペットを同期',
+				desc: '{{configDir}}/snippets/のCSSスニペットを同期して、デバイス間でカスタムスタイルを一貫させます。',
+			},
 			status: {
 				name: '同期状態',
 				desc: '状態: {{status}} · 最終同期: {{lastSync}} · 進捗: {{progress}} · 競合: {{conflicts}}',
