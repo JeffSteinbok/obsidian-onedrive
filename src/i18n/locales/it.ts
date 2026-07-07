@@ -102,6 +102,7 @@ export const it = {
 	folderBrowser: {
 		title: 'Seleziona cartella OneDrive',
 		selectCurrent: 'Seleziona "/{{path}}"',
+		selectRoot: 'Seleziona tutto {{label}} (radice)',
 		useThisFolder: 'Usa questa cartella',
 		loading: 'Caricamento cartelle...',
 		noSubfolders: 'Nessuna sottocartella',
@@ -110,6 +111,13 @@ export const it = {
 		items: '{{count}} elementi',
 		loadError: 'Errore nel caricamento delle cartelle: {{message}}',
 		unknownError: 'Errore sconosciuto',
+	},
+	rootFolderWarning: {
+		title: 'Sincronizzare tutto il tuo OneDrive?',
+		body: 'Hai selezionato la radice di OneDrive. Ogni file dell\'unità verrà sincronizzato in questo vault e i file eliminati in un punto verranno eliminati nell\'altro.',
+		hint: 'Di solito non è ciò che si desidera. Valuta invece di selezionare una sottocartella dedicata.',
+		cancel: 'Annulla',
+		confirm: 'Sincronizza tutta l\'unità',
 	},
 	authModal: {
 		title: 'Connetti a OneDrive',

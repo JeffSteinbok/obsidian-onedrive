@@ -102,6 +102,7 @@ export const pt = {
 	folderBrowser: {
 		title: 'Selecionar pasta do OneDrive',
 		selectCurrent: 'Selecionar "/{{path}}"',
+		selectRoot: 'Selecionar todo o {{label}} (raiz)',
 		useThisFolder: 'Usar esta pasta',
 		loading: 'Carregando pastas...',
 		noSubfolders: 'Sem subpastas',
@@ -110,6 +111,13 @@ export const pt = {
 		items: '{{count}} itens',
 		loadError: 'Erro ao carregar pastas: {{message}}',
 		unknownError: 'Erro desconhecido',
+	},
+	rootFolderWarning: {
+		title: 'Sincronizar todo o seu OneDrive?',
+		body: 'Você selecionou a raiz do OneDrive. Todos os arquivos da sua unidade serão sincronizados neste cofre, e arquivos excluídos em um lugar serão excluídos no outro.',
+		hint: 'Normalmente isso não é o desejado. Considere selecionar uma subpasta dedicada.',
+		cancel: 'Cancelar',
+		confirm: 'Sincronizar unidade inteira',
 	},
 	authModal: {
 		title: 'Conectar ao OneDrive',

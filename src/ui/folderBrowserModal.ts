@@ -4,6 +4,7 @@
 
 import { App, Modal, Setting } from 'obsidian';
 import { OneDriveItem } from '../types';
+import { RootFolderWarningModal } from './modals';
 import { t } from '../i18n';
 
 export interface FolderSelection {
@@ -24,6 +25,8 @@ type FolderListFn = (
 export interface FolderBrowserOptions {
 	/** Label for the root breadcrumb (default: "OneDrive") */
 	rootLabel?: string;
+	/** Show a confirmation warning when the drive root is selected (default: false) */
+	warnOnRootSelect?: boolean;
 }
 
 /**
@@ -36,6 +39,7 @@ export class FolderBrowserModal extends Modal {
 	private contentEl_body: HTMLElement;
 	private loading = false;
 	private rootLabel: string;
+	private warnOnRootSelect: boolean;
 
 	// Track the shared folder info if the user navigated into one
 	private sharedDriveId?: string;
@@ -53,6 +57,7 @@ export class FolderBrowserModal extends Modal {
 		this.listFolders = listFolders;
 		this.onSelect = onSelect;
 		this.rootLabel = options?.rootLabel ?? 'OneDrive';
+		this.warnOnRootSelect = options?.warnOnRootSelect ?? false;
 
 		if (initialPath) {
 			this.currentPath = initialPath.split('/').filter((s) => s.length > 0);
@@ -133,25 +138,45 @@ export class FolderBrowserModal extends Modal {
 			}
 		}
 
-		// Select button for current folder
-		if (this.currentPath.length > 0) {
+		// Select button for the current folder. This is also shown at the drive
+		// root (empty path) so the user can sync their entire OneDrive if desired.
+		// The root can only ever be the user's own drive — shared folders are
+		// always entered at depth >= 1 — so root selection is never "shared".
+		{
+			const isRoot = this.currentPath.length === 0;
 			const selectRow = body.createDiv({ cls: 'onedrive-sync-folder-browser-select-row' });
 			new Setting(selectRow)
-				.setName(t('folderBrowser.selectCurrent', { path: this.currentPath.join('/') }))
+				.setName(
+					isRoot
+						? t('folderBrowser.selectRoot', { label: this.rootLabel })
+						: t('folderBrowser.selectCurrent', { path: this.currentPath.join('/') })
+				)
 				.addButton((btn) =>
 					btn
 						.setButtonText(t('folderBrowser.useThisFolder'))
 						.setCta()
 						.onClick(() => {
 							const isShared = !!(this.sharedDriveId && this.sharedItemId);
-							this.onSelect({
-								path: `/${this.currentPath.join('/')}`,
-								name: this.currentPath[this.sharedAtDepth ?? this.currentPath.length - 1],
-								isShared,
-								driveId: this.sharedDriveId,
-								itemId: this.sharedItemId,
-							});
-							this.close();
+							const commit = () => {
+								this.onSelect({
+									path: `/${this.currentPath.join('/')}`,
+									name: isRoot
+										? this.rootLabel
+										: this.currentPath[this.sharedAtDepth ?? this.currentPath.length - 1],
+									isShared,
+									driveId: this.sharedDriveId,
+									itemId: this.sharedItemId,
+								});
+								this.close();
+							};
+
+							// Syncing the whole drive root is a footgun — confirm first
+							// when the caller opted in (full-drive picker only).
+							if (isRoot && this.warnOnRootSelect) {
+								new RootFolderWarningModal(this.app, commit).open();
+							} else {
+								commit();
+							}
 						})
 				);
 		}

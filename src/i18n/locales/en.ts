@@ -102,6 +102,7 @@ export const en = {
 	folderBrowser: {
 		title: 'Select OneDrive Folder',
 		selectCurrent: 'Select "/{{path}}"',
+		selectRoot: 'Select the entire {{label}} (root)',
 		useThisFolder: 'Use this folder',
 		loading: 'Loading folders...',
 		noSubfolders: 'No subfolders',
@@ -110,6 +111,13 @@ export const en = {
 		items: '{{count}} items',
 		loadError: 'Error loading folders: {{message}}',
 		unknownError: 'Unknown error',
+	},
+	rootFolderWarning: {
+		title: 'Sync your entire OneDrive?',
+		body: 'You selected the OneDrive root. Every file on your drive will be synced into this vault, and files deleted in either place will be deleted in the other.',
+		hint: 'This is usually not what you want. Consider selecting a dedicated subfolder instead.',
+		cancel: 'Cancel',
+		confirm: 'Sync entire drive',
 	},
 	authModal: {
 		title: 'Connect to OneDrive',

@@ -102,6 +102,7 @@ export const zhCn = {
 	folderBrowser: {
 		title: '选择 OneDrive 文件夹',
 		selectCurrent: '选择“/{{path}}”',
+		selectRoot: '选择整个 {{label}}（根目录）',
 		useThisFolder: '使用此文件夹',
 		loading: '正在加载文件夹...',
 		noSubfolders: '没有子文件夹',
@@ -110,6 +111,13 @@ export const zhCn = {
 		items: '{{count}} 项',
 		loadError: '加载文件夹出错：{{message}}',
 		unknownError: '未知错误',
+	},
+	rootFolderWarning: {
+		title: '同步整个 OneDrive？',
+		body: '您选择了 OneDrive 根目录。云端的每个文件都会同步到此保管库，且在任意一端删除的文件也会在另一端被删除。',
+		hint: '通常这并不是您想要的。请考虑改为选择一个专用的子文件夹。',
+		cancel: '取消',
+		confirm: '同步整个云盘',
 	},
 	authModal: {
 		title: '连接 OneDrive',

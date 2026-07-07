@@ -102,6 +102,7 @@ export const ja = {
 	folderBrowser: {
 		title: 'OneDriveフォルダを選択',
 		selectCurrent: '"/{{path}}" を選択',
+		selectRoot: '{{label}} 全体（ルート）を選択',
 		useThisFolder: 'このフォルダを使用',
 		loading: 'フォルダを読み込み中...',
 		noSubfolders: 'サブフォルダなし',
@@ -110,6 +111,13 @@ export const ja = {
 		items: '{{count}} アイテム',
 		loadError: 'フォルダの読み込みエラー: {{message}}',
 		unknownError: '不明なエラー',
+	},
+	rootFolderWarning: {
+		title: 'OneDrive 全体を同期しますか？',
+		body: 'OneDrive のルートを選択しました。ドライブ上のすべてのファイルがこのボールトに同期され、一方で削除したファイルはもう一方でも削除されます。',
+		hint: 'これは通常望ましくありません。代わりに専用のサブフォルダーを選択することを検討してください。',
+		cancel: 'キャンセル',
+		confirm: 'ドライブ全体を同期',
 	},
 	authModal: {
 		title: 'OneDriveに接続',

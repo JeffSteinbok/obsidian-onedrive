@@ -174,7 +174,9 @@ export class OneDriveSettingTab extends PluginSettingTab {
 									void this.plugin.onRemoteFolderChanged(selection).then(() => {
 										this.display();
 									});
-								}
+								},
+								undefined,
+								{ warnOnRootSelect: true }
 							);
 							modal.open();
 						})
