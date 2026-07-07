@@ -102,6 +102,7 @@ export const es = {
 	folderBrowser: {
 		title: 'Seleccionar carpeta de OneDrive',
 		selectCurrent: 'Seleccionar "/{{path}}"',
+		selectRoot: 'Seleccionar todo {{label}} (raíz)',
 		useThisFolder: 'Usar esta carpeta',
 		loading: 'Cargando carpetas...',
 		noSubfolders: 'Sin subcarpetas',
@@ -110,6 +111,13 @@ export const es = {
 		items: '{{count}} elementos',
 		loadError: 'Error al cargar carpetas: {{message}}',
 		unknownError: 'Error desconocido',
+	},
+	rootFolderWarning: {
+		title: '¿Sincronizar todo tu OneDrive?',
+		body: 'Seleccionaste la raíz de OneDrive. Cada archivo de tu unidad se sincronizará en esta bóveda, y los archivos eliminados en un lugar se eliminarán en el otro.',
+		hint: 'Normalmente esto no es lo que se desea. Considera seleccionar una subcarpeta dedicada.',
+		cancel: 'Cancelar',
+		confirm: 'Sincronizar toda la unidad',
 	},
 	authModal: {
 		title: 'Conectar a OneDrive',

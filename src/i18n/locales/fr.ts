@@ -102,6 +102,7 @@ export const fr = {
 	folderBrowser: {
 		title: 'Sélectionner un dossier OneDrive',
 		selectCurrent: 'Sélectionner "/{{path}}"',
+		selectRoot: 'Sélectionner tout le {{label}} (racine)',
 		useThisFolder: 'Utiliser ce dossier',
 		loading: 'Chargement des dossiers...',
 		noSubfolders: 'Aucun sous-dossier',
@@ -110,6 +111,13 @@ export const fr = {
 		items: '{{count}} éléments',
 		loadError: 'Erreur lors du chargement des dossiers: {{message}}',
 		unknownError: 'Erreur inconnue',
+	},
+	rootFolderWarning: {
+		title: 'Synchroniser tout votre OneDrive ?',
+		body: 'Vous avez sélectionné la racine OneDrive. Chaque fichier de votre lecteur sera synchronisé dans ce coffre, et les fichiers supprimés d\'un côté seront supprimés de l\'autre.',
+		hint: 'Ce n\'est généralement pas souhaitable. Envisagez plutôt de sélectionner un sous-dossier dédié.',
+		cancel: 'Annuler',
+		confirm: 'Synchroniser tout le lecteur',
 	},
 	authModal: {
 		title: 'Connecter à OneDrive',

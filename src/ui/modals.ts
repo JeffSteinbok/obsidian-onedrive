@@ -121,3 +121,57 @@ export class LargeDeleteWarningModal extends Modal {
 		this.resolveDecision(this.decision);
 	}
 }
+
+/**
+ * Root-folder warning modal
+ *
+ * Shown when the user picks the entire OneDrive drive root as their sync
+ * target. Syncing the root pulls every file on the drive into the vault and
+ * enables delete-tracking across the whole drive, so we make the user
+ * explicitly confirm before proceeding. Closing without confirming is a no-op.
+ */
+export class RootFolderWarningModal extends Modal {
+	private readonly onConfirm: () => void;
+	private confirmed = false;
+
+	constructor(app: App, onConfirm: () => void) {
+		super(app);
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass('onedrive-root-warning-modal');
+
+		contentEl.createEl('h2', { text: t('rootFolderWarning.title') });
+		contentEl.createEl('p', { text: t('rootFolderWarning.body') });
+		contentEl.createEl('p', { text: t('rootFolderWarning.hint') });
+
+		new Setting(contentEl)
+			.addButton((b) =>
+				b
+					.setButtonText(t('rootFolderWarning.cancel'))
+					.setCta()
+					.onClick(() => {
+						this.close();
+					})
+			)
+			.addButton((b) =>
+				b
+					.setButtonText(t('rootFolderWarning.confirm'))
+					.setWarning()
+					.onClick(() => {
+						this.confirmed = true;
+						this.close();
+					})
+			);
+	}
+
+	onClose() {
+		this.contentEl.empty();
+		if (this.confirmed) {
+			this.onConfirm();
+		}
+	}
+}

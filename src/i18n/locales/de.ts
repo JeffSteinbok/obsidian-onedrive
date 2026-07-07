@@ -102,6 +102,7 @@ export const de = {
 	folderBrowser: {
 		title: 'OneDrive-Ordner auswählen',
 		selectCurrent: '"/{{path}}" auswählen',
+		selectRoot: 'Gesamtes {{label}} auswählen (Stammverzeichnis)',
 		useThisFolder: 'Diesen Ordner verwenden',
 		loading: 'Ordner werden geladen...',
 		noSubfolders: 'Keine Unterordner',
@@ -110,6 +111,13 @@ export const de = {
 		items: '{{count}} Elemente',
 		loadError: 'Fehler beim Laden der Ordner: {{message}}',
 		unknownError: 'Unbekannter Fehler',
+	},
+	rootFolderWarning: {
+		title: 'Gesamtes OneDrive synchronisieren?',
+		body: 'Sie haben das OneDrive-Stammverzeichnis ausgewählt. Jede Datei auf Ihrem Laufwerk wird in diesen Tresor synchronisiert, und an einem Ort gelöschte Dateien werden auch am anderen gelöscht.',
+		hint: 'Das ist normalerweise nicht gewünscht. Wählen Sie stattdessen einen eigenen Unterordner.',
+		cancel: 'Abbrechen',
+		confirm: 'Gesamtes Laufwerk synchronisieren',
 	},
 	authModal: {
 		title: 'Mit OneDrive verbinden',

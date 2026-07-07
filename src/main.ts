@@ -352,7 +352,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 			} else if (isAppFolder) {
 				remoteRoot = this.settings.appFolderSubpath || '';
 			} else {
-				remoteRoot = this.settings.remotePath || '';
+				// A remotePath of "/" means the user chose the drive root itself,
+				// which is equivalent to an empty base path (no prefix). Anything
+				// else is a real subfolder path like "/Folder/Sub".
+				const configuredPath = this.settings.remotePath || '';
+				remoteRoot = configuredPath === '/' ? '' : configuredPath;
 			}
 			// For path stripping of delta responses, use the FULL path on the
 			// remote drive down to the vault folder — not just the shared root.
