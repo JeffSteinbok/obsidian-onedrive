@@ -389,5 +389,28 @@ describe('pathUtils', () => {
 			// .obsidian/snippets/ without syncCssSnippets -- still synced as a regular vault file
 			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', false, false, '.config', false)).toBe(true);
 		});
+
+		it('should NOT sync bookmarks when syncBookmarks is disabled (default)', () => {
+			expect(shouldSyncVaultPath('.obsidian/bookmarks.json', false, false, '.obsidian')).toBe(false);
+		});
+
+		it('should sync bookmarks.json when syncBookmarks is enabled', () => {
+			expect(shouldSyncVaultPath('.obsidian/bookmarks.json', false, false, '.obsidian', false, true)).toBe(true);
+		});
+
+		it('should sync bookmarks independently of app settings and plugin manifests', () => {
+			expect(shouldSyncVaultPath('.obsidian/bookmarks.json', true, true, '.obsidian', false, true)).toBe(true);
+			expect(shouldSyncVaultPath('.obsidian/bookmarks.json', false, false, '.obsidian', false, true)).toBe(true);
+		});
+
+		it('should NOT sync bookmarks when syncBookmarks is disabled even if other settings are on', () => {
+			expect(shouldSyncVaultPath('.obsidian/bookmarks.json', true, true, '.obsidian', true, false)).toBe(false);
+		});
+
+		it('should work with custom configDir for bookmarks', () => {
+			expect(shouldSyncVaultPath('.config/bookmarks.json', false, false, '.config', false, true)).toBe(true);
+			// .obsidian/bookmarks.json is not in .config configDir -- treated as a regular vault file, always synced
+			expect(shouldSyncVaultPath('.obsidian/bookmarks.json', false, false, '.config', false, true)).toBe(true);
+		});
 	});
 });

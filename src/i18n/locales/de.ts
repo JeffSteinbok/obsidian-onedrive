@@ -243,6 +243,10 @@ export const de = {
 				name: 'CSS-Snippets synchronisieren',
 				desc: 'CSS-Snippets aus {{configDir}}/snippets/ synchronisieren, um benutzerdefinierte Stile geräteübergreifend konsistent zu halten.',
 			},
+			bookmarks: {
+				name: 'Lesezeichen synchronisieren',
+				desc: '{{configDir}}/bookmarks.json synchronisieren, um Lesezeichen geräteübergreifend konsistent zu halten.',
+			},
 			status: {
 				name: 'Synchronisierungsstatus',
 				desc: 'Status: {{status}} · Letzte Sync: {{lastSync}} · Fortschritt: {{progress}} · Konflikte: {{conflicts}}',

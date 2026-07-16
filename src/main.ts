@@ -325,7 +325,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 						this.settings.syncPluginManifests,
 						this.settings.syncAppSettings,
 						this.app.vault.configDir,
-						this.settings.syncCssSnippets
+						this.settings.syncCssSnippets,
+						this.settings.syncBookmarks
 					)
 			);
 			// Wire up pull-only mode check
@@ -392,7 +393,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 							this.settings.syncPluginManifests,
 							this.settings.syncAppSettings,
 							this.app.vault.configDir,
-							this.settings.syncCssSnippets
+							this.settings.syncCssSnippets,
+							this.settings.syncBookmarks
 						),
 					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
 					largeDeleteWarningHandler: (info) => this.handleLargeDeleteWarning(info),
@@ -843,6 +845,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.settings.syncAppSettings = false;
 		this.settings.syncPluginManifests = false;
 		this.settings.syncCssSnippets = false;
+		this.settings.syncBookmarks = false;
 	}
 
 	/**
@@ -1080,6 +1083,15 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		this.settings.syncCssSnippets = enabled;
+		await this.saveSettings();
+	}
+
+	async onBookmarkSyncChanged(enabled: boolean): Promise<void> {
+		if (this.settings.syncBookmarks === enabled) {
+			return;
+		}
+
+		this.settings.syncBookmarks = enabled;
 		await this.saveSettings();
 	}
 

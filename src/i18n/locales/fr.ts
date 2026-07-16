@@ -243,6 +243,10 @@ export const fr = {
 				name: 'Synchroniser les extraits CSS',
 				desc: 'Synchroniser les extraits CSS depuis {{configDir}}/snippets/ pour maintenir les styles personnalisés cohérents entre les appareils.',
 			},
+			bookmarks: {
+				name: 'Synchroniser les favoris',
+				desc: 'Synchroniser {{configDir}}/bookmarks.json pour maintenir les favoris cohérents entre les appareils.',
+			},
 			status: {
 				name: 'État de la synchronisation',
 				desc: 'État: {{status}} · Dernière synchronisation: {{lastSync}} · Progression: {{progress}} · Conflits: {{conflicts}}',

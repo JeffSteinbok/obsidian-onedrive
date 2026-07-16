@@ -25,6 +25,7 @@ interface OneDrivePlugin {
 	onAppSettingsSyncChanged(enabled: boolean): Promise<void>;
 	onPluginManifestSyncChanged(enabled: boolean): Promise<void>;
 	onCssSnippetSyncChanged(enabled: boolean): Promise<void>;
+	onBookmarkSyncChanged(enabled: boolean): Promise<void>;
 	resetSyncToken(): Promise<void>;
 	reconcileFromCloud(): Promise<void>;
 	authenticate(): Promise<void>;
@@ -346,6 +347,15 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncCssSnippets).onChange(async (value) => {
 					await this.plugin.onCssSnippetSyncChanged(value);
+				})
+			);
+
+		new Setting(containerEl)
+			.setName(t('settings.sync.bookmarks.name'))
+			.setDesc(t('settings.sync.bookmarks.desc', { configDir }))
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.syncBookmarks).onChange(async (value) => {
+					await this.plugin.onBookmarkSyncChanged(value);
 				})
 			);
 	}
