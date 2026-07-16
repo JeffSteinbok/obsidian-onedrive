@@ -1236,9 +1236,13 @@ export class SyncEngine {
 					try {
 						await this.executeOperation(operation);
 						onComplete(operation);
-					} catch {
+					} catch (error) {
 						// executeOperation already logged the error; just collect
 						// the path so the caller can re-queue it as dirty.
+						logger.debug(
+							`Operation for ${operation.path} failed (already logged above); ` +
+								`re-queuing for next sync. Error: ${(error as Error)?.message ?? error}`
+						);
 						failedPaths.push(operation.path);
 					}
 				}

@@ -81,7 +81,7 @@ export const it = {
 			conflictsNeedResolution:
 				'Sincronizzazione OneDrive: {{syncedCount}} {{fileLabel}} sincronizzati, {{conflictCount}} {{conflictLabel}} necessitano risoluzione',
 			partialFailure:
-				'OneDrive sync: {{failCount}} {{failLabel}} failed and will be retried next sync',
+				'OneDrive sync: {{failCount}} {{failLabel}} fallito/i, verrà/verranno ritentato/i al prossimo ciclo',
 			engineFailed: 'Sincronizzazione OneDrive fallita: {{message}}',
 		},
 		reconcile: {

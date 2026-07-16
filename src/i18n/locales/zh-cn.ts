@@ -82,7 +82,7 @@ export const zhCn = {
 			conflictsNeedResolution:
 				'OneDrive 同步：已同步 {{syncedCount}} {{fileLabel}}，{{conflictCount}} {{conflictLabel}}需要处理',
 			partialFailure:
-				'OneDrive sync: {{failCount}} {{failLabel}} failed and will be retried next sync',
+				'OneDrive 同步：{{failCount}} {{failLabel}}失败，将在下次同步时重试',
 			engineFailed: 'OneDrive 同步失败：{{message}}',
 		},
 		reconcile: {

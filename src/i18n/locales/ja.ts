@@ -81,7 +81,7 @@ export const ja = {
 			conflictsNeedResolution:
 				'OneDrive同期: {{syncedCount}} {{fileLabel}}を同期、{{conflictCount}} {{conflictLabel}}の解決が必要です',
 			partialFailure:
-				'OneDrive sync: {{failCount}} {{failLabel}} failed and will be retried next sync',
+				'OneDrive 同期: {{failCount}} {{failLabel}}が失敗しました。次回の同期で再試行します',
 			engineFailed: 'OneDrive同期に失敗しました: {{message}}',
 		},
 		reconcile: {
