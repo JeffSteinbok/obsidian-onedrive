@@ -244,8 +244,8 @@ export const fr = {
 				desc: 'Synchroniser les extraits CSS depuis {{configDir}}/snippets/ pour maintenir les styles personnalisés cohérents entre les appareils.',
 			},
 			bookmarks: {
-				name: 'Synchroniser les favoris',
-				desc: 'Synchroniser {{configDir}}/bookmarks.json pour maintenir les favoris cohérents entre les appareils.',
+				name: 'Synchroniser les marque-pages',
+				desc: 'Synchroniser {{configDir}}/bookmarks.json pour maintenir les marque-pages cohérents entre les appareils.',
 			},
 			status: {
 				name: 'État de la synchronisation',
