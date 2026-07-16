@@ -19,6 +19,7 @@ import {
 	getRetryDelay,
 	handleAuthErrors,
 	handleSyncErrors,
+	isDeferrableError,
 	isRetryableError,
 	parseHttpError,
 } from '../../../src/utils/errors';
@@ -185,7 +186,7 @@ describe('errors utils', () => {
 			expect(isRetryableError(new RateLimitError('Too many requests', 30))).toBe(true);
 		});
 
-		it.each([408, 429, 500, 502, 503, 504])(
+		it.each([408, 423, 429, 500, 501, 502, 503, 504])(
 			'returns true for retryable OneDriveError status %s',
 			(statusCode) => {
 				expect(isRetryableError(new OneDriveError('Retry me', 'code', statusCode))).toBe(true);
@@ -201,7 +202,7 @@ describe('errors utils', () => {
 			expect(isRetryableError(new Error('timeout while waiting for response'))).toBe(true);
 		});
 
-		it.each([408, 429, 500, 502, 503, 504])(
+		it.each([408, 423, 429, 500, 501, 502, 503, 504])(
 			'returns true for Graph SDK errors with retryable statusCode %s',
 			(statusCode) => {
 				const error = Object.assign(new Error('Graph SDK error'), { statusCode, code: 'UnknownError' });
@@ -216,6 +217,21 @@ describe('errors utils', () => {
 
 		it('returns false for generic errors', () => {
 			expect(isRetryableError(new Error('some other error'))).toBe(false);
+		});
+	});
+
+	describe('isDeferrableError', () => {
+		it.each([423, 501])('returns true for deferrable OneDriveError status %s', (statusCode) => {
+			expect(isDeferrableError(new OneDriveError('Retry later', 'code', statusCode))).toBe(true);
+		});
+
+		it.each([423, 501])('returns true for Graph SDK errors with deferrable statusCode %s', (statusCode) => {
+			const error = Object.assign(new Error('Graph SDK error'), { statusCode });
+			expect(isDeferrableError(error)).toBe(true);
+		});
+
+		it.each([400, 404, 500])('returns false for non-deferrable status %s', (statusCode) => {
+			expect(isDeferrableError(new OneDriveError('Not deferred', 'code', statusCode))).toBe(false);
 		});
 	});
 

@@ -53,6 +53,7 @@ import { shouldSyncVaultPath } from '../../../src/utils/pathUtils';
 import {
 	ConflictResolutionStrategy,
 	LocalChangeType,
+	OneDriveError,
 	OneDriveItem,
 	SyncDirection,
 } from '../../../src/types';
@@ -127,6 +128,7 @@ describe('SyncEngine', () => {
 		getDirtyFiles: Mock;
 		clearDirtyFiles: Mock;
 		removeDirtyPaths: Mock;
+		addDirtyFile: Mock;
 		markOwnWrites: Mock;
 		removeOwnWrite: Mock;
 		isOwnWrite: Mock;
@@ -147,6 +149,7 @@ describe('SyncEngine', () => {
 		mockApp.vault.adapter.writeBinary.mockReset().mockResolvedValue(undefined);
 		mockApp.vault.adapter.stat.mockReset().mockResolvedValue(null);
 		mockApp.vault.adapter.list.mockReset().mockResolvedValue({ files: [], folders: [] });
+		mockApp.vault.getRoot.mockReset().mockReturnValue({ path: '', children: [] });
 
 		mockFileOps = {
 			uploadFile: vi.fn().mockResolvedValue(
@@ -181,6 +184,7 @@ describe('SyncEngine', () => {
 			getDirtyFiles: vi.fn().mockReturnValue([]),
 			clearDirtyFiles: vi.fn(),
 			removeDirtyPaths: vi.fn(),
+			addDirtyFile: vi.fn(),
 			markOwnWrites: vi.fn(),
 			removeOwnWrite: vi.fn(),
 			isOwnWrite: vi.fn().mockReturnValue(false),
@@ -862,6 +866,163 @@ describe('SyncEngine', () => {
 		await syncEngine.performSync();
 
 		expect(mockEventManager.clearDirtyFiles).toHaveBeenCalledTimes(1);
+	});
+
+	it('continues after one generic operation failure and persists sync progress', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: 'delta-link-2' });
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/fails.md', type: LocalChangeType.MODIFY },
+			{ path: 'notes/succeeds.md', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 100, Date.now())
+		);
+		mockFileOps.uploadFile.mockImplementation(async (remotePath: string) => {
+			if (remotePath.endsWith('/notes/fails.md')) {
+				throw new Error('single upload failed');
+			}
+			return makeRemoteItem({
+				id: 'succeeds-id',
+				name: 'succeeds.md',
+				file: { mimeType: 'text/plain', hashes: { quickXorHash: 'succeeds-hash' } },
+			});
+		});
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.uploadFile).toHaveBeenCalledTimes(2);
+		expect(stateManager.getDeltaLink()).toBe('delta-link-2');
+		expect(stateManager.getLastSyncTime()).toBeGreaterThan(0);
+		expect(stateManager.getFileState('notes/succeeds.md')).toMatchObject({
+			oneDriveId: 'succeeds-id',
+		});
+		expect(stateManager.getFileState('notes/fails.md')).toBeUndefined();
+		expect(mockEventManager.clearDirtyFiles).not.toHaveBeenCalled();
+		expect(mockEventManager.removeDirtyPaths).toHaveBeenCalledWith(['notes/succeeds.md']);
+		expect(mockEventManager.addDirtyFile).toHaveBeenCalledWith('notes/fails.md', 'modify');
+	});
+
+	it.each([423, 501])('defers HTTP %s failures without aborting the sync', async (statusCode) => {
+		stateManager.setLastSyncTime(Date.now());
+		mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: `delta-link-${statusCode}` });
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/locked.docx', type: LocalChangeType.MODIFY },
+			{ path: 'notes/ok.md', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 100, Date.now())
+		);
+		mockFileOps.uploadFile.mockImplementation(async (remotePath: string) => {
+			if (remotePath.endsWith('/notes/locked.docx')) {
+				throw new OneDriveError(`HTTP ${statusCode}`, 'transient', statusCode);
+			}
+			return makeRemoteItem({
+				id: 'ok-id',
+				name: 'ok.md',
+				file: { mimeType: 'text/plain', hashes: { quickXorHash: 'ok-hash' } },
+			});
+		});
+
+		await syncEngine.performSync();
+
+		expect(stateManager.getDeltaLink()).toBe(`delta-link-${statusCode}`);
+		expect(stateManager.getFileState('notes/ok.md')).toMatchObject({ oneDriveId: 'ok-id' });
+		expect(stateManager.getFileState('notes/locked.docx')).toBeUndefined();
+		expect(mockEventManager.addDirtyFile).toHaveBeenCalledWith('notes/locked.docx', 'modify');
+		expect(trackingNotice.calls).toContainEqual([
+			'OneDrive sync: 1 file synced; 1 file will retry automatically (1 locked/deferred)',
+			undefined,
+		]);
+	});
+
+	it('eventually syncs a locked file on a later run after advancing the delta cursor', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockClient.getDelta
+			.mockResolvedValueOnce({ items: [], deltaLink: 'delta-link-after-locked' })
+			.mockResolvedValueOnce({ items: [], deltaLink: 'delta-link-after-success' });
+		mockEventManager.getDirtyFiles
+			.mockReturnValueOnce([
+				{ path: 'notes/locked.docx', type: LocalChangeType.MODIFY },
+				{ path: 'notes/other.md', type: LocalChangeType.MODIFY },
+			])
+			.mockReturnValueOnce([{ path: 'notes/locked.docx', type: LocalChangeType.MODIFY }]);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 100, Date.now())
+		);
+		mockFileOps.uploadFile.mockImplementation(async (remotePath: string) => {
+			if (remotePath.endsWith('/notes/locked.docx')) {
+				throw new OneDriveError('Locked', 'locked', 423);
+			}
+			return makeRemoteItem({
+				id: 'other-id',
+				name: 'other.md',
+				file: { mimeType: 'text/plain', hashes: { quickXorHash: 'other-hash' } },
+			});
+		});
+
+		await syncEngine.performSync();
+
+		expect(stateManager.getDeltaLink()).toBe('delta-link-after-locked');
+		expect(stateManager.getFileState('notes/locked.docx')).toBeUndefined();
+		expect(mockEventManager.addDirtyFile).toHaveBeenCalledWith('notes/locked.docx', 'modify');
+
+		mockFileOps.uploadFile.mockImplementation(async (remotePath: string) =>
+			makeRemoteItem({
+				id: remotePath.endsWith('/notes/locked.docx') ? 'locked-id' : 'other-id',
+				name: remotePath.split('/').pop() ?? 'uploaded.md',
+				file: { mimeType: 'text/plain', hashes: { quickXorHash: 'uploaded-hash' } },
+			})
+		);
+
+		await syncEngine.performSync();
+
+		expect(stateManager.getDeltaLink()).toBe('delta-link-after-success');
+		expect(stateManager.getFileState('notes/locked.docx')).toMatchObject({
+			oneDriveId: 'locked-id',
+			remoteHash: 'uploaded-hash',
+		});
+		expect(mockEventManager.clearDirtyFiles).toHaveBeenCalledTimes(1);
+	});
+
+	it('collects multiple operation failures while completing the remaining operations', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: 'delta-link-multi' });
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/fails-a.md', type: LocalChangeType.MODIFY },
+			{ path: 'notes/ok-a.md', type: LocalChangeType.MODIFY },
+			{ path: 'notes/fails-b.md', type: LocalChangeType.MODIFY },
+			{ path: 'notes/ok-b.md', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 100, Date.now())
+		);
+		mockFileOps.uploadFile.mockImplementation(async (remotePath: string) => {
+			const name = remotePath.split('/').pop() ?? remotePath;
+			if (name.startsWith('fails-')) {
+				throw new Error(`${name} failed`);
+			}
+			return makeRemoteItem({
+				id: `${name}-id`,
+				name,
+				file: { mimeType: 'text/plain', hashes: { quickXorHash: `${name}-hash` } },
+			});
+		});
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.uploadFile).toHaveBeenCalledTimes(4);
+		expect(stateManager.getDeltaLink()).toBe('delta-link-multi');
+		expect(stateManager.getFileState('notes/ok-a.md')).toBeDefined();
+		expect(stateManager.getFileState('notes/ok-b.md')).toBeDefined();
+		expect(stateManager.getFileState('notes/fails-a.md')).toBeUndefined();
+		expect(stateManager.getFileState('notes/fails-b.md')).toBeUndefined();
+		expect(mockEventManager.addDirtyFile).toHaveBeenCalledWith('notes/fails-a.md', 'modify');
+		expect(mockEventManager.addDirtyFile).toHaveBeenCalledWith('notes/fails-b.md', 'modify');
+		expect(trackingNotice.calls).toContainEqual([
+			'OneDrive sync: 2 files synced; 2 files will retry automatically (0 locked/deferred)',
+			undefined,
+		]);
 	});
 
 	it('backfills missing config file hashes without generating a modify change', async () => {
@@ -2063,7 +2224,7 @@ describe('SyncEngine error handling', () => {
 		expect(errorNotices.length).toBeGreaterThan(0);
 	});
 
-	it('throws and shows error notice when upload fails', async () => {
+	it('keeps syncing and shows retry notice when upload fails', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		mockEventManager.getDirtyFiles.mockReturnValue([
 			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
@@ -2073,10 +2234,16 @@ describe('SyncEngine error handling', () => {
 
 		const engine = makeEngine();
 
-		await expect(engine.performSync()).rejects.toThrow('Upload failed');
+		await expect(engine.performSync()).resolves.toBeUndefined();
+		expect(stateManager.getDeltaLink()).toBe('delta-link-1');
+		expect(mockEventManager.addDirtyFile).toHaveBeenCalledWith('notes/test.md', 'modify');
+		expect(trackingNotice.calls).toContainEqual([
+			'OneDrive sync: 0 files synced; 1 file will retry automatically (0 locked/deferred)',
+			undefined,
+		]);
 	});
 
-	it('throws and shows error notice when download fails', async () => {
+	it('keeps syncing and shows retry notice when download fails', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		mockClient.getDelta.mockResolvedValue({
 			items: [makeRemoteFile('notes/new.md', { id: 'new-id' })],
@@ -2087,6 +2254,12 @@ describe('SyncEngine error handling', () => {
 
 		const engine = makeEngine();
 
-		await expect(engine.performSync()).rejects.toThrow('Download failed');
+		await expect(engine.performSync()).resolves.toBeUndefined();
+		expect(stateManager.getDeltaLink()).toBe('delta-2');
+		expect(mockEventManager.addDirtyFile).toHaveBeenCalledWith('notes/new.md', 'modify');
+		expect(trackingNotice.calls).toContainEqual([
+			'OneDrive sync: 0 files synced; 1 file will retry automatically (0 locked/deferred)',
+			undefined,
+		]);
 	});
 });

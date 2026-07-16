@@ -38,6 +38,21 @@ describe('retryWithBackoff', () => {
 		expect(fn).toHaveBeenCalledTimes(2);
 	});
 
+	it.each([423, 501])('should retry deferrable HTTP %s errors', async (statusCode) => {
+		const fn = vi
+			.fn()
+			.mockRejectedValueOnce(new OneDriveError(`HTTP ${statusCode}`, 'transient', statusCode))
+			.mockResolvedValue('success');
+
+		const result = await retryWithBackoff(fn, {
+			maxAttempts: 3,
+			initialDelay: 10,
+		});
+
+		expect(result).toBe('success');
+		expect(fn).toHaveBeenCalledTimes(2);
+	});
+
 	it('should not retry on non-retryable errors', async () => {
 		const fn = vi.fn().mockRejectedValue(new Error('Non-retryable error'));
 
