@@ -109,6 +109,7 @@ if (typeof window === 'undefined') {
 		clearTimeout: globalThis.clearTimeout.bind(globalThis),
 		setInterval: globalThis.setInterval.bind(globalThis),
 		clearInterval: globalThis.clearInterval.bind(globalThis),
+		console: globalThis.console,
 	};
 }
 

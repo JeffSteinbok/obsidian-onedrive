@@ -117,7 +117,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: t('settings.syncFolder.remoteFolder'),
-						desc: !!this.plugin.settings.remoteDriveId
+						desc: this.plugin.settings.remoteDriveId
 							? t('settings.syncFolder.sharedFolder', { path: currentPath })
 							: currentPath,
 						visible: accessMode === OneDriveAccessMode.FULL_ACCESS,

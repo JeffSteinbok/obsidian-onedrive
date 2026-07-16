@@ -86,31 +86,36 @@ class Logger {
 				// Never let a sink failure break logging
 			}
 		}
+	}
 
-		private getConsoleMethod(level: LogLevel): ((message: string, ...args: unknown[]) => void) | null {
-			if (typeof window === 'undefined') {
+	private getConsoleMethod(level: LogLevel): ((message: string, ...args: unknown[]) => void) | null {
+		if (typeof window === 'undefined') {
+			return null;
+		}
+
+		switch (level) {
+			case LogLevel.DEBUG:
+				return window.console.debug.bind(window.console) as (
+					message: string,
+					...args: unknown[]
+				) => void;
+			case LogLevel.INFO:
+				return window.console.info.bind(window.console) as (
+					message: string,
+					...args: unknown[]
+				) => void;
+			case LogLevel.WARN:
+				return window.console.warn.bind(window.console) as (
+					message: string,
+					...args: unknown[]
+				) => void;
+			case LogLevel.ERROR:
+				return window.console.error.bind(window.console) as (
+					message: string,
+					...args: unknown[]
+				) => void;
+			default:
 				return null;
-			}
-
-			switch (level) {
-				case LogLevel.DEBUG:
-					return window.console.debug.bind(window.console) as (
-						message: string,
-						...args: unknown[]
-					) => void;
-				case LogLevel.WARN:
-					return window.console.warn.bind(window.console) as (
-						message: string,
-						...args: unknown[]
-					) => void;
-				case LogLevel.ERROR:
-					return window.console.error.bind(window.console) as (
-						message: string,
-						...args: unknown[]
-					) => void;
-				default:
-					return null;
-			}
 		}
 	}
 
@@ -134,6 +139,7 @@ class Logger {
 		if (this.shouldLog(LogLevel.INFO)) {
 			const formatted = this.formatMessage('INFO', message);
 			const line = formatted + this.formatExtraArgs(args);
+			this.getConsoleMethod(LogLevel.INFO)?.(formatted, ...args);
 			this.addToBuffer(line);
 		}
 	}
