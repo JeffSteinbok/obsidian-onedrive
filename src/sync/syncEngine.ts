@@ -155,6 +155,19 @@ export class SyncEngine {
 	private isSharedDrive: boolean;
 	private remoteRootOnDrive: string;
 	private static readonly DEFAULT_IGNORE_PATTERNS: string[] = [];
+	/**
+	 * Patterns for OS and Office application temp/lock files that should be
+	 * excluded from sync by default. These files are transient, often locked,
+	 * and have no value being stored in OneDrive.
+	 */
+	private static readonly SYSTEM_TEMP_FILE_PATTERNS: string[] = [
+		'~$*',        // Microsoft Office owner/lock files (e.g. ~$Report.docx)
+		'*.tmp',      // Generic temporary files
+		'.~lock.*',   // LibreOffice/OpenOffice lock files (e.g. .~lock.document.odt#)
+		'.DS_Store',  // macOS folder metadata
+		'Thumbs.db',  // Windows thumbnail cache
+		'desktop.ini', // Windows folder customization metadata
+	];
 	private pendingVaultFolderCreates = new Map<string, Promise<void>>();
 
 	// Options stored as instance properties
@@ -166,6 +179,7 @@ export class SyncEngine {
 	private readonly onProgress?: (message: string | undefined) => void;
 	private readonly pluginVersion: string;
 	private readonly isPullOnlyMode: () => boolean;
+	private readonly getExcludeSystemTempFiles: () => boolean;
 
 	constructor(
 		private app: App,
@@ -188,6 +202,7 @@ export class SyncEngine {
 		this.maxConcurrentOperations = options.maxConcurrentOperations ?? 4;
 		this.useAtomicMoves = options.useAtomicMoves ?? true;
 		this.isPullOnlyMode = options.isPullOnlyMode ?? (() => false);
+		this.getExcludeSystemTempFiles = options.getExcludeSystemTempFiles ?? (() => true);
 
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -1734,6 +1749,11 @@ export class SyncEngine {
 
 	private async loadIgnoreMatchers(): Promise<RegExp[]> {
 		const patterns = [...SyncEngine.DEFAULT_IGNORE_PATTERNS];
+
+		// Include OS/Office temp and lock file patterns when enabled (default: on)
+		if (this.getExcludeSystemTempFiles()) {
+			patterns.push(...SyncEngine.SYSTEM_TEMP_FILE_PATTERNS);
+		}
 
 		try {
 			const content = await this.app.vault.adapter.read('.syncIgnore');

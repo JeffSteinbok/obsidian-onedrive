@@ -348,6 +348,18 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					await this.plugin.onCssSnippetSyncChanged(value);
 				})
 			);
+
+		new Setting(containerEl)
+			.setName(t('settings.sync.excludeSystemTempFiles.name'))
+			.setDesc(t('settings.sync.excludeSystemTempFiles.desc'))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.excludeSystemTempFiles ?? true)
+					.onChange(async (value) => {
+						this.plugin.settings.excludeSystemTempFiles = value;
+						await this.plugin.saveSettings();
+					})
+			);
 	}
 
 	private displaySyncStatus(containerEl: HTMLElement): void {

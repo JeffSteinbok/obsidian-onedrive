@@ -213,6 +213,8 @@ export interface SyncEngineOptions {
 	useAtomicMoves?: boolean;
 	/** Returns true if pull-only mode is enabled */
 	isPullOnlyMode?: () => boolean;
+	/** Returns true if OS/Office temp and lock files should be excluded from sync */
+	getExcludeSystemTempFiles?: () => boolean;
 }
 
 export enum ConflictResolutionStrategy {
@@ -298,6 +300,7 @@ export interface PluginSettings {
 	syncAppSettings: boolean; // Opt-in sync for Obsidian app settings (app.json, appearance.json, hotkeys.json)
 	syncPluginManifests: boolean; // Opt-in sync for selected Obsidian plugin manifest files and binaries
 	syncCssSnippets: boolean; // Opt-in sync for CSS snippets in .obsidian/snippets/
+	excludeSystemTempFiles: boolean; // Exclude OS/Office temp and lock files (~$*, *.tmp, .DS_Store, etc.)
 	syncState?: {
 		lastSyncTime: number;
 		fileStates: Array<[string, FileState]>;
@@ -339,6 +342,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	syncAppSettings: false,
 	syncPluginManifests: false,
 	syncCssSnippets: false,
+	excludeSystemTempFiles: true, // Exclude OS/Office temp and lock files by default
 	syncState: undefined,
 	conflictQueue: undefined,
 

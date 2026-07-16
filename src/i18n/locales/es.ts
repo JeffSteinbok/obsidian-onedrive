@@ -243,6 +243,10 @@ export const es = {
 				name: 'Sincronizar fragmentos CSS',
 				desc: 'Sincronizar fragmentos CSS de {{configDir}}/snippets/ para mantener los estilos personalizados consistentes entre dispositivos.',
 			},
+			excludeSystemTempFiles: {
+				name: 'Exclude system temp files',
+				desc: 'Automatically skip OS and Office temporary/lock files during sync. This includes ~$* (Office lock files), *.tmp, .~lock.* (LibreOffice), .DS_Store, Thumbs.db, and desktop.ini. Disable only if you explicitly need these files synced.',
+			},
 			status: {
 				name: 'Estado de sincronización',
 				desc: 'Estado: {{status}} · Última sincronización: {{lastSync}} · Progreso: {{progress}} · Conflictos: {{conflicts}}',

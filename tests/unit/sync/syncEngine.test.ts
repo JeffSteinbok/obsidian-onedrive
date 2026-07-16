@@ -843,6 +843,99 @@ describe('SyncEngine', () => {
 		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
 	});
 
+	it('excludes Office and OS temp/lock files from remote changes by default', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		// .syncIgnore is empty; built-in system temp patterns should filter these out
+		mockApp.vault.adapter.read.mockRejectedValue(new Error('missing'));
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				makeRemoteFile('INBOX/~$Report.docx', { id: 'office-lock-id' }),
+				makeRemoteFile('work/~$Presentation.pptx', { id: 'office-pptx-id' }),
+				makeRemoteFile('notes/draft.tmp', { id: 'tmp-id' }),
+				makeRemoteFile('docs/.~lock.document.odt#', { id: 'libreoffice-id' }),
+				makeRemoteFile('.DS_Store', { id: 'ds-store-id' }),
+				makeRemoteFile('pics/Thumbs.db', { id: 'thumbs-id' }),
+				makeRemoteFile('pics/desktop.ini', { id: 'desktop-ini-id' }),
+				makeRemoteFile('notes/keep.md', { id: 'keep-id' }),
+			],
+			deltaLink: 'delta-link-temp',
+		});
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('notes/keep.md', 10, Date.now()));
+
+		await syncEngine.performSync();
+
+		// Only the regular file should be synced
+		expect(mockFileOps.downloadFile).toHaveBeenCalledTimes(1);
+		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('keep-id');
+	});
+
+	it('excludes Office and OS temp/lock files from local dirty queue by default', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockApp.vault.adapter.read.mockRejectedValue(new Error('missing'));
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: '~$Report.docx', type: LocalChangeType.MODIFY },
+			{ path: 'docs/.~lock.spreadsheet.ods#', type: LocalChangeType.MODIFY },
+			{ path: '.DS_Store', type: LocalChangeType.MODIFY },
+			{ path: 'thumbs/Thumbs.db', type: LocalChangeType.MODIFY },
+			{ path: 'notes/keep.md', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			path === 'notes/keep.md' ? makeTFile('notes/keep.md', 10, Date.now()) : null
+		);
+
+		await syncEngine.performSync();
+
+		// Temp files should be removed from the dirty queue, not uploaded
+		expect(mockEventManager.removeDirtyPaths).toHaveBeenCalledWith(
+			expect.arrayContaining([
+				'~$Report.docx',
+				'docs/.~lock.spreadsheet.ods#',
+				'.DS_Store',
+				'thumbs/Thumbs.db',
+			])
+		);
+		expect(mockFileOps.uploadFile).toHaveBeenCalledTimes(1);
+	});
+
+	it('syncs system temp files when excludeSystemTempFiles is disabled', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockApp.vault.adapter.read.mockRejectedValue(new Error('missing'));
+
+		// Build a fresh engine with system temp exclusion disabled
+		const engineNoExclude = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			conflictResolver,
+			mockEventManager as any,
+			'.obsidian',
+			{
+				remoteRoot: '/remote/root',
+				getExcludeSystemTempFiles: () => false,
+			}
+		);
+
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				makeRemoteFile('~$Report.docx', { id: 'office-id' }),
+				makeRemoteFile('notes/keep.md', { id: 'keep-id' }),
+			],
+			deltaLink: 'delta-link-no-exclude',
+		});
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => {
+			if (path === 'notes/keep.md') return makeTFile('notes/keep.md', 10, Date.now());
+			if (path === '~$Report.docx') return makeTFile('~$Report.docx', 10, Date.now());
+			return null;
+		});
+
+		await engineNoExclude.performSync();
+
+		// Both files should be considered (neither excluded by system patterns)
+		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('office-id');
+		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('keep-id');
+	});
+
 	it('throws and shows an error notice when sync fails', async () => {
 		mockClient.getDelta.mockRejectedValue(new Error('delta failed'));
 

@@ -242,6 +242,10 @@ export const zhCn = {
 				name: '同步 CSS 片段',
 				desc: '同步 {{configDir}}/snippets/ 中的 CSS 片段，让自定义样式在不同设备上保持一致。',
 			},
+			excludeSystemTempFiles: {
+				name: 'Exclude system temp files',
+				desc: 'Automatically skip OS and Office temporary/lock files during sync. This includes ~$* (Office lock files), *.tmp, .~lock.* (LibreOffice), .DS_Store, Thumbs.db, and desktop.ini. Disable only if you explicitly need these files synced.',
+			},
 			status: {
 				name: '同步状态',
 				desc: '状态：{{status}} · 上次同步：{{lastSync}} · 进度：{{progress}} · 冲突：{{conflicts}}',

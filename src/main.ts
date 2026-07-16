@@ -401,6 +401,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 					maxConcurrentOperations: this.getExperimentalSetting('maxConcurrentOperations'),
 					useAtomicMoves: this.getExperimentalSetting('useAtomicMoves'),
 					isPullOnlyMode: () => this.getExperimentalSetting('pullOnlyMode'),
+					getExcludeSystemTempFiles: () => this.settings.excludeSystemTempFiles ?? true,
 				}
 			);
 
