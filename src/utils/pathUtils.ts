@@ -162,6 +162,10 @@ function getSyncableObsidianAppSettings(configDir: string): Set<string> {
 	]);
 }
 
+function getSyncableObsidianBookmarks(configDir: string): Set<string> {
+	return new Set([buildConfigPath(configDir, 'bookmarks.json')]);
+}
+
 function getSyncableObsidianPluginManifests(configDir: string): Set<string> {
 	return new Set([
 		buildConfigPath(configDir, 'community-plugins.json'),
@@ -178,7 +182,8 @@ function getSyncableObsidianPluginManifests(configDir: string): Set<string> {
 export function getFixedSyncableConfigPaths(
 	configDir: string,
 	syncPluginManifests: boolean,
-	syncAppSettings: boolean
+	syncAppSettings: boolean,
+	syncBookmarks = false
 ): string[] {
 	const paths: string[] = [];
 	if (syncAppSettings) {
@@ -188,6 +193,11 @@ export function getFixedSyncableConfigPaths(
 	}
 	if (syncPluginManifests) {
 		for (const p of getSyncableObsidianPluginManifests(configDir)) {
+			paths.push(p);
+		}
+	}
+	if (syncBookmarks) {
+		for (const p of getSyncableObsidianBookmarks(configDir)) {
 			paths.push(p);
 		}
 	}
@@ -262,8 +272,9 @@ export async function getAllSyncableConfigPaths(
 	const syncPlugins = shouldSyncPath(`${configDir}/community-plugins.json`);
 	const syncAppSettings = shouldSyncPath(`${configDir}/app.json`);
 	const syncSnippets = shouldSyncPath(`${configDir}/snippets`);
+	const syncBookmarks = shouldSyncPath(`${configDir}/bookmarks.json`);
 
-	const fixedPaths = getFixedSyncableConfigPaths(configDir, syncPlugins, syncAppSettings);
+	const fixedPaths = getFixedSyncableConfigPaths(configDir, syncPlugins, syncAppSettings, syncBookmarks);
 	const pluginPaths = syncPlugins
 		? await getInstalledPluginSyncPaths(configDir, adapter)
 		: [];
@@ -303,13 +314,15 @@ export function shouldSyncVaultPath(
 	syncPluginManifests = false,
 	syncAppSettings = false,
 	configDir: string,
-	syncCssSnippets = false
+	syncCssSnippets = false,
+	syncBookmarks = false
 ): boolean {
 	const normalized = normalizePath(path);
 	const normalizedConfigDir = normalizeConfigDir(configDir);
 	const configDirPrefix = `${normalizedConfigDir}/`;
 	const syncableObsidianAppSettings = getSyncableObsidianAppSettings(normalizedConfigDir);
 	const syncableObsidianPluginManifests = getSyncableObsidianPluginManifests(normalizedConfigDir);
+	const syncableObsidianBookmarks = getSyncableObsidianBookmarks(normalizedConfigDir);
 	const ownPluginFolder = buildConfigPath(normalizedConfigDir, 'plugins', 'onedrive-sync');
 	// Exclude the old plugin folder too, so upgrades don't sync stale auth/state
 	const oldPluginFolder = buildConfigPath(normalizedConfigDir, 'plugins', 'obsidian-onedrive');
@@ -343,6 +356,10 @@ export function shouldSyncVaultPath(
 	}
 
 	if (syncAppSettings && syncableObsidianAppSettings.has(normalized)) {
+		return true;
+	}
+
+	if (syncBookmarks && syncableObsidianBookmarks.has(normalized)) {
 		return true;
 	}
 

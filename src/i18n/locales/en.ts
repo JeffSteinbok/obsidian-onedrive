@@ -243,6 +243,10 @@ export const en = {
 				name: 'Sync CSS snippets',
 				desc: 'Sync CSS snippets from {{configDir}}/snippets/ to keep custom styles consistent across devices.',
 			},
+			bookmarks: {
+				name: 'Sync bookmarks',
+				desc: 'Sync {{configDir}}/bookmarks.json to keep bookmarks consistent across devices.',
+			},
 			status: {
 				name: 'Sync status',
 				desc: 'Status: {{status}} · Last sync: {{lastSync}} · Progress: {{progress}} · Conflicts: {{conflicts}}',

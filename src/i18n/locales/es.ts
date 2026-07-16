@@ -243,6 +243,10 @@ export const es = {
 				name: 'Sincronizar fragmentos CSS',
 				desc: 'Sincronizar fragmentos CSS de {{configDir}}/snippets/ para mantener los estilos personalizados consistentes entre dispositivos.',
 			},
+			bookmarks: {
+				name: 'Sincronizar marcadores',
+				desc: 'Sincronizar {{configDir}}/bookmarks.json para mantener los marcadores consistentes entre dispositivos.',
+			},
 			status: {
 				name: 'Estado de sincronización',
 				desc: 'Estado: {{status}} · Última sincronización: {{lastSync}} · Progreso: {{progress}} · Conflictos: {{conflicts}}',

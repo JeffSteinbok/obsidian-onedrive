@@ -243,6 +243,10 @@ export const pt = {
 				name: 'Sincronizar snippets CSS',
 				desc: 'Sincronizar snippets CSS de {{configDir}}/snippets/ para manter estilos personalizados consistentes entre dispositivos.',
 			},
+			bookmarks: {
+				name: 'Sincronizar marcadores',
+				desc: 'Sincronizar {{configDir}}/bookmarks.json para manter os marcadores consistentes entre dispositivos.',
+			},
 			status: {
 				name: 'Status da sincronização',
 				desc: 'Status: {{status}} · Última sincronização: {{lastSync}} · Progresso: {{progress}} · Conflitos: {{conflicts}}',

@@ -243,6 +243,10 @@ export const ja = {
 				name: 'CSSスニペットを同期',
 				desc: '{{configDir}}/snippets/のCSSスニペットを同期して、デバイス間でカスタムスタイルを一貫させます。',
 			},
+			bookmarks: {
+				name: 'ブックマークを同期',
+				desc: '{{configDir}}/bookmarks.jsonを同期して、デバイス間でブックマークを一貫させます。',
+			},
 			status: {
 				name: '同期状態',
 				desc: '状態: {{status}} · 最終同期: {{lastSync}} · 進捗: {{progress}} · 競合: {{conflicts}}',
