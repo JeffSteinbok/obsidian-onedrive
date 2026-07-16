@@ -62,6 +62,8 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	// Obsidian still calls display() for imperative setting tabs; we keep the
+	// override for rendering while getSettingDefinitions() powers settings search.
 	display(): void {
 		this.renderSettings();
 	}
