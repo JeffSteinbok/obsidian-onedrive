@@ -243,8 +243,8 @@ export const zhCn = {
 				desc: '同步 {{configDir}}/snippets/ 中的 CSS 片段，让自定义样式在不同设备上保持一致。',
 			},
 			excludeSystemTempFiles: {
-				name: 'Exclude system temp files',
-				desc: 'Automatically skip OS and Office temporary/lock files during sync. This includes ~$* (Office lock files), *.tmp, .~lock.* (LibreOffice), .DS_Store, Thumbs.db, and desktop.ini. Disable only if you explicitly need these files synced.',
+				name: '排除系统临时文件',
+				desc: '同步时自动跳过操作系统和 Office 的临时/锁定文件，包括 ~$*（Office 锁定文件）、*.tmp、.~lock.*（LibreOffice）、.DS_Store、Thumbs.db 和 desktop.ini。仅在确实需要同步这些文件时才禁用此选项。',
 			},
 			status: {
 				name: '同步状态',

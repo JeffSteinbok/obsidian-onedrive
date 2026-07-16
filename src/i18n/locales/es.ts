@@ -244,8 +244,8 @@ export const es = {
 				desc: 'Sincronizar fragmentos CSS de {{configDir}}/snippets/ para mantener los estilos personalizados consistentes entre dispositivos.',
 			},
 			excludeSystemTempFiles: {
-				name: 'Exclude system temp files',
-				desc: 'Automatically skip OS and Office temporary/lock files during sync. This includes ~$* (Office lock files), *.tmp, .~lock.* (LibreOffice), .DS_Store, Thumbs.db, and desktop.ini. Disable only if you explicitly need these files synced.',
+				name: 'Excluir archivos temporales del sistema',
+				desc: 'Omitir automáticamente los archivos temporales y de bloqueo del sistema operativo y de Office durante la sincronización. Esto incluye ~$* (archivos de bloqueo de Office), *.tmp, .~lock.* (LibreOffice), .DS_Store, Thumbs.db y desktop.ini. Desactívelo solo si necesita sincronizar explícitamente estos archivos.',
 			},
 			status: {
 				name: 'Estado de sincronización',
