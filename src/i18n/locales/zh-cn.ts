@@ -81,6 +81,8 @@ export const zhCn = {
 			conflicts: '个冲突',
 			conflictsNeedResolution:
 				'OneDrive 同步：已同步 {{syncedCount}} {{fileLabel}}，{{conflictCount}} {{conflictLabel}}需要处理',
+			partialFailure:
+				'OneDrive sync: {{failCount}} {{failLabel}} failed and will be retried next sync',
 			engineFailed: 'OneDrive 同步失败：{{message}}',
 		},
 		reconcile: {

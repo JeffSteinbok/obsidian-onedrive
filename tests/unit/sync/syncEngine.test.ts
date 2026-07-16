@@ -2063,20 +2063,31 @@ describe('SyncEngine error handling', () => {
 		expect(errorNotices.length).toBeGreaterThan(0);
 	});
 
-	it('throws and shows error notice when upload fails', async () => {
+	it('recovers from an upload failure, saves delta cursor, and re-queues the failed path', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		mockEventManager.getDirtyFiles.mockReturnValue([
 			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
 		]);
 		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('notes/test.md', 100, Date.now()));
-		mockFileOps.uploadFile.mockRejectedValue(new Error('Upload failed'));
+		mockFileOps.uploadFile.mockRejectedValue(new Error('Upload failed: HTTP 423'));
 
 		const engine = makeEngine();
 
-		await expect(engine.performSync()).rejects.toThrow('Upload failed');
+		// performSync must not throw — the failure is per-operation, not catastrophic
+		await expect(engine.performSync()).resolves.toBeUndefined();
+
+		// Delta cursor must be saved so the next cycle doesn't restart from scratch
+		expect(stateManager.getDeltaLink()).toBe('delta-link-1');
+
+		// Failed path must be re-queued as dirty for retry
+		expect(mockEventManager.addDirtyFile).toHaveBeenCalledWith('notes/test.md', 'modify');
+
+		// A warning notice must be shown
+		const partialNotices = trackingNotice.calls.filter(([msg]) => msg.includes('failed'));
+		expect(partialNotices.length).toBeGreaterThan(0);
 	});
 
-	it('throws and shows error notice when download fails', async () => {
+	it('recovers from a download failure, saves delta cursor, and re-queues the failed path', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		mockClient.getDelta.mockResolvedValue({
 			items: [makeRemoteFile('notes/new.md', { id: 'new-id' })],
@@ -2087,6 +2098,64 @@ describe('SyncEngine error handling', () => {
 
 		const engine = makeEngine();
 
-		await expect(engine.performSync()).rejects.toThrow('Download failed');
+		// performSync must not throw
+		await expect(engine.performSync()).resolves.toBeUndefined();
+
+		// Delta cursor must be saved
+		expect(stateManager.getDeltaLink()).toBe('delta-2');
+
+		// Failed path must be re-queued as dirty
+		expect(mockEventManager.addDirtyFile).toHaveBeenCalledWith('notes/new.md', 'modify');
+	});
+
+	it('continues remaining operations when one operation fails', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/locked.md', type: LocalChangeType.MODIFY },
+			{ path: 'notes/ok.md', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 100, Date.now())
+		);
+		// First upload fails (locked file), second succeeds
+		mockFileOps.uploadFile
+			.mockRejectedValueOnce(new Error('HTTP 423 Locked'))
+			.mockResolvedValueOnce({
+				id: 'ok-id',
+				name: 'ok.md',
+				size: 100,
+				file: { hashes: { quickXorHash: 'ok-hash' } },
+			});
+
+		const engine = makeEngine();
+		await engine.performSync();
+
+		// Both uploads must have been attempted
+		expect(mockFileOps.uploadFile).toHaveBeenCalledTimes(2);
+
+		// Successful file must have its state recorded
+		expect(stateManager.getFileState('notes/ok.md')).toBeDefined();
+
+		// Failed path re-queued; successful path not re-queued
+		const addDirtyCalls = (mockEventManager.addDirtyFile as ReturnType<typeof vi.fn>).mock.calls;
+		const dirtiedPaths = addDirtyCalls.map(([p]: [string]) => p);
+		expect(dirtiedPaths).toContain('notes/locked.md');
+		expect(dirtiedPaths).not.toContain('notes/ok.md');
+	});
+
+	it('shows a partial failure notice when some operations fail', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/fail.md', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('notes/fail.md', 100, Date.now()));
+		mockFileOps.uploadFile.mockRejectedValue(new Error('HTTP 423'));
+
+		const engine = makeEngine();
+		await engine.performSync();
+
+		const partialNotice = trackingNotice.calls.find(([msg]) => msg.includes('failed'));
+		expect(partialNotice).toBeDefined();
+		expect(partialNotice?.[0]).toContain('1');
 	});
 });

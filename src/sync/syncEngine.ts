@@ -133,14 +133,16 @@ interface RemoteChangesResult {
 }
 
 /**
- * Returned by executeSyncOperations: counts of completed operations and
- * the paths that were downloaded or ended in conflict (needed for post-sync
- * dirty-file cleanup).
+ * Returned by executeSyncOperations: counts of completed operations, the paths
+ * that were downloaded or ended in conflict (needed for post-sync dirty-file
+ * cleanup), and the paths whose operations failed and must be retried.
  */
 interface SyncExecutionResult {
 	completed: number;
 	downloadedPaths: string[];
 	conflictedPaths: string[];
+	/** Paths for which the operation failed — will be kept dirty for retry. */
+	failedPaths: string[];
 }
 
 /**
@@ -288,10 +290,8 @@ export class SyncEngine {
 			}
 
 			// Phase 4: Execute all planned sync operations with progress tracking
-			const { completed, downloadedPaths, conflictedPaths } = await this.executeSyncOperations(
-				operations,
-				progress
-			);
+			const { completed, downloadedPaths, conflictedPaths, failedPaths } =
+				await this.executeSyncOperations(operations, progress);
 
 			// Clean up empty folders left behind by folder-delete expansion
 			if (deletedFolderPaths.length > 0) {
@@ -307,7 +307,13 @@ export class SyncEngine {
 			await this.pruneEmptyRemoteConfigFolders(operations);
 
 			// Phase 5: Finalize — store delta cursors so next sync starts where
-			// this one left off, clear the dirty queue, re-mark conflicts
+			// this one left off, clear the dirty queue, re-mark conflicts.
+			//
+			// This block always runs even when some per-file operations failed.
+			// Saving the delta cursor ensures the next cycle does not restart
+			// from scratch (fixing the isFirstSync=true loop described in the
+			// GitHub issue).  Failed paths are re-queued as dirty so they are
+			// retried automatically on the next sync cycle.
 			if (downloadedPaths.length > 0) {
 				this.eventManager.removeDirtyPaths(downloadedPaths);
 			}
@@ -322,9 +328,28 @@ export class SyncEngine {
 			for (const path of conflictedPaths) {
 				this.eventManager.addDirtyFile(path, 'modify');
 			}
+			// Re-queue failed files so the next cycle retries them.
+			for (const path of failedPaths) {
+				this.eventManager.addDirtyFile(path, 'modify');
+			}
 
 			logger.debug('Sync operations finished');
 			this.eventManager.markInitialSyncDone();
+
+			if (failedPaths.length > 0) {
+				logger.warn(
+					`Sync completed with ${failedPaths.length} failed operation(s). ` +
+						`Delta cursor saved; failed files will be retried next sync.`
+				);
+				new Notice(
+					t('notices.sync.partialFailure', {
+						failCount: failedPaths.length,
+						failLabel: t(
+							failedPaths.length === 1 ? 'notices.sync.file' : 'notices.sync.files'
+						),
+					})
+				);
+			}
 
 			const syncedCount = completed - conflictedPaths.length;
 			if (conflictedPaths.length > 0) {
@@ -827,7 +852,7 @@ export class SyncEngine {
 		progress(t('progress.files', { completed: 0, total: operations.length }));
 		const progressNotice =
 			operations.length >= 5 ? new ProgressNotice(t('progress.syncing'), operations.length) : null;
-		await this.executeOperations(operations, (operation) => {
+		const failedPaths = await this.executeOperations(operations, (operation) => {
 			completed++;
 
 			if (operation.direction === SyncDirection.DOWNLOAD) {
@@ -849,6 +874,7 @@ export class SyncEngine {
 			completed,
 			downloadedPaths,
 			conflictedPaths,
+			failedPaths,
 		};
 	}
 
@@ -1192,23 +1218,34 @@ export class SyncEngine {
 	/**
 	 * Execute sync operations with limited parallelism.
 	 * Calls onComplete after each operation finishes successfully.
+	 * Failures are caught per-operation so a single locked/unreachable file
+	 * does not abort the remaining work.  Returns the paths that failed.
 	 */
 	private async executeOperations(
 		operations: SyncOperation[],
 		onComplete: (operation: SyncOperation) => void
-	): Promise<void> {
+	): Promise<string[]> {
 		const parallelCount = Math.min(this.maxConcurrentOperations, operations.length);
 		let nextIndex = 0;
+		const failedPaths: string[] = [];
 
 		await Promise.all(
 			Array.from({ length: parallelCount }, async () => {
 				while (nextIndex < operations.length) {
 					const operation = operations[nextIndex++];
-					await this.executeOperation(operation);
-					onComplete(operation);
+					try {
+						await this.executeOperation(operation);
+						onComplete(operation);
+					} catch {
+						// executeOperation already logged the error; just collect
+						// the path so the caller can re-queue it as dirty.
+						failedPaths.push(operation.path);
+					}
 				}
 			})
 		);
+
+		return failedPaths;
 	}
 
 	/**

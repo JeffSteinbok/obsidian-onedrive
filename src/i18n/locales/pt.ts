@@ -80,6 +80,8 @@ export const pt = {
 			conflicts: 'conflitos',
 			conflictsNeedResolution:
 				'Sincronização OneDrive: {{syncedCount}} {{fileLabel}} sincronizados, {{conflictCount}} {{conflictLabel}} precisam de resolução',
+			partialFailure:
+				'OneDrive sync: {{failCount}} {{failLabel}} failed and will be retried next sync',
 			engineFailed: 'Sincronização OneDrive falhou: {{message}}',
 		},
 		reconcile: {
