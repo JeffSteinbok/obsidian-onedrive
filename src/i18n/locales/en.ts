@@ -218,6 +218,10 @@ export const en = {
 				desc: 'Set to 0 for manual sync only (recommended for battery life)',
 				resetTooltip: 'Reset to default',
 			},
+			syncOnFileChange: {
+				name: 'Sync on file change',
+				desc: 'Automatically sync when files are modified. Disable to prevent syncing while actively editing — only the periodic interval and manual sync will run.',
+			},
 			startupDelay: {
 				name: 'Startup sync delay',
 				desc: 'Delay before first sync after Obsidian starts (0 = disabled)',

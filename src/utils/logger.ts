@@ -14,6 +14,8 @@ export enum LogLevel {
 	OFF = 4,
 }
 
+type ConsoleMethod = (...args: unknown[]) => void;
+
 class Logger {
 	private minLevel = LogLevel.OFF;
 	private recentLogs: string[] = [];
@@ -88,32 +90,22 @@ class Logger {
 		}
 	}
 
-	private getConsoleMethod(level: LogLevel): ((message: string, ...args: unknown[]) => void) | null {
+	private getConsoleMethod(level: LogLevel): ConsoleMethod | null {
 		if (typeof window === 'undefined') {
 			return null;
 		}
 
+		const consoleApi = window.console;
+
 		switch (level) {
 			case LogLevel.DEBUG:
-				return window.console.debug.bind(window.console) as (
-					message: string,
-					...args: unknown[]
-				) => void;
+				return consoleApi.debug.bind(consoleApi) as ConsoleMethod;
 			case LogLevel.INFO:
-				return window.console.info.bind(window.console) as (
-					message: string,
-					...args: unknown[]
-				) => void;
+				return consoleApi.info.bind(consoleApi) as ConsoleMethod;
 			case LogLevel.WARN:
-				return window.console.warn.bind(window.console) as (
-					message: string,
-					...args: unknown[]
-				) => void;
+				return consoleApi.warn.bind(consoleApi) as ConsoleMethod;
 			case LogLevel.ERROR:
-				return window.console.error.bind(window.console) as (
-					message: string,
-					...args: unknown[]
-				) => void;
+				return consoleApi.error.bind(consoleApi) as ConsoleMethod;
 			default:
 				return null;
 		}
