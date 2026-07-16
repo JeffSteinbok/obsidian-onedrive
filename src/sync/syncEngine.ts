@@ -154,7 +154,14 @@ export class SyncEngine {
 	private readonly useAtomicMoves: boolean;
 	private isSharedDrive: boolean;
 	private remoteRootOnDrive: string;
-	private static readonly DEFAULT_IGNORE_PATTERNS: string[] = [];
+	private static readonly DEFAULT_IGNORE_PATTERNS: string[] = [
+		'~$*',
+		'*.tmp',
+		'.~lock.*#',
+		'.DS_Store',
+		'Thumbs.db',
+		'desktop.ini',
+	];
 	private pendingVaultFolderCreates = new Map<string, Promise<void>>();
 
 	// Options stored as instance properties
