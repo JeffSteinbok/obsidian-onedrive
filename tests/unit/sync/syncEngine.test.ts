@@ -53,6 +53,7 @@ import { shouldSyncVaultPath } from '../../../src/utils/pathUtils';
 import {
 	ConflictResolutionStrategy,
 	LocalChangeType,
+	OneDriveError,
 	OneDriveItem,
 	SyncDirection,
 } from '../../../src/types';
@@ -2088,5 +2089,83 @@ describe('SyncEngine error handling', () => {
 		const engine = makeEngine();
 
 		await expect(engine.performSync()).rejects.toThrow('Download failed');
+	});
+
+	it('skips locked files (HTTP 423) and keeps them dirty for next sync', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/locked.docx', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('notes/locked.docx', 100, Date.now()));
+		// Simulate OneDrive returning HTTP 423 for a locked Office document
+		mockFileOps.uploadFile.mockRejectedValue(new OneDriveError('File locked', 'locked', 423));
+
+		const engine = makeEngine();
+
+		// Should NOT throw — 423 is a soft deferrable error
+		await expect(engine.performSync()).resolves.toBeUndefined();
+
+		// The locked file should NOT have been marked as synced in state
+		expect(stateManager.getFileState('notes/locked.docx')).toBeUndefined();
+
+		// The file should be re-added to the dirty queue so next sync retries it
+		expect(mockEventManager.addDirtyFile).toHaveBeenCalledWith('notes/locked.docx', 'modify');
+	});
+
+	it('shows a notice when locked files are deferred', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'report.xlsx', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('report.xlsx', 100, Date.now()));
+		mockFileOps.uploadFile.mockRejectedValue(new OneDriveError('File locked', 'locked', 423));
+
+		const engine = makeEngine();
+		await engine.performSync();
+
+		const deferNotices = trackingNotice.calls.filter(([msg]) =>
+			msg.includes('locked') || msg.includes('skipped')
+		);
+		expect(deferNotices.length).toBeGreaterThan(0);
+	});
+
+	it('continues syncing other files when one is locked (HTTP 423)', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'locked.docx', type: LocalChangeType.MODIFY },
+			{ path: 'unlocked.md', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 100, Date.now())
+		);
+		// First call (locked.docx) throws 423, second call (unlocked.md) succeeds
+		mockFileOps.uploadFile
+			.mockRejectedValueOnce(new OneDriveError('File locked', 'locked', 423))
+			.mockResolvedValueOnce(
+				makeRemoteItem({ id: 'unlocked-id', name: 'unlocked.md', file: { mimeType: 'text/plain', hashes: { quickXorHash: 'hash-ok' } } })
+			);
+
+		const engine = makeEngine();
+		await expect(engine.performSync()).resolves.toBeUndefined();
+
+		// The unlocked file should have been uploaded
+		expect(mockFileOps.uploadFile).toHaveBeenCalledTimes(2);
+		// The unlocked file should be tracked
+		expect(stateManager.getFileState('unlocked.md')).toBeDefined();
+		// The locked file should NOT be tracked
+		expect(stateManager.getFileState('locked.docx')).toBeUndefined();
+	});
+
+	it('does not defer non-423 upload errors — they still propagate', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('notes/test.md', 100, Date.now()));
+		// HTTP 500 is a retryable server error, not deferrable — should still throw
+		mockFileOps.uploadFile.mockRejectedValue(new OneDriveError('Server error', 'server_error', 500));
+
+		const engine = makeEngine();
+		await expect(engine.performSync()).rejects.toThrow('Server error');
 	});
 });

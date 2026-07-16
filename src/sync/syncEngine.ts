@@ -75,6 +75,7 @@ import {
 	SyncEngineConflictQueue,
 } from '../types';
 import { logger } from '../utils/logger';
+import { isDeferrableError } from '../utils/errors';
 import {
 	normalizePath,
 	toOneDrivePath,
@@ -135,12 +136,14 @@ interface RemoteChangesResult {
 /**
  * Returned by executeSyncOperations: counts of completed operations and
  * the paths that were downloaded or ended in conflict (needed for post-sync
- * dirty-file cleanup).
+ * dirty-file cleanup). deferredPaths holds files that were skipped due to
+ * a transient lock (HTTP 423) and should remain dirty for the next sync.
  */
 interface SyncExecutionResult {
 	completed: number;
 	downloadedPaths: string[];
 	conflictedPaths: string[];
+	deferredPaths: string[];
 }
 
 /**
@@ -288,7 +291,7 @@ export class SyncEngine {
 			}
 
 			// Phase 4: Execute all planned sync operations with progress tracking
-			const { completed, downloadedPaths, conflictedPaths } = await this.executeSyncOperations(
+			const { completed, downloadedPaths, conflictedPaths, deferredPaths } = await this.executeSyncOperations(
 				operations,
 				progress
 			);
@@ -322,6 +325,11 @@ export class SyncEngine {
 			for (const path of conflictedPaths) {
 				this.eventManager.addDirtyFile(path, 'modify');
 			}
+			// Re-mark deferred (locked) files as dirty so they are re-attempted
+			// on the next sync cycle, once the lock has been released.
+			for (const path of deferredPaths) {
+				this.eventManager.addDirtyFile(path, 'modify');
+			}
 
 			logger.debug('Sync operations finished');
 			this.eventManager.markInitialSyncDone();
@@ -336,6 +344,14 @@ export class SyncEngine {
 						conflictLabel: t(
 							conflictedPaths.length === 1 ? 'notices.sync.conflict' : 'notices.sync.conflicts'
 						),
+					})
+				);
+			}
+			if (deferredPaths.length > 0) {
+				new Notice(
+					t('notices.sync.lockedFilesDeferred', {
+						count: deferredPaths.length,
+						fileLabel: t(deferredPaths.length === 1 ? 'notices.sync.file' : 'notices.sync.files'),
 					})
 				);
 			}
@@ -824,6 +840,7 @@ export class SyncEngine {
 		let completed = 0;
 		const downloadedPaths: string[] = [];
 		const conflictedPaths: string[] = [];
+		const deferredPaths: string[] = [];
 		progress(t('progress.files', { completed: 0, total: operations.length }));
 		const progressNotice =
 			operations.length >= 5 ? new ProgressNotice(t('progress.syncing'), operations.length) : null;
@@ -842,13 +859,14 @@ export class SyncEngine {
 			if (progressNotice) {
 				progressNotice.update(completed, t('progress.syncing'));
 			}
-		});
+		}, deferredPaths);
 		progressNotice?.hide();
 		progress(undefined);
 		return {
 			completed,
 			downloadedPaths,
 			conflictedPaths,
+			deferredPaths,
 		};
 	}
 
@@ -1192,10 +1210,13 @@ export class SyncEngine {
 	/**
 	 * Execute sync operations with limited parallelism.
 	 * Calls onComplete after each operation finishes successfully.
+	 * Deferrable errors (e.g. HTTP 423 Locked) are caught and the file path
+	 * is pushed to deferredPaths so it stays dirty for the next sync cycle.
 	 */
 	private async executeOperations(
 		operations: SyncOperation[],
-		onComplete: (operation: SyncOperation) => void
+		onComplete: (operation: SyncOperation) => void,
+		deferredPaths: string[]
 	): Promise<void> {
 		const parallelCount = Math.min(this.maxConcurrentOperations, operations.length);
 		let nextIndex = 0;
@@ -1204,8 +1225,23 @@ export class SyncEngine {
 			Array.from({ length: parallelCount }, async () => {
 				while (nextIndex < operations.length) {
 					const operation = operations[nextIndex++];
-					await this.executeOperation(operation);
-					onComplete(operation);
+					try {
+						await this.executeOperation(operation);
+						onComplete(operation);
+					} catch (error) {
+						if (error instanceof Error && isDeferrableError(error)) {
+							// File is transiently locked (e.g. open in Word/Excel).
+							// Skip it for this run; it stays dirty so the next sync
+							// cycle re-attempts it automatically.
+							logger.warn(
+								`Skipping locked file (will retry next sync): ${operation.path}`,
+								error.message
+							);
+							deferredPaths.push(operation.path);
+						} else {
+							throw error;
+						}
+					}
 				}
 			})
 		);
@@ -1942,7 +1978,7 @@ export class SyncEngine {
 				const label = t('progress.files', { completed, total: operations.length });
 				progress(label);
 				progressNotice.update(completed, t('progress.reconciling'));
-			});
+			}, []);
 			progressNotice.hide();
 			progress(undefined);
 

@@ -82,6 +82,8 @@ export const zhCn = {
 			conflictsNeedResolution:
 				'OneDrive 同步：已同步 {{syncedCount}} {{fileLabel}}，{{conflictCount}} {{conflictLabel}}需要处理',
 			engineFailed: 'OneDrive 同步失败：{{message}}',
+			lockedFilesDeferred:
+				'OneDrive 同步：{{count}} {{fileLabel}}已跳过（被其他应用占用）——将在下次同步重试',
 		},
 		reconcile: {
 			notConnected: '从云端校准：尚未连接 OneDrive。',

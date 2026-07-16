@@ -19,6 +19,7 @@ import {
 	getRetryDelay,
 	handleAuthErrors,
 	handleSyncErrors,
+	isDeferrableError,
 	isRetryableError,
 	parseHttpError,
 } from '../../../src/utils/errors';
@@ -216,6 +217,36 @@ describe('errors utils', () => {
 
 		it('returns false for generic errors', () => {
 			expect(isRetryableError(new Error('some other error'))).toBe(false);
+		});
+	});
+
+	describe('isDeferrableError', () => {
+		it('returns true for OneDriveError with status 423', () => {
+			expect(isDeferrableError(new OneDriveError('File locked', 'locked', 423))).toBe(true);
+		});
+
+		it('returns false for OneDriveError with non-deferrable status codes', () => {
+			expect(isDeferrableError(new OneDriveError('Not found', 'not_found', 404))).toBe(false);
+			expect(isDeferrableError(new OneDriveError('Server error', 'server_error', 500))).toBe(false);
+			expect(isDeferrableError(new OneDriveError('Bad request', 'bad_request', 400))).toBe(false);
+		});
+
+		it('returns true for Graph SDK errors with statusCode 423', () => {
+			const error = Object.assign(new Error('Graph SDK error'), { statusCode: 423, code: 'Locked' });
+			expect(isDeferrableError(error)).toBe(true);
+		});
+
+		it('returns false for Graph SDK errors with non-deferrable statusCode', () => {
+			const error = Object.assign(new Error('Graph SDK error'), { statusCode: 500, code: 'ServiceUnavailable' });
+			expect(isDeferrableError(error)).toBe(false);
+		});
+
+		it('returns false for generic errors', () => {
+			expect(isDeferrableError(new Error('some other error'))).toBe(false);
+		});
+
+		it('returns false for RateLimitError (retryable, not deferrable)', () => {
+			expect(isDeferrableError(new RateLimitError('Too many requests', 30))).toBe(false);
 		});
 	});
 

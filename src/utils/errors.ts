@@ -153,6 +153,34 @@ export function isRetryableError(error: Error): boolean {
 }
 
 /**
+ * Check if an error represents a deferrable (skip-and-retry-later) condition.
+ *
+ * HTTP 423 (Locked) means the file is held open by another process — typically
+ * an Office application or OneDrive's own sync client. The lock is transient:
+ * once the user closes the document the next scheduled sync will succeed.
+ * We treat these as soft failures: skip the file for this run, leave it in the
+ * dirty queue so it is re-attempted automatically, and surface a single
+ * aggregated notice rather than aborting the whole sync.
+ */
+export function isDeferrableError(error: Error): boolean {
+	const deferrableStatusCodes = [423];
+
+	if (error instanceof OneDriveError) {
+		return error.statusCode ? deferrableStatusCodes.includes(error.statusCode) : false;
+	}
+
+	// Graph SDK throws errors with statusCode property but not as OneDriveError instances
+	if (error && typeof error === 'object' && 'statusCode' in error) {
+		const statusCode = (error as unknown as { statusCode: number }).statusCode;
+		if (typeof statusCode === 'number') {
+			return deferrableStatusCodes.includes(statusCode);
+		}
+	}
+
+	return false;
+}
+
+/**
  * Extract retry delay from error
  */
 export function getRetryDelay(error: Error): number | undefined {

@@ -81,6 +81,8 @@ export const en = {
 			conflictsNeedResolution:
 				'OneDrive sync: {{syncedCount}} {{fileLabel}} synced, {{conflictCount}} {{conflictLabel}} need resolution',
 			engineFailed: 'OneDrive sync failed: {{message}}',
+			lockedFilesDeferred:
+				'OneDrive sync: {{count}} {{fileLabel}} skipped (locked by another app) — will retry next sync',
 		},
 		reconcile: {
 			notConnected: 'Reconcile from cloud: not connected to OneDrive.',
