@@ -843,6 +843,87 @@ describe('SyncEngine', () => {
 		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
 	});
 
+	it('ignores default temporary file patterns for local changes', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		const ignoredPaths = [
+			'~$anything.docx',
+			'~$foo.pptx',
+			'A/B/~$foo.xlsx',
+			'something.tmp',
+			'A/B/something.tmp',
+			'.~lock.file.odt#',
+			'.DS_Store',
+			'A/.DS_Store',
+			'Thumbs.db',
+			'A/Thumbs.db',
+			'desktop.ini',
+			'A/B/desktop.ini',
+		];
+		mockEventManager.getDirtyFiles.mockReturnValue(
+			ignoredPaths.map((path) => ({ path, type: LocalChangeType.MODIFY }))
+		);
+
+		await syncEngine.performSync();
+
+		expect(mockEventManager.removeDirtyPaths).toHaveBeenCalledWith(ignoredPaths);
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+	});
+
+	it('does not ignore normal files that resemble temporary patterns', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		const normalPaths = ['Notes.md', 'A/B/report.docx', 'photo.png', 'weird~$name.md', 'data.tmpl'];
+		mockEventManager.getDirtyFiles.mockReturnValue(
+			normalPaths.map((path) => ({ path, type: LocalChangeType.MODIFY }))
+		);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 100, Date.now())
+		);
+
+		await syncEngine.performSync();
+
+		expect(mockEventManager.removeDirtyPaths).not.toHaveBeenCalled();
+		expect(mockFileOps.uploadFile.mock.calls.map((call) => call[0]).sort()).toEqual(
+			normalPaths.map((path) => `/remote/root/${path}`).sort()
+		);
+	});
+
+	it('filters default temporary file patterns from remote changes and deletes', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState('Thumbs.db', {
+			path: 'Thumbs.db',
+			localMtime: 1,
+			remoteHash: 'thumbs-hash',
+			size: 10,
+			remoteModifiedTime: 2,
+			oneDriveId: 'thumbs-id',
+		});
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				makeRemoteFile('~$anything.docx', { id: 'office-docx-id' }),
+				makeRemoteFile('~$foo.pptx', { id: 'office-pptx-id' }),
+				makeRemoteFile('A/B/~$foo.xlsx', { id: 'office-xlsx-id' }),
+				makeRemoteFile('something.tmp', { id: 'tmp-root-id' }),
+				makeRemoteFile('A/B/something.tmp', { id: 'tmp-nested-id' }),
+				makeRemoteFile('.~lock.file.odt#', { id: 'libreoffice-lock-id' }),
+				makeRemoteFile('.DS_Store', { id: 'ds-store-root-id' }),
+				makeRemoteFile('A/.DS_Store', { id: 'ds-store-id' }),
+				makeRemoteDelete('Thumbs.db', { id: 'thumbs-id' }),
+				makeRemoteFile('A/Thumbs.db', { id: 'thumbs-nested-id' }),
+				makeRemoteFile('desktop.ini', { id: 'desktop-ini-root-id' }),
+				makeRemoteFile('A/B/desktop.ini', { id: 'desktop-ini-id' }),
+				makeRemoteFile('keep.md', { id: 'keep-id' }),
+			],
+			deltaLink: 'delta-link-2',
+		});
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('keep.md', 10, Date.now()));
+
+		await syncEngine.performSync();
+
+		expect(mockFileOps.downloadFile).toHaveBeenCalledTimes(1);
+		expect(mockFileOps.downloadFile).toHaveBeenCalledWith('keep-id');
+		expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
+	});
+
 	it('throws and shows an error notice when sync fails', async () => {
 		mockClient.getDelta.mockRejectedValue(new Error('delta failed'));
 
