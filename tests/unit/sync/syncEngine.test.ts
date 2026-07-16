@@ -2142,7 +2142,11 @@ describe('SyncEngine error handling', () => {
 		mockFileOps.uploadFile
 			.mockRejectedValueOnce(new OneDriveError('File locked', 'locked', 423))
 			.mockResolvedValueOnce(
-				makeRemoteItem({ id: 'unlocked-id', name: 'unlocked.md', file: { mimeType: 'text/plain', hashes: { quickXorHash: 'hash-ok' } } })
+				makeRemoteItem({
+					id: 'unlocked-id',
+					name: 'unlocked.md',
+					file: { mimeType: 'text/plain', hashes: { quickXorHash: 'hash-ok' } },
+				})
 			);
 
 		const engine = makeEngine();

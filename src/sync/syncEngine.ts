@@ -321,14 +321,21 @@ export class SyncEngine {
 			}
 			this.stateManager.setLastSyncTime(Date.now());
 
-			this.eventManager.clearDirtyFiles();
+			// Collect paths that need to remain in the dirty queue before clearing it.
+			// Clearing first and then re-adding opens a narrow window where new vault
+			// events could land and then be wiped by a concurrent re-add race.
+			const requeue: Array<[string, string]> = [];
 			for (const path of conflictedPaths) {
-				this.eventManager.addDirtyFile(path, 'modify');
+				requeue.push([path, 'modify']);
 			}
 			// Re-mark deferred (locked) files as dirty so they are re-attempted
 			// on the next sync cycle, once the lock has been released.
 			for (const path of deferredPaths) {
-				this.eventManager.addDirtyFile(path, 'modify');
+				requeue.push([path, 'modify']);
+			}
+			this.eventManager.clearDirtyFiles();
+			for (const [path, type] of requeue) {
+				this.eventManager.addDirtyFile(path, type as 'modify');
 			}
 
 			logger.debug('Sync operations finished');
@@ -1229,13 +1236,16 @@ export class SyncEngine {
 						await this.executeOperation(operation);
 						onComplete(operation);
 					} catch (error) {
-						if (error instanceof Error && isDeferrableError(error)) {
+						// isDeferrableError only accepts Error instances; non-Error thrown
+						// values (plain objects, strings, etc.) are never deferrable.
+						const err = error instanceof Error ? error : undefined;
+						if (err && isDeferrableError(err)) {
 							// File is transiently locked (e.g. open in Word/Excel).
 							// Skip it for this run; it stays dirty so the next sync
 							// cycle re-attempts it automatically.
 							logger.warn(
 								`Skipping locked file (will retry next sync): ${operation.path}`,
-								error.message
+								err.message
 							);
 							deferredPaths.push(operation.path);
 						} else {
