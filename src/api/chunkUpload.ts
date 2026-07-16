@@ -205,7 +205,7 @@ export class ChunkUploader {
 
 				// Final chunk — server returns the completed item
 				if (response.status === 200 || response.status === 201) {
-					return response.json as unknown as OneDriveItem;
+					return response.json as OneDriveItem;
 				}
 
 				return null;
@@ -232,7 +232,7 @@ export class ChunkUploader {
 				throw new OneDriveError(`Failed to get final item: HTTP ${response.status}`);
 			}
 
-			return response.json as unknown as OneDriveItem;
+			return response.json as OneDriveItem;
 		} catch (error) {
 			logger.error('Failed to get final item:', error);
 			throw new OneDriveError(

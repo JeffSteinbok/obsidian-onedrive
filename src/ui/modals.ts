@@ -160,7 +160,7 @@ export class RootFolderWarningModal extends Modal {
 			.addButton((b) =>
 				b
 					.setButtonText(t('rootFolderWarning.confirm'))
-					.setWarning()
+					.setDestructive()
 					.onClick(() => {
 						this.confirmed = true;
 						this.close();

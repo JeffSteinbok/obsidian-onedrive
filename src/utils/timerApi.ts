@@ -11,11 +11,11 @@
 
 export const timerApi = {
 	setTimeout: (handler: () => void, timeout?: number): number =>
-		window.setTimeout(handler, timeout) as unknown as number,
+		window.setTimeout(handler, timeout),
 	clearTimeout: (id?: number): void =>
 		window.clearTimeout(id),
 	setInterval: (handler: () => void, timeout?: number): number =>
-		window.setInterval(handler, timeout) as unknown as number,
+		window.setInterval(handler, timeout),
 	clearInterval: (id?: number): void =>
 		window.clearInterval(id),
 };

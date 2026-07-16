@@ -125,23 +125,23 @@ export class ConflictView extends ItemView {
 		const meta = card.createDiv({ cls: 'onedrive-sync-conflict-meta' });
 		const currentMeta = meta.createDiv({ cls: 'onedrive-sync-conflict-meta-side' });
 		currentMeta.createEl('strong', { text: t('conflictView.currentLabel') });
-		currentMeta.createEl('span', {
+		currentMeta.createSpan({
 			text: t('conflictView.modified', {
 				time: new Date(entry.localModifiedTime).toLocaleString(),
 			}),
 		});
-		currentMeta.createEl('span', {
+		currentMeta.createSpan({
 			text: t('conflictView.size', { size: this.formatSize(entry.localSize) }),
 		});
 
 		const incomingMeta = meta.createDiv({ cls: 'onedrive-sync-conflict-meta-side' });
 		incomingMeta.createEl('strong', { text: t('conflictView.incomingLabel') });
-		incomingMeta.createEl('span', {
+		incomingMeta.createSpan({
 			text: t('conflictView.modified', {
 				time: new Date(entry.remoteModifiedTime).toLocaleString(),
 			}),
 		});
-		incomingMeta.createEl('span', {
+		incomingMeta.createSpan({
 			text: t('conflictView.size', { size: this.formatSize(entry.remoteSize) }),
 		});
 

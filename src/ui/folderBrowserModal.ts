@@ -108,7 +108,7 @@ export class FolderBrowserModal extends Modal {
 		});
 
 		// Root link
-		const rootLink = breadcrumb.createEl('span', {
+		const rootLink = breadcrumb.createSpan({
 			text: `📁 ${this.rootLabel}`,
 			cls: 'onedrive-sync-folder-breadcrumb-link',
 		});
@@ -121,8 +121,8 @@ export class FolderBrowserModal extends Modal {
 		};
 
 		for (let i = 0; i < this.currentPath.length; i++) {
-			breadcrumb.createEl('span', { text: ' / ' });
-			const seg = breadcrumb.createEl('span', { text: this.currentPath[i] });
+			breadcrumb.createSpan({ text: ' / ' });
+			const seg = breadcrumb.createSpan({ text: this.currentPath[i] });
 			if (i < this.currentPath.length - 1) {
 				seg.addClass('onedrive-sync-folder-breadcrumb-link');
 				const depth = i;
@@ -222,9 +222,9 @@ export class FolderBrowserModal extends Modal {
 				});
 
 				const icon = isShared ? '🔗' : '📁';
-				row.createEl('span', { text: `${icon} ${name}` });
+				row.createSpan({ text: `${icon} ${name}` });
 
-				const meta = row.createEl('span', { cls: 'onedrive-sync-folder-row-meta' });
+				const meta = row.createSpan({ cls: 'onedrive-sync-folder-row-meta' });
 				const parts: string[] = [];
 				if (isShared) parts.push(t('folderBrowser.shared'));
 				if (childCount > 0) {

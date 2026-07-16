@@ -22,7 +22,7 @@ export class ProgressNotice {
 		if (typeof activeDocument !== 'undefined') {
 			const fragment = activeDocument.createDocumentFragment();
 
-			this.textEl = fragment.createEl('div', {
+			this.textEl = fragment.createDiv({
 				text: t('progress.notice', {
 					label,
 					progress: t('progress.files', { completed: 0, total }),
@@ -30,7 +30,7 @@ export class ProgressNotice {
 				cls: 'onedrive-sync-progress-notice-text',
 			});
 
-			const barContainer = fragment.createEl('div', {
+			const barContainer = fragment.createDiv({
 				cls: 'onedrive-sync-notice-bar-container',
 			});
 			this.progressBar = new ProgressBarComponent(barContainer);
