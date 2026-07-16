@@ -130,7 +130,7 @@ export function isRetryableError(error: Error): boolean {
 		return true;
 	}
 
-	const retryableStatusCodes = [408, 429, 500, 502, 503, 504];
+	const retryableStatusCodes = [408, 423, 429, 500, 501, 502, 503, 504];
 
 	if (error instanceof OneDriveError) {
 		return error.statusCode ? retryableStatusCodes.includes(error.statusCode) : false;
@@ -147,6 +147,26 @@ export function isRetryableError(error: Error): boolean {
 	// Network errors are retryable
 	if (error.message.includes('network') || error.message.includes('timeout')) {
 		return true;
+	}
+
+	return false;
+}
+
+/**
+ * Check if an operation failure should be deferred and retried on a later sync.
+ */
+export function isDeferrableError(error: Error): boolean {
+	const deferrableStatusCodes = [423, 501];
+
+	if (error instanceof OneDriveError) {
+		return error.statusCode ? deferrableStatusCodes.includes(error.statusCode) : false;
+	}
+
+	if (error && typeof error === 'object' && 'statusCode' in error) {
+		const statusCode = (error as unknown as { statusCode: number }).statusCode;
+		if (typeof statusCode === 'number') {
+			return deferrableStatusCodes.includes(statusCode);
+		}
 	}
 
 	return false;

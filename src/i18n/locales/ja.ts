@@ -80,6 +80,8 @@ export const ja = {
 			conflicts: '競合',
 			conflictsNeedResolution:
 				'OneDrive同期: {{syncedCount}} {{fileLabel}}を同期、{{conflictCount}} {{conflictLabel}}の解決が必要です',
+			completedWithDeferred:
+				'OneDrive sync: {{syncedCount}} {{fileLabel}} synced; {{retryCount}} {{retryLabel}} will retry automatically ({{lockedCount}} locked/deferred)',
 			engineFailed: 'OneDrive同期に失敗しました: {{message}}',
 		},
 		reconcile: {

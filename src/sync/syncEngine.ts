@@ -75,6 +75,7 @@ import {
 	SyncEngineConflictQueue,
 } from '../types';
 import { logger } from '../utils/logger';
+import { isDeferrableError } from '../utils/errors';
 import {
 	normalizePath,
 	toOneDrivePath,
@@ -141,6 +142,14 @@ interface SyncExecutionResult {
 	completed: number;
 	downloadedPaths: string[];
 	conflictedPaths: string[];
+	failedPaths: string[];
+	deferredPaths: string[];
+}
+
+interface SyncOperationFailure {
+	operation: SyncOperation;
+	error: Error;
+	deferrable: boolean;
 }
 
 /**
@@ -295,7 +304,7 @@ export class SyncEngine {
 			}
 
 			// Phase 4: Execute all planned sync operations with progress tracking
-			const { completed, downloadedPaths, conflictedPaths } = await this.executeSyncOperations(
+			const { completed, downloadedPaths, conflictedPaths, failedPaths, deferredPaths } = await this.executeSyncOperations(
 				operations,
 				progress
 			);
@@ -325,15 +334,47 @@ export class SyncEngine {
 			}
 			this.stateManager.setLastSyncTime(Date.now());
 
-			this.eventManager.clearDirtyFiles();
-			for (const path of conflictedPaths) {
-				this.eventManager.addDirtyFile(path, 'modify');
+			if (failedPaths.length === 0 && conflictedPaths.length === 0) {
+				this.eventManager.clearDirtyFiles();
+			} else {
+				const failedPathSet = new Set(failedPaths);
+				const conflictPathSet = new Set(conflictedPaths);
+				const successfulOperationPaths = operations
+					.filter((operation) => !failedPathSet.has(operation.path) && !conflictPathSet.has(operation.path))
+					.map((operation) => operation.path);
+				const completedFolderPaths = folderChanges.map((change) => change.path);
+				const cleanPaths = Array.from(new Set([
+					...successfulOperationPaths,
+					...completedFolderPaths,
+				]));
+				if (cleanPaths.length > 0) {
+					this.eventManager.removeDirtyPaths(cleanPaths);
+				}
+				for (const path of failedPaths) {
+					this.eventManager.addDirtyFile(path, 'modify');
+				}
+				for (const path of conflictedPaths) {
+					this.eventManager.addDirtyFile(path, 'modify');
+				}
 			}
 
 			logger.debug('Sync operations finished');
 			this.eventManager.markInitialSyncDone();
 
 			const syncedCount = completed - conflictedPaths.length;
+			if (failedPaths.length > 0) {
+				const retryCount = failedPaths.length;
+				const lockedCount = deferredPaths.length;
+				new Notice(
+					t('notices.sync.completedWithDeferred', {
+						syncedCount,
+						fileLabel: t(syncedCount === 1 ? 'notices.sync.file' : 'notices.sync.files'),
+						retryCount,
+						retryLabel: t(retryCount === 1 ? 'notices.sync.file' : 'notices.sync.files'),
+						lockedCount,
+					})
+				);
+			}
 			if (conflictedPaths.length > 0) {
 				new Notice(
 					t('notices.sync.conflictsNeedResolution', {
@@ -829,13 +870,22 @@ export class SyncEngine {
 		progress: ProgressFn
 	): Promise<SyncExecutionResult> {
 		let completed = 0;
+		let finished = 0;
 		const downloadedPaths: string[] = [];
 		const conflictedPaths: string[] = [];
 		progress(t('progress.files', { completed: 0, total: operations.length }));
 		const progressNotice =
 			operations.length >= 5 ? new ProgressNotice(t('progress.syncing'), operations.length) : null;
-		await this.executeOperations(operations, (operation) => {
+		const updateProgress = () => {
+			const progressLabel = t('progress.files', { completed: finished, total: operations.length });
+			progress(progressLabel);
+			if (progressNotice) {
+				progressNotice.update(finished, t('progress.syncing'));
+			}
+		};
+		const failures = await this.executeOperations(operations, (operation) => {
 			completed++;
+			finished++;
 
 			if (operation.direction === SyncDirection.DOWNLOAD) {
 				downloadedPaths.push(operation.path);
@@ -844,11 +894,10 @@ export class SyncEngine {
 				conflictedPaths.push(operation.path);
 			}
 
-			const progressLabel = t('progress.files', { completed, total: operations.length });
-			progress(progressLabel);
-			if (progressNotice) {
-				progressNotice.update(completed, t('progress.syncing'));
-			}
+			updateProgress();
+		}, (failure) => {
+			finished++;
+			updateProgress();
 		});
 		progressNotice?.hide();
 		progress(undefined);
@@ -856,6 +905,10 @@ export class SyncEngine {
 			completed,
 			downloadedPaths,
 			conflictedPaths,
+			failedPaths: failures.map((failure) => failure.operation.path),
+			deferredPaths: failures
+				.filter((failure) => failure.deferrable)
+				.map((failure) => failure.operation.path),
 		};
 	}
 
@@ -1202,20 +1255,47 @@ export class SyncEngine {
 	 */
 	private async executeOperations(
 		operations: SyncOperation[],
-		onComplete: (operation: SyncOperation) => void
-	): Promise<void> {
+		onComplete: (operation: SyncOperation) => void,
+		onFailure?: (failure: SyncOperationFailure) => void
+	): Promise<SyncOperationFailure[]> {
 		const parallelCount = Math.min(this.maxConcurrentOperations, operations.length);
 		let nextIndex = 0;
+		const failures: SyncOperationFailure[] = [];
 
 		await Promise.all(
 			Array.from({ length: parallelCount }, async () => {
 				while (nextIndex < operations.length) {
 					const operation = operations[nextIndex++];
-					await this.executeOperation(operation);
-					onComplete(operation);
+					try {
+						await this.executeOperation(operation);
+						onComplete(operation);
+					} catch (error) {
+						const normalizedError =
+							error instanceof Error ? error : new Error(String(error));
+						const failure: SyncOperationFailure = {
+							operation,
+							error: normalizedError,
+							deferrable: isDeferrableError(normalizedError),
+						};
+						failures.push(failure);
+						if (failure.deferrable) {
+							logger.warn(
+								`Deferred ${operation.direction} for ${operation.path}; will retry next sync:`,
+								normalizedError
+							);
+						} else {
+							logger.error(
+								`Failed ${operation.direction} for ${operation.path}; continuing sync:`,
+								normalizedError
+							);
+						}
+						onFailure?.(failure);
+					}
 				}
 			})
 		);
+
+		return failures;
 	}
 
 	/**
@@ -1944,7 +2024,7 @@ export class SyncEngine {
 			let completed = 0;
 			progress(t('progress.files', { completed: 0, total: operations.length }));
 			const progressNotice = new ProgressNotice(t('progress.reconciling'), operations.length);
-			await this.executeOperations(operations, () => {
+			const failures = await this.executeOperations(operations, () => {
 				completed++;
 				const label = t('progress.files', { completed, total: operations.length });
 				progress(label);
@@ -1952,6 +2032,9 @@ export class SyncEngine {
 			});
 			progressNotice.hide();
 			progress(undefined);
+			if (failures.length > 0) {
+				throw new Error(`Reconcile failed for ${failures.length} operation(s)`);
+			}
 
 			// 7. Local file event listeners may have queued dirty entries while
 			// we were downloading. Clear them — we just authoritatively synced
