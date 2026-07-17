@@ -6,7 +6,6 @@
  * logger.* instead of console.* directly.
  */
 
-
 export enum LogLevel {
 	DEBUG = 0,
 	INFO = 1,
@@ -14,6 +13,8 @@ export enum LogLevel {
 	ERROR = 3,
 	OFF = 4,
 }
+
+type ConsoleMethod = (...args: unknown[]) => void;
 
 class Logger {
 	private minLevel = LogLevel.OFF;
@@ -89,6 +90,27 @@ class Logger {
 		}
 	}
 
+	private getConsoleMethod(level: LogLevel): ConsoleMethod | null {
+		if (typeof window === 'undefined') {
+			return null;
+		}
+
+		const consoleApi = window.console;
+
+		switch (level) {
+			case LogLevel.DEBUG:
+				return consoleApi.debug.bind(consoleApi);
+			case LogLevel.INFO:
+				return consoleApi.info.bind(consoleApi);
+			case LogLevel.WARN:
+				return consoleApi.warn.bind(consoleApi);
+			case LogLevel.ERROR:
+				return consoleApi.error.bind(consoleApi);
+			default:
+				return null;
+		}
+	}
+
 	getRecentLogs(limit = Logger.MAX_RECENT_LOGS): string[] {
 		if (limit <= 0) return [];
 		const boundedLimit = Math.min(limit, this.recentLogs.length);
@@ -100,7 +122,7 @@ class Logger {
 		if (this.shouldLog(LogLevel.DEBUG)) {
 			const formatted = this.formatMessage('DEBUG', message);
 			const line = formatted + this.formatExtraArgs(args);
-			console.debug(formatted, ...args);
+			this.getConsoleMethod(LogLevel.DEBUG)?.(formatted, ...args);
 			this.addToBuffer(line);
 		}
 	}
@@ -109,7 +131,7 @@ class Logger {
 		if (this.shouldLog(LogLevel.INFO)) {
 			const formatted = this.formatMessage('INFO', message);
 			const line = formatted + this.formatExtraArgs(args);
-			console.info(formatted, ...args);
+			this.getConsoleMethod(LogLevel.INFO)?.(formatted, ...args);
 			this.addToBuffer(line);
 		}
 	}
@@ -118,7 +140,7 @@ class Logger {
 		if (this.shouldLog(LogLevel.WARN)) {
 			const formatted = this.formatMessage('WARN', message);
 			const line = formatted + this.formatExtraArgs(args);
-			console.warn(formatted, ...args);
+			this.getConsoleMethod(LogLevel.WARN)?.(formatted, ...args);
 			this.addToBuffer(line);
 		}
 	}
@@ -127,7 +149,7 @@ class Logger {
 		if (this.shouldLog(LogLevel.ERROR)) {
 			const formatted = this.formatMessage('ERROR', message);
 			const line = formatted + this.formatExtraArgs(args);
-			console.error(formatted, ...args);
+			this.getConsoleMethod(LogLevel.ERROR)?.(formatted, ...args);
 			this.addToBuffer(line);
 		}
 	}
@@ -139,17 +161,8 @@ class Logger {
 		if (!this.shouldLog(level)) return;
 
 		const sanitized = data ? this.sanitizeData(data) : undefined;
-		const logMethod =
-			level === LogLevel.DEBUG
-				? console.debug
-				: level === LogLevel.INFO
-					? console.info
-					: level === LogLevel.WARN
-						? console.warn
-						: console.error;
-
 		const formatted = this.formatMessage(LogLevel[level], message);
-		logMethod(formatted, sanitized);
+		this.getConsoleMethod(level)?.(formatted, sanitized);
 		const line = formatted + this.formatExtraArgs(sanitized ? [sanitized] : []);
 		this.addToBuffer(line);
 	}

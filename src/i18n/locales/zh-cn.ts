@@ -217,6 +217,10 @@ export const zhCn = {
 				desc: '设为 0 时仅手动同步，推荐用于节省电量。',
 				resetTooltip: '恢复默认值',
 			},
+			syncOnFileChange: {
+				name: '文件变更时同步',
+				desc: '文件修改后自动同步。禁用后可避免编辑时频繁同步；此时仅会运行定时同步和手动同步。',
+			},
 			startupDelay: {
 				name: '启动同步延迟',
 				desc: 'Obsidian 启动后等待多久再执行首次同步；0 表示关闭。',
