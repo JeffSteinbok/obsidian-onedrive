@@ -20,7 +20,7 @@ export class ProgressNotice {
 		this.total = total;
 
 		if (typeof activeDocument !== 'undefined') {
-			const fragment = activeDocument.createDocumentFragment();
+			const fragment = createFragment();
 
 			this.textEl = fragment.createDiv({
 				text: t('progress.notice', {
