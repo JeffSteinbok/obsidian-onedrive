@@ -6,7 +6,7 @@
  * a plain text Notice when DOM APIs are unavailable (e.g. tests).
  */
 
-import { Notice, ProgressBarComponent, createFragment } from 'obsidian';
+import { Notice, ProgressBarComponent } from 'obsidian';
 
 import { t } from '../i18n';
 
