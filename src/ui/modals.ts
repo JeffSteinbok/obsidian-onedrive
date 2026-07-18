@@ -157,15 +157,14 @@ export class RootFolderWarningModal extends Modal {
 						this.close();
 					})
 			)
-			.addButton((b) =>
-				b
-					.setButtonText(t('rootFolderWarning.confirm'))
-					.setDestructive()
-					.onClick(() => {
-						this.confirmed = true;
-						this.close();
-					})
-			);
+			.addButton((b) => {
+				b.setButtonText(t('rootFolderWarning.confirm'));
+				b.buttonEl.addClass('mod-warning');
+				b.onClick(() => {
+					this.confirmed = true;
+					this.close();
+				});
+			});
 	}
 
 	onClose() {

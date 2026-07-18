@@ -6,7 +6,7 @@
  * a plain text Notice when DOM APIs are unavailable (e.g. tests).
  */
 
-import { Notice, ProgressBarComponent } from 'obsidian';
+import { Notice, ProgressBarComponent, createFragment } from 'obsidian';
 
 import { t } from '../i18n';
 
@@ -20,7 +20,7 @@ export class ProgressNotice {
 		this.total = total;
 
 		if (typeof activeDocument !== 'undefined') {
-			const fragment = activeDocument.createDocumentFragment();
+			const fragment = createFragment();
 
 			this.textEl = fragment.createDiv({
 				text: t('progress.notice', {

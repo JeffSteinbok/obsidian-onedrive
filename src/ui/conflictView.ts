@@ -211,7 +211,7 @@ export class ConflictView extends ItemView {
 			const pre = diffContainer.createEl('pre');
 
 			for (const part of diffResult) {
-				const span = pre.createEl('span');
+				const span = pre.createSpan();
 				if (part.added) {
 					span.addClass('onedrive-sync-diff-added');
 					span.textContent = this.prefixLines(part.value, '+ ');
