@@ -895,7 +895,7 @@ export class SyncEngine {
 			}
 
 			updateProgress();
-		}, (failure) => {
+		}, (_failure) => {
 			finished++;
 			updateProgress();
 		});
