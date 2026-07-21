@@ -372,6 +372,24 @@ describe('OneDriveClient', () => {
 			expect(mockClient.api).toHaveBeenCalledWith('/me/drive/special/approot/delta');
 		});
 
+		// Issue #97: app-folder delta must be scoped to the vault subfolder,
+		// otherwise it streams sibling vaults in the same app folder.
+		it('scopes the app-folder delta to the vault subfolder (remotePath)', async () => {
+			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });
+
+			await client.getDelta(undefined, 'obsidian_Usumbura');
+			const encoded = encodePathForGraph('obsidian_Usumbura');
+			expect(mockClient.api).toHaveBeenCalledWith(`/me/drive/special/approot:/${encoded}:/delta`);
+		});
+
+		it('combines remotePath and subPath for the app-folder delta', async () => {
+			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });
+
+			await client.getDelta(undefined, 'obsidian_Usumbura', '.obsidian');
+			const encoded = encodePathForGraph('obsidian_Usumbura/.obsidian');
+			expect(mockClient.api).toHaveBeenCalledWith(`/me/drive/special/approot:/${encoded}:/delta`);
+		});
+
 		it('uses a full-access remote path delta endpoint on the first call', async () => {
 			const fullAccessClient = new OneDriveClient(mockAuthProvider as any, OneDriveAccessMode.FULL_ACCESS);
 			const encoded = encodePathForGraph('Folder Name/Sub Folder');

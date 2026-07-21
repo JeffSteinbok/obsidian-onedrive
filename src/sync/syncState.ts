@@ -27,6 +27,7 @@ export class SyncStateManager {
 		fileStates: Array<[string, FileState]>;
 		folderStates?: Array<[string, string]>;
 		deltaLink?: string;
+		deltaLinkScoped?: boolean;
 		obsidianDeltaLink?: string;
 	}): void {
 		if (!data) {
@@ -43,6 +44,7 @@ export class SyncStateManager {
 			fileStates: new Map(data.fileStates),
 			folderStates: new Map(data.folderStates || []),
 			deltaLink: data.deltaLink,
+			deltaLinkScoped: data.deltaLinkScoped,
 			obsidianDeltaLink: data.obsidianDeltaLink,
 		};
 
@@ -51,6 +53,7 @@ export class SyncStateManager {
 			fileCount: this.state.fileStates.size,
 			folderCount: this.state.folderStates.size,
 			hasDeltaLink: !!data.deltaLink,
+			deltaLinkScoped: !!data.deltaLinkScoped,
 			hasObsidianDeltaLink: !!data.obsidianDeltaLink,
 		});
 	}
@@ -63,6 +66,7 @@ export class SyncStateManager {
 		fileStates: Array<[string, FileState]>;
 		folderStates: Array<[string, string]>;
 		deltaLink?: string;
+		deltaLinkScoped?: boolean;
 		obsidianDeltaLink?: string;
 	} {
 		return {
@@ -70,6 +74,7 @@ export class SyncStateManager {
 			fileStates: Array.from(this.state.fileStates.entries()),
 			folderStates: Array.from(this.state.folderStates.entries()),
 			deltaLink: this.state.deltaLink,
+			deltaLinkScoped: this.state.deltaLinkScoped,
 			obsidianDeltaLink: this.state.obsidianDeltaLink,
 		};
 	}
@@ -97,10 +102,34 @@ export class SyncStateManager {
 	}
 
 	/**
-	 * Set delta link after sync
+	 * Set delta link after sync.
+	 *
+	 * @param deltaLink The cursor returned by the delta API.
+	 * @param scoped Whether this cursor was produced by the app-folder scoped
+	 *   query. Post-fix callers pass true so legacy wide cursors (which lack the
+	 *   flag) can be detected and reset once. See issue #97.
 	 */
-	setDeltaLink(deltaLink: string): void {
+	setDeltaLink(deltaLink: string, scoped = false): void {
 		this.state.deltaLink = deltaLink;
+		this.state.deltaLinkScoped = scoped;
+	}
+
+	/**
+	 * Whether the stored main delta cursor is known to be subfolder-scoped.
+	 * False for legacy cursors minted before the issue #97 fix.
+	 */
+	isDeltaLinkScoped(): boolean {
+		return this.state.deltaLinkScoped === true;
+	}
+
+	/**
+	 * Drop the main delta cursor so the next sync starts a fresh (scoped)
+	 * stream. Used to retire a legacy, unscoped app-folder cursor without
+	 * wiping tracked file/folder state.
+	 */
+	resetDeltaLink(): void {
+		this.state.deltaLink = undefined;
+		this.state.deltaLinkScoped = false;
 	}
 
 	/**

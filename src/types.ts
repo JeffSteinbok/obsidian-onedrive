@@ -97,6 +97,9 @@ export interface SyncState {
 	// no parentReference) can be reverse-resolved to a path and expanded into
 	// per-file deletes for everything we know was beneath that folder.
 	deltaLink?: string; // OneDrive delta API cursor
+	deltaLinkScoped?: boolean; // true when deltaLink was produced by the scoped
+	// app-folder query (issue #97). Legacy tokens minted before the fix lack this
+	// and are tossed once so a fresh, subfolder-scoped cursor replaces them.
 	obsidianDeltaLink?: string; // Separate delta cursor for .obsidian scope
 }
 
@@ -223,6 +226,12 @@ export interface SyncEngineOptions {
 	useAtomicMoves?: boolean;
 	/** Returns true if pull-only mode is enabled */
 	isPullOnlyMode?: () => boolean;
+	/**
+	 * True when running in app-folder mode. Used to detect and retire a legacy,
+	 * unscoped app-folder delta cursor that could return sibling vaults' files
+	 * (issue #97). Full-access/shared cursors were always scoped.
+	 */
+	isAppFolder?: boolean;
 }
 
 export enum ConflictResolutionStrategy {

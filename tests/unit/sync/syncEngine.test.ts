@@ -388,6 +388,61 @@ describe('SyncEngine', () => {
 		});
 	});
 
+	// Issue #97: a legacy (unscoped) app-folder cursor is retired once so the
+	// next fetch rebuilds a subfolder-scoped one.
+	it('retires a legacy unscoped app-folder delta cursor', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setDeltaLink('legacy-wide-cursor'); // no scoped flag
+		syncEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			conflictResolver,
+			mockEventManager as any,
+			'.obsidian',
+			{
+				remoteRoot: 'obsidian_Usumbura',
+				remoteRootOnDrive: '/Applications/ObsidianOneDrive/obsidian_Usumbura',
+				isAppFolder: true,
+			}
+		);
+		mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: 'fresh-scoped-cursor' });
+
+		await syncEngine.performSync();
+
+		// Fetch was made WITHOUT the legacy cursor (forcing a fresh scoped query)...
+		expect(mockClient.getDelta).toHaveBeenCalledWith(undefined, 'obsidian_Usumbura');
+		// ...and the newly stored cursor is flagged scoped.
+		expect(stateManager.getDeltaLink()).toBe('fresh-scoped-cursor');
+		expect(stateManager.isDeltaLinkScoped()).toBe(true);
+	});
+
+	// A scoped cursor is used as-is, not reset.
+	it('keeps a scoped app-folder delta cursor', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setDeltaLink('already-scoped', true);
+		syncEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			conflictResolver,
+			mockEventManager as any,
+			'.obsidian',
+			{
+				remoteRoot: 'obsidian_Usumbura',
+				remoteRootOnDrive: '/Applications/ObsidianOneDrive/obsidian_Usumbura',
+				isAppFolder: true,
+			}
+		);
+		mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: 'next-scoped' });
+
+		await syncEngine.performSync();
+
+		expect(mockClient.getDelta).toHaveBeenCalledWith('already-scoped', 'obsidian_Usumbura');
+	});
+
 	it('ignores remote .obsidian plugin files by default', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		mockClient.getDelta.mockResolvedValue({
