@@ -236,6 +236,13 @@ export const zhCn = {
 				createDuplicate: '创建副本',
 				manual: '手动处理（查看差异）',
 			},
+			notificationLevel: {
+				name: '通知',
+				desc: '控制同步过程中显示的屏幕弹出通知。选择“仅错误”可避免每次编辑都弹出常规进度通知。',
+				all: '全部（进度和错误）',
+				errors: '仅错误',
+				off: '关闭',
+			},
 			appSettings: {
 				name: '同步应用设置',
 				desc: '同步 {{configDir}}/app.json、{{configDir}}/appearance.json 和 {{configDir}}/hotkeys.json，让外观和快捷键在不同设备上保持一致。',

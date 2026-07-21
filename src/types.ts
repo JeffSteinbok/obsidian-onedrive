@@ -182,6 +182,14 @@ export interface SyncEngineConflictQueue {
 }
 
 /**
+ * On-screen notification verbosity.
+ *  - 'all'    — show all notices, including happy-path progress/completion
+ *  - 'errors' — only show errors, conflicts, and safety warnings
+ *  - 'off'    — suppress all sync notices
+ */
+export type NotificationLevel = 'all' | 'errors' | 'off';
+
+/**
  * Optional configuration for SyncEngine.
  * Core dependencies (app, fileOps, client, etc.) are required positionally;
  * these options control behavior and callbacks.
@@ -205,6 +213,8 @@ export interface SyncEngineOptions {
 	largeDeleteWarningHandler?: LargeDeleteWarningHandler;
 	/** Callback for sync progress updates */
 	onProgress?: (message: string | undefined) => void;
+	/** Returns the on-screen notification verbosity level (defaults to 'all') */
+	getNotificationLevel?: () => NotificationLevel;
 	/** Plugin version for User-Agent headers */
 	pluginVersion?: string;
 	/** Max concurrent upload/download operations */
@@ -316,6 +326,7 @@ export interface PluginSettings {
 	remoteRootName?: string; // Display name of the root folder on the remote drive
 	remoteRootPath?: string; // Full path of the folder on the remote drive (e.g. /Documents/ObsidianVaults/JeffBrain)
 	logLevel: 'off' | 'error' | 'warn' | 'info' | 'debug';
+	notificationLevel: NotificationLevel; // On-screen notice verbosity: all, errors only, or off
 	largeDeleteThreshold: number; // Warn if a sync would delete more than this many files (0 = disabled)
 
 	// Experimental
@@ -349,6 +360,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	appFolderSubpath: undefined, // Subfolder within App Folder (empty = root)
 	appFolderSubpathConfirmed: false, // Must be explicitly confirmed on first App Folder setup
 	logLevel: 'off',
+	notificationLevel: 'all',
 	largeDeleteThreshold: 25,
 
 	// Experimental — defaults applied via DEFAULT_EXPERIMENTAL_SETTINGS in main.ts

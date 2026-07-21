@@ -397,6 +397,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 							this.settings.syncBookmarks
 						),
 					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
+					getNotificationLevel: () => this.settings.notificationLevel ?? 'all',
 					largeDeleteWarningHandler: (info) => this.handleLargeDeleteWarning(info),
 					onProgress: (msg) => this.setSyncProgress(msg),
 					pluginVersion: this.manifest.version,
@@ -636,7 +637,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 			logger.error('Sync failed:', error);
 			this.setSyncStatus(SyncStatus.ERROR);
 			const errorMsg = error instanceof Error ? error.message : t('notices.common.unknownError');
-			new Notice(t('notices.sync.failed', { message: errorMsg }));
+			if ((this.settings.notificationLevel ?? 'all') !== 'off') {
+				new Notice(t('notices.sync.failed', { message: errorMsg }));
+			}
 			throw error;
 		} finally {
 			this.isSyncing = false;
@@ -895,6 +898,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 	private updateMobileProgressNotice(): void {
 		if (!this.isMobileClient()) return;
+		if ((this.settings.notificationLevel ?? 'all') !== 'all') {
+			this.hideMobileProgressNotice();
+			return;
+		}
 		if (this.currentSyncStatus !== SyncStatus.SYNCING) {
 			this.hideMobileProgressNotice();
 			return;

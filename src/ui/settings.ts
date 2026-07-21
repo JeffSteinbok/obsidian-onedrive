@@ -503,6 +503,22 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					})
 			);
 
+		// Notification verbosity
+		new Setting(containerEl)
+			.setName(t('settings.sync.notificationLevel.name'))
+			.setDesc(t('settings.sync.notificationLevel.desc'))
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('all', t('settings.sync.notificationLevel.all'))
+					.addOption('errors', t('settings.sync.notificationLevel.errors'))
+					.addOption('off', t('settings.sync.notificationLevel.off'))
+					.setValue(this.plugin.settings.notificationLevel ?? 'all')
+					.onChange(async (value) => {
+						this.plugin.settings.notificationLevel = value as PluginSettings['notificationLevel'];
+						await this.plugin.saveSettings();
+					})
+			);
+
 		new Setting(containerEl)
 			.setName(t('settings.sync.appSettings.name'))
 			.setDesc(t('settings.sync.appSettings.desc', { configDir }))

@@ -1301,6 +1301,66 @@ describe('SyncEngine', () => {
 		expect(trackingNotice.calls).toContainEqual(['Syncing: 0/5 files...', 0]);
 	});
 
+	describe('notification level', () => {
+		function makeEngineWithLevel(level: 'all' | 'errors' | 'off') {
+			return new SyncEngine(
+				mockApp as any,
+				mockFileOps as any,
+				mockClient as any,
+				stateManager,
+				conflictResolver,
+				mockEventManager as any,
+				'.obsidian',
+				{ remoteRoot: '/remote/root', getNotificationLevel: () => level }
+			);
+		}
+
+		function seedFiveModifies() {
+			stateManager.setLastSyncTime(Date.now());
+			const changes = Array.from({ length: 5 }, (_, index) => ({
+				path: `notes/file-${index}.md`,
+				type: LocalChangeType.MODIFY,
+			}));
+			mockEventManager.getDirtyFiles.mockReturnValue(changes);
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+				makeTFile(path, 10, Date.now())
+			);
+		}
+
+		it("suppresses the happy-path progress notice at 'errors' level", async () => {
+			seedFiveModifies();
+
+			await makeEngineWithLevel('errors').performSync();
+
+			expect(trackingNotice.calls).not.toContainEqual(['Syncing: 0/5 files...', 0]);
+		});
+
+		it("shows the progress notice at 'all' level", async () => {
+			seedFiveModifies();
+
+			await makeEngineWithLevel('all').performSync();
+
+			expect(trackingNotice.calls).toContainEqual(['Syncing: 0/5 files...', 0]);
+		});
+
+		it("still shows the error notice at 'errors' level when sync fails", async () => {
+			mockClient.getDelta.mockRejectedValue(new Error('delta failed'));
+
+			await expect(makeEngineWithLevel('errors').performSync()).rejects.toThrow('delta failed');
+			expect(trackingNotice.calls).toContainEqual(['OneDrive sync failed: delta failed', undefined]);
+		});
+
+		it("suppresses even error notices at 'off' level", async () => {
+			mockClient.getDelta.mockRejectedValue(new Error('delta failed'));
+
+			await expect(makeEngineWithLevel('off').performSync()).rejects.toThrow('delta failed');
+			expect(trackingNotice.calls).not.toContainEqual([
+				'OneDrive sync failed: delta failed',
+				undefined,
+			]);
+		});
+	});
+
 	it('runs multiple sync operations in parallel', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		const changes = Array.from({ length: 3 }, (_, index) => ({

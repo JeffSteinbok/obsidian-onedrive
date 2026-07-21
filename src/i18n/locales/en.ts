@@ -237,6 +237,13 @@ export const en = {
 				createDuplicate: 'Create duplicate',
 				manual: 'Manual (review conflicts with diff)',
 			},
+			notificationLevel: {
+				name: 'Notifications',
+				desc: 'Controls the on-screen pop-up notices shown during sync. Choose "Errors only" to stop routine progress notices from appearing on every edit.',
+				all: 'All (progress and errors)',
+				errors: 'Errors only',
+				off: 'Off',
+			},
 			appSettings: {
 				name: 'Sync app settings',
 				desc: 'Sync {{configDir}}/app.json, {{configDir}}/appearance.json, and {{configDir}}/hotkeys.json to keep appearance and hotkeys consistent across devices.',

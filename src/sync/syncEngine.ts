@@ -73,6 +73,7 @@ import {
 	DeltaResponse,
 	SyncEngineOptions,
 	SyncEngineConflictQueue,
+	NotificationLevel,
 } from '../types';
 import { logger } from '../utils/logger';
 import { isDeferrableError } from '../utils/errors';
@@ -180,6 +181,7 @@ export class SyncEngine {
 	private readonly getLargeDeleteThreshold: () => number;
 	private readonly largeDeleteWarningHandler?: LargeDeleteWarningHandler;
 	private readonly onProgress?: (message: string | undefined) => void;
+	private readonly getNotificationLevel: () => NotificationLevel;
 	private readonly pluginVersion: string;
 	private readonly isPullOnlyMode: () => boolean;
 
@@ -200,6 +202,7 @@ export class SyncEngine {
 		this.getLargeDeleteThreshold = options.getLargeDeleteThreshold ?? (() => 0);
 		this.largeDeleteWarningHandler = options.largeDeleteWarningHandler;
 		this.onProgress = options.onProgress;
+		this.getNotificationLevel = options.getNotificationLevel ?? (() => 'all');
 		this.pluginVersion = options.pluginVersion ?? 'unknown';
 		this.maxConcurrentOperations = options.maxConcurrentOperations ?? 4;
 		this.useAtomicMoves = options.useAtomicMoves ?? true;
@@ -213,6 +216,23 @@ export class SyncEngine {
 
 	private isObsidianPath(path: string): boolean {
 		return normalizePath(path).startsWith(`${normalizePath(this.configDir).replace(/\/+$/g, '')}/`);
+	}
+
+	/**
+	 * Whether happy-path notices (progress bars, "up to date", "no files to
+	 * sync") should be shown. Only surfaced at the most verbose level so
+	 * frequent auto-syncs don't spam the user (see issue #95).
+	 */
+	private shouldNotifyInfo(): boolean {
+		return this.getNotificationLevel() === 'all';
+	}
+
+	/**
+	 * Whether error/conflict/safety notices should be shown. Suppressed only
+	 * when notifications are turned off entirely.
+	 */
+	private shouldNotifyError(): boolean {
+		return this.getNotificationLevel() !== 'off';
 	}
 
 	/**
@@ -274,11 +294,13 @@ export class SyncEngine {
 						`Sync aborted by user (${decision}) due to large delete count. ` +
 							`Delta cursors not advanced; the same plan will be re-evaluated next sync.`
 					);
-					new Notice(
-						decision === 'disable'
-							? t('notices.sync.disabledAfterLargeDelete')
-							: t('notices.sync.cancelledAfterLargeDelete')
-					);
+					if (this.shouldNotifyError()) {
+						new Notice(
+							decision === 'disable'
+								? t('notices.sync.disabledAfterLargeDelete')
+								: t('notices.sync.cancelledAfterLargeDelete')
+						);
+					}
 					return;
 				}
 			}
@@ -288,7 +310,9 @@ export class SyncEngine {
 					logger.info(
 						'First sync with no local dirty files and empty remote — nothing to do. Edit or create files, then sync again.'
 					);
-					new Notice(t('notices.sync.noFilesToSync'));
+					if (this.shouldNotifyInfo()) {
+						new Notice(t('notices.sync.noFilesToSync'));
+					}
 				} else if (folderChanges.length === 0 && deletedFolderPaths.length === 0) {
 					logger.info('Everything up to date — no operations needed');
 				}
@@ -362,7 +386,7 @@ export class SyncEngine {
 			this.eventManager.markInitialSyncDone();
 
 			const syncedCount = completed - conflictedPaths.length;
-			if (failedPaths.length > 0) {
+			if (failedPaths.length > 0 && this.shouldNotifyError()) {
 				const retryCount = failedPaths.length;
 				const lockedCount = deferredPaths.length;
 				new Notice(
@@ -375,7 +399,7 @@ export class SyncEngine {
 					})
 				);
 			}
-			if (conflictedPaths.length > 0) {
+			if (conflictedPaths.length > 0 && this.shouldNotifyError()) {
 				new Notice(
 					t('notices.sync.conflictsNeedResolution', {
 						syncedCount,
@@ -390,7 +414,9 @@ export class SyncEngine {
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : t('notices.common.unknownError');
 			logger.error(`Sync failed: ${errorMsg}`, error);
-			new Notice(t('notices.sync.engineFailed', { message: errorMsg }));
+			if (this.shouldNotifyError()) {
+				new Notice(t('notices.sync.engineFailed', { message: errorMsg }));
+			}
 			throw error;
 		}
 	}
@@ -875,7 +901,9 @@ export class SyncEngine {
 		const conflictedPaths: string[] = [];
 		progress(t('progress.files', { completed: 0, total: operations.length }));
 		const progressNotice =
-			operations.length >= 5 ? new ProgressNotice(t('progress.syncing'), operations.length) : null;
+			operations.length >= 5 && this.shouldNotifyInfo()
+				? new ProgressNotice(t('progress.syncing'), operations.length)
+				: null;
 		const updateProgress = () => {
 			const progressLabel = t('progress.files', { completed: finished, total: operations.length });
 			progress(progressLabel);
