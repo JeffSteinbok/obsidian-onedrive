@@ -248,7 +248,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.settings.startupSyncDelay > 0 &&
 			this.isSyncConfigured()
 		) {
+			logger.info(`Startup sync scheduled: will run in ${this.settings.startupSyncDelay}s`);
 			timerApi.setTimeout(() => {
+				logger.info('Startup sync delay elapsed — triggering sync');
 				void this.triggerManualSync();
 			}, this.settings.startupSyncDelay * 1000);
 		}
@@ -329,6 +331,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 						this.settings.syncBookmarks
 					)
 			);
+			// Apply current settings immediately — the EventManager defaults syncOnFileChange
+			// to true, but the user may have disabled it. Without this call the setting
+			// is only applied the first time saveSettings() runs (i.e. when the user
+			// changes something in the UI), so on every cold start the setting is ignored
+			// until then and can trigger unexpected syncs.
+			this.eventManager.setSyncOnFileChange(this.settings.syncOnFileChange ?? true);
 			// Wire up pull-only mode check
 			this.eventManager.setPullOnlyModeCheck(() => this.getExperimentalSetting('pullOnlyMode'));
 
