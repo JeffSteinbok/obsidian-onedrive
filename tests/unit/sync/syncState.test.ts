@@ -168,6 +168,38 @@ describe('SyncStateManager', () => {
 			stateManager.setLastSyncTime(Date.now());
 			expect(stateManager.isFirstSync()).toBe(false);
 		});
+
+		// Issue #97: distinguish scoped cursors from legacy wide ones.
+		it('marks a delta link scoped only when told to', () => {
+			stateManager.setDeltaLink('wide-legacy');
+			expect(stateManager.isDeltaLinkScoped()).toBe(false);
+
+			stateManager.setDeltaLink('scoped-token', true);
+			expect(stateManager.isDeltaLinkScoped()).toBe(true);
+		});
+
+		it('resetDeltaLink drops the cursor and scoped flag but keeps other state', () => {
+			stateManager.setLastSyncTime(555);
+			stateManager.setDeltaLink('scoped-token', true);
+			stateManager.setFileState('keep.md', makeFileState('keep.md'));
+
+			stateManager.resetDeltaLink();
+
+			expect(stateManager.getDeltaLink()).toBeUndefined();
+			expect(stateManager.isDeltaLinkScoped()).toBe(false);
+			expect(stateManager.getLastSyncTime()).toBe(555);
+			expect(stateManager.getFileState('keep.md')).toBeDefined();
+		});
+
+		it('treats a legacy persisted cursor (no flag) as unscoped', () => {
+			stateManager.loadState({
+				lastSyncTime: 1,
+				deltaLink: 'legacy-wide',
+				fileStates: [],
+			});
+			expect(stateManager.getDeltaLink()).toBe('legacy-wide');
+			expect(stateManager.isDeltaLinkScoped()).toBe(false);
+		});
 	});
 
 	describe('serialization', () => {
@@ -207,6 +239,16 @@ describe('SyncStateManager', () => {
 
 			expect(stateManager.getLastSyncTime()).toBe(0);
 			expect(stateManager.getTrackedPaths()).toEqual([]);
+		});
+
+		it('round-trips the deltaLinkScoped flag through save/load', () => {
+			stateManager.setDeltaLink('scoped-token', true);
+			const serialized = stateManager.prepareForSave();
+			expect(serialized.deltaLinkScoped).toBe(true);
+
+			const fresh = new SyncStateManager();
+			fresh.loadState({ ...serialized });
+			expect(fresh.isDeltaLinkScoped()).toBe(true);
 		});
 	});
 

@@ -394,6 +394,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 				{
 					remoteRoot,
 					remoteRootOnDrive,
+					isAppFolder,
 					conflictQueue: this.conflictQueue,
 					shouldSyncPath: (path) =>
 						shouldSyncVaultPath(

@@ -585,8 +585,15 @@ export class OneDriveClient {
 					nextUrl = `/drives/${this.remoteDriveId}/items/${this.remoteItemId}/delta`;
 				}
 			} else if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
-				if (cleanSubPath) {
-					const encoded = encodePathForGraph(cleanSubPath);
+				// Scope the delta to the vault's subfolder within the app folder.
+				// remotePath is the vault subfolder (e.g. "my_vault"),
+				// subPath narrows further (e.g. the config dir). Without this the
+				// query hit the whole app folder and returned sibling vaults'
+				// files, corrupting the vault (see issue #97).
+				const cleanRemote = remotePath ? remotePath.replace(/^\/+|\/+$/g, '') : '';
+				const fullPath = [cleanRemote, cleanSubPath].filter(Boolean).join('/');
+				if (fullPath) {
+					const encoded = encodePathForGraph(fullPath);
 					nextUrl = `/me/drive/special/approot:/${encoded}:/delta`;
 				} else {
 					nextUrl = '/me/drive/special/approot/delta';

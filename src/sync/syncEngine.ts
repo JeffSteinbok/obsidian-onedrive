@@ -184,6 +184,7 @@ export class SyncEngine {
 	private readonly getNotificationLevel: () => NotificationLevel;
 	private readonly pluginVersion: string;
 	private readonly isPullOnlyMode: () => boolean;
+	private readonly isAppFolder: boolean;
 
 	constructor(
 		private app: App,
@@ -207,6 +208,7 @@ export class SyncEngine {
 		this.maxConcurrentOperations = options.maxConcurrentOperations ?? 4;
 		this.useAtomicMoves = options.useAtomicMoves ?? true;
 		this.isPullOnlyMode = options.isPullOnlyMode ?? (() => false);
+		this.isAppFolder = options.isAppFolder ?? false;
 
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -317,7 +319,7 @@ export class SyncEngine {
 					logger.info('Everything up to date — no operations needed');
 				}
 				if (folderChanges.length === 0 && deletedFolderPaths.length === 0) {
-					this.stateManager.setDeltaLink(deltaResponse.deltaLink);
+					this.stateManager.setDeltaLink(deltaResponse.deltaLink, true);
 					if (obsidianDeltaResponse) {
 						this.stateManager.setObsidianDeltaLink(obsidianDeltaResponse.deltaLink);
 					}
@@ -352,7 +354,7 @@ export class SyncEngine {
 				this.eventManager.removeDirtyPaths(downloadedPaths);
 			}
 
-			this.stateManager.setDeltaLink(deltaResponse.deltaLink);
+			this.stateManager.setDeltaLink(deltaResponse.deltaLink, true);
 			if (obsidianDeltaResponse) {
 				this.stateManager.setObsidianDeltaLink(obsidianDeltaResponse.deltaLink);
 			}
@@ -668,6 +670,28 @@ export class SyncEngine {
 	}
 
 	/**
+	 * Retire a legacy app-folder delta cursor that predates the issue #97 fix.
+	 *
+	 * Before the fix the app-folder delta query ignored the vault subfolder and
+	 * streamed the entire app folder, so a stored cursor could keep returning
+	 * sibling vaults' files (which then got nested into this vault). Such cursors
+	 * lack the `deltaLinkScoped` flag. When we detect one in app-folder mode with
+	 * a subfolder configured, drop it so the next fetch builds a fresh, properly
+	 * scoped cursor. Tracked file/folder state is left intact.
+	 */
+	private retireLegacyUnscopedDeltaLink(): void {
+		if (!this.isAppFolder) return;
+		if (!this.remoteRoot) return; // no subfolder → wide query was already correct
+		if (!this.stateManager.getDeltaLink()) return;
+		if (this.stateManager.isDeltaLinkScoped()) return;
+		logger.warn(
+			'Retiring legacy unscoped app-folder delta cursor (issue #97); ' +
+				'next sync will rebuild a subfolder-scoped cursor.'
+		);
+		this.stateManager.resetDeltaLink();
+	}
+
+	/**
 	 * Fetch remote changes via the OneDrive delta API (two streams: general
 	 * files and .obsidian-scope files), expand folder deletes into per-file
 	 * synthetic deletes, and filter by sync scope + .syncIgnore patterns.
@@ -681,6 +705,7 @@ export class SyncEngine {
 		progress: ProgressFn
 	): Promise<RemoteChangesResult> {
 		progress(t('progress.fetchingRemoteChanges'));
+		this.retireLegacyUnscopedDeltaLink();
 		const deltaLink = this.stateManager.getDeltaLink();
 		const shouldSyncObsidianScope =
 			this.shouldSyncPath(`${this.configDir}/community-plugins.json`) ||
