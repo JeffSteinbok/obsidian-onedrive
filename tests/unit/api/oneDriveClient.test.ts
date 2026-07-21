@@ -377,16 +377,16 @@ describe('OneDriveClient', () => {
 		it('scopes the app-folder delta to the vault subfolder (remotePath)', async () => {
 			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });
 
-			await client.getDelta(undefined, 'obsidian_Usumbura');
-			const encoded = encodePathForGraph('obsidian_Usumbura');
+			await client.getDelta(undefined, 'vault_a');
+			const encoded = encodePathForGraph('vault_a');
 			expect(mockClient.api).toHaveBeenCalledWith(`/me/drive/special/approot:/${encoded}:/delta`);
 		});
 
 		it('combines remotePath and subPath for the app-folder delta', async () => {
 			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });
 
-			await client.getDelta(undefined, 'obsidian_Usumbura', '.obsidian');
-			const encoded = encodePathForGraph('obsidian_Usumbura/.obsidian');
+			await client.getDelta(undefined, 'vault_a', '.obsidian');
+			const encoded = encodePathForGraph('vault_a/.obsidian');
 			expect(mockClient.api).toHaveBeenCalledWith(`/me/drive/special/approot:/${encoded}:/delta`);
 		});
 

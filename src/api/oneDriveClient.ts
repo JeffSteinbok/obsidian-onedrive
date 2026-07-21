@@ -586,7 +586,7 @@ export class OneDriveClient {
 				}
 			} else if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
 				// Scope the delta to the vault's subfolder within the app folder.
-				// remotePath is the vault subfolder (e.g. "obsidian_Usumbura"),
+				// remotePath is the vault subfolder (e.g. "my_vault"),
 				// subPath narrows further (e.g. the config dir). Without this the
 				// query hit the whole app folder and returned sibling vaults'
 				// files, corrupting the vault (see issue #97).

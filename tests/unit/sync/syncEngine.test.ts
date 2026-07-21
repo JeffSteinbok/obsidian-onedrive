@@ -402,8 +402,8 @@ describe('SyncEngine', () => {
 			mockEventManager as any,
 			'.obsidian',
 			{
-				remoteRoot: 'obsidian_Usumbura',
-				remoteRootOnDrive: '/Applications/ObsidianOneDrive/obsidian_Usumbura',
+				remoteRoot: 'vault_a',
+				remoteRootOnDrive: '/Applications/ObsidianOneDrive/vault_a',
 				isAppFolder: true,
 			}
 		);
@@ -412,7 +412,7 @@ describe('SyncEngine', () => {
 		await syncEngine.performSync();
 
 		// Fetch was made WITHOUT the legacy cursor (forcing a fresh scoped query)...
-		expect(mockClient.getDelta).toHaveBeenCalledWith(undefined, 'obsidian_Usumbura');
+		expect(mockClient.getDelta).toHaveBeenCalledWith(undefined, 'vault_a');
 		// ...and the newly stored cursor is flagged scoped.
 		expect(stateManager.getDeltaLink()).toBe('fresh-scoped-cursor');
 		expect(stateManager.isDeltaLinkScoped()).toBe(true);
@@ -431,8 +431,8 @@ describe('SyncEngine', () => {
 			mockEventManager as any,
 			'.obsidian',
 			{
-				remoteRoot: 'obsidian_Usumbura',
-				remoteRootOnDrive: '/Applications/ObsidianOneDrive/obsidian_Usumbura',
+				remoteRoot: 'vault_a',
+				remoteRootOnDrive: '/Applications/ObsidianOneDrive/vault_a',
 				isAppFolder: true,
 			}
 		);
@@ -440,7 +440,7 @@ describe('SyncEngine', () => {
 
 		await syncEngine.performSync();
 
-		expect(mockClient.getDelta).toHaveBeenCalledWith('already-scoped', 'obsidian_Usumbura');
+		expect(mockClient.getDelta).toHaveBeenCalledWith('already-scoped', 'vault_a');
 	});
 
 	it('ignores remote .obsidian plugin files by default', async () => {
