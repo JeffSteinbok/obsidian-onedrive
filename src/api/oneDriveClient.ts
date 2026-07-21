@@ -564,6 +564,10 @@ export class OneDriveClient {
 
 		const allItems: OneDriveItem[] = [];
 		const cleanSubPath = subPath ? subPath.replace(/^\/+|\/+$/g, '') : undefined;
+		// Vault subfolder within the remote root (app-folder mode), slash-trimmed.
+		// Hoisted so the not-found recovery below can tell we queried a scoped
+		// target that may not exist remotely yet on a first sync.
+		const cleanRemotePath = remotePath ? remotePath.replace(/^\/+|\/+$/g, '') : '';
 
 		try {
 			let nextUrl: string;
@@ -590,8 +594,7 @@ export class OneDriveClient {
 				// subPath narrows further (e.g. the config dir). Without this the
 				// query hit the whole app folder and returned sibling vaults'
 				// files, corrupting the vault (see issue #97).
-				const cleanRemote = remotePath ? remotePath.replace(/^\/+|\/+$/g, '') : '';
-				const fullPath = [cleanRemote, cleanSubPath].filter(Boolean).join('/');
+				const fullPath = [cleanRemotePath, cleanSubPath].filter(Boolean).join('/');
 				if (fullPath) {
 					const encoded = encodePathForGraph(fullPath);
 					nextUrl = `/me/drive/special/approot:/${encoded}:/delta`;
@@ -631,9 +634,14 @@ export class OneDriveClient {
 			// Loop always exits via return above; this satisfies TypeScript
 			throw new Error('Unreachable: delta pagination loop exited unexpectedly');
 		} catch (error) {
-			// If the scoped folder does not exist yet, treat as empty so first sync can create it.
-			if (cleanSubPath && !deltaLink && this.isItemNotFoundError(error)) {
-				logger.info(`Delta target '${cleanSubPath}' not found remotely — treating as empty`);
+			// If the scoped target does not exist yet, treat as empty so the first
+			// sync can proceed and create it via upload. This covers both a scoped
+			// subPath (e.g. the config dir) and a scoped vault subfolder in
+			// app-folder mode (remotePath) — the latter is free-typed and may not
+			// exist remotely until the first upload (issue #97 follow-up).
+			if (!deltaLink && this.isItemNotFoundError(error) && (cleanSubPath || cleanRemotePath)) {
+				const target = [cleanRemotePath, cleanSubPath].filter(Boolean).join('/');
+				logger.info(`Delta target '${target}' not found remotely — treating as empty`);
 				return { items: [], deltaLink: '' };
 			}
 
