@@ -146,6 +146,10 @@ jobs:
 
             if (!missingLogs && !missingSteps && !missingVersion) {
               core.info('All required info present.');
+
+              // If a previous run flagged this issue as needing info, clean that
+              // up: drop the label and minimize the now-stale automated comment so
+              // the thread doesn't misleadingly claim information is still missing.
               if (context.payload.action === 'edited') {
                 try {
                   await github.rest.issues.removeLabel({
@@ -155,9 +159,43 @@ jobs:
                     name: 'needs-info',
                   });
                 } catch (e) { /* label may not exist */ }
+
+                try {
+                  const { data: comments } = await github.rest.issues.listComments({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                    per_page: 100,
+                  });
+                  const staleComment = comments.find(c =>
+                    c.user && c.user.login === 'github-actions[bot]' &&
+                    c.body.includes('the following information is missing')
+                  );
+                  if (staleComment) {
+                    await github.graphql(
+                      `mutation($id: ID!) {
+                        minimizeComment(input: { subjectId: $id, classifier: RESOLVED }) {
+                          minimizedComment { isMinimized }
+                        }
+                      }`,
+                      { id: staleComment.node_id }
+                    );
+                  }
+                } catch (e) {
+                  core.info(`Could not minimize stale comment: ${e.message}`);
+                }
               }
 
-              if (context.payload.action === 'opened') {
+              // Announce the issue is triaged the first time all required info is
+              // present — whether that's at open time or after a follow-up edit.
+              const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+              });
+              const alreadyTriaged = labels.some(l => l.name === 'triaged');
+
+              if (!alreadyTriaged) {
                 await github.rest.issues.addLabels({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
