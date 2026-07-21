@@ -549,13 +549,13 @@
 	margin-bottom: 0;
 }
 
-.onedrive-experimental-section summary .setting-item-heading::before {
+.onedrive-experimental-section summary .setting-item-heading .setting-item-name::before {
 	content: '▶ ';
 	font-size: 0.8em;
 	margin-right: 0.3em;
 }
 
-.onedrive-experimental-section[open] summary .setting-item-heading::before {
+.onedrive-experimental-section[open] summary .setting-item-heading .setting-item-name::before {
 	content: '▼ ';
 }
 
