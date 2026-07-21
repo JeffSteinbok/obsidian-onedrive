@@ -233,6 +233,13 @@ export const de = {
 				createDuplicate: 'Duplikat erstellen',
 				manual: 'Manuell (Konflikte mit Diff überprüfen)',
 			},
+			notificationLevel: {
+				name: 'Benachrichtigungen',
+				desc: 'Steuert, welche Synchronisierungsbenachrichtigungen angezeigt werden. „Alle" zeigt Fortschritts- und Erfolgsmeldungen. „Nur Fehler" unterdrückt informative Meldungen – ideal bei automatischer Synchronisierung bei Dateiänderungen.',
+				all: 'Alle Benachrichtigungen',
+				errors: 'Nur Fehler und Konflikte',
+				off: 'Aus',
+			},
 			appSettings: {
 				name: 'App-Einstellungen synchronisieren',
 				desc: '{{configDir}}/app.json, {{configDir}}/appearance.json und {{configDir}}/hotkeys.json synchronisieren, um Aussehen und Hotkeys auf allen Geräten konsistent zu halten.',

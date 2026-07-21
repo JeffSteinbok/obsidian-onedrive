@@ -233,6 +233,13 @@ export const it = {
 				createDuplicate: 'Crea duplicato',
 				manual: 'Manuale (rivedi conflitti con diff)',
 			},
+			notificationLevel: {
+				name: 'Notifiche',
+				desc: 'Controlla quali notifiche di sincronizzazione vengono mostrate. "Tutte" mostra messaggi di avanzamento e successo. "Solo errori" sopprime i messaggi informativi — ideale quando si sincronizza ad ogni modifica del file.',
+				all: 'Tutte le notifiche',
+				errors: 'Solo errori e conflitti',
+				off: 'Disattivato',
+			},
 			appSettings: {
 				name: 'Sincronizza impostazioni app',
 				desc: 'Sincronizza {{configDir}}/app.json, {{configDir}}/appearance.json e {{configDir}}/hotkeys.json per mantenere aspetto e scorciatoie coerenti tra dispositivi.',

@@ -233,6 +233,13 @@ export const ja = {
 				createDuplicate: '複製を作成',
 				manual: '手動（差分で競合を確認）',
 			},
+			notificationLevel: {
+				name: '通知',
+				desc: '表示する同期通知を制御します。「すべて」は進捗と成功メッセージを表示します。「エラーのみ」は情報通知を抑制します — ファイル変更時に自動同期する場合に最適です。',
+				all: 'すべての通知',
+				errors: 'エラーと競合のみ',
+				off: 'オフ',
+			},
 			appSettings: {
 				name: 'アプリ設定を同期',
 				desc: '{{configDir}}/app.json、{{configDir}}/appearance.json、{{configDir}}/hotkeys.jsonを同期して、デバイス間で外観とホットキーを一貫させます。',
