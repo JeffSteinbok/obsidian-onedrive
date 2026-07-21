@@ -513,6 +513,24 @@ describe('OneDriveClient', () => {
 			expect(result).toEqual({ items: [], deltaLink: '' });
 		});
 
+		// Issue #97 follow-up: a scoped app-folder subfolder (remotePath, no
+		// subPath) may not exist remotely on first sync — treat as empty, don't
+		// throw and abort the whole sync.
+		it('treats 404 on a scoped remotePath (no subPath) as empty on first sync', async () => {
+			const error = new OneDriveError('Not found', undefined, 404);
+			mockApiGet.mockRejectedValueOnce(error);
+
+			const result = await client.getDelta(undefined, 'vault_a');
+			expect(result).toEqual({ items: [], deltaLink: '' });
+		});
+
+		it('rethrows a 404 for the unscoped app-folder root query', async () => {
+			const error = new OneDriveError('Not found', undefined, 404);
+			mockApiGet.mockRejectedValue(error);
+
+			await expect(client.getDelta()).rejects.toBeInstanceOf(OneDriveError);
+		});
+
 		it('uses root delta for shared-drive when both relativePath and subPath are empty', async () => {
 			client.setRemoteDrive('drive-123', 'item-456', 'Shared', '');
 			mockApiGet.mockResolvedValue({ value: [item1], '@odata.deltaLink': 'delta-1' });

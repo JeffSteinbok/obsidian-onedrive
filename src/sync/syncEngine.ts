@@ -2098,7 +2098,7 @@ export class SyncEngine {
 			progress(t('progress.advancingDeltaCursor'));
 			try {
 				const newDelta = await this.oneDriveClient.getDelta(undefined, this.remoteRoot);
-				this.stateManager.setDeltaLink(newDelta.deltaLink);
+				this.stateManager.setDeltaLink(newDelta.deltaLink, true);
 				const shouldSyncObsidianScope =
 					this.shouldSyncPath(`${this.configDir}/community-plugins.json`) ||
 					this.shouldSyncPath(`${this.configDir}/app.json`);
