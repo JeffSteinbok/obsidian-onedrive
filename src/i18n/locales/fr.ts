@@ -278,10 +278,10 @@ export const fr = {
 				debug: 'Débogage',
 			},
 			notificationLevel: {
-				name: 'Notification level',
-				desc: 'Controls which sync notifications are shown. "All" shows progress and success messages. "Errors only" suppresses informational notices — ideal when syncing on every file change.',
-				all: 'All notifications',
-				errorsOnly: 'Errors and conflicts only',
+				name: 'Niveau de notification',
+				desc: 'Contrôle les notifications de synchronisation affichées. « Toutes » affiche les messages de progression et de succès. « Erreurs uniquement » supprime les messages informatifs — idéal lors de la synchronisation à chaque modification de fichier.',
+				all: 'Toutes les notifications',
+				errorsOnly: 'Erreurs et conflits uniquement',
 			},
 			largeDeleteThreshold: {
 				name: 'Seuil d\'avertissement de suppression massive',

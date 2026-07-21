@@ -281,10 +281,10 @@ export const zhCn = {
 				debug: '调试',
 			},
 			notificationLevel: {
-				name: 'Notification level',
-				desc: 'Controls which sync notifications are shown. "All" shows progress and success messages. "Errors only" suppresses informational notices — ideal when syncing on every file change.',
-				all: 'All notifications',
-				errorsOnly: 'Errors and conflicts only',
+				name: '通知级别',
+				desc: '控制显示哪些同步通知。"全部"显示进度和成功消息。"仅错误"抑制信息性通知——适合在每次文件更改时自动同步的场景。',
+				all: '全部通知',
+				errorsOnly: '仅显示错误和冲突',
 			},
 			largeDeleteThreshold: {
 				name: '大量删除警告阈值',

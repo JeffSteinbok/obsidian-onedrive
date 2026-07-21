@@ -278,10 +278,10 @@ export const pt = {
 				debug: 'Debug',
 			},
 			notificationLevel: {
-				name: 'Notification level',
-				desc: 'Controls which sync notifications are shown. "All" shows progress and success messages. "Errors only" suppresses informational notices — ideal when syncing on every file change.',
-				all: 'All notifications',
-				errorsOnly: 'Errors and conflicts only',
+				name: 'Nível de notificações',
+				desc: 'Controla quais notificações de sincronização são exibidas. "Todas" mostra mensagens de progresso e sucesso. "Apenas erros" suprime notificações informativas — ideal ao sincronizar a cada alteração de arquivo.',
+				all: 'Todas as notificações',
+				errorsOnly: 'Apenas erros e conflitos',
 			},
 			largeDeleteThreshold: {
 				name: 'Limite de aviso de exclusão em massa',

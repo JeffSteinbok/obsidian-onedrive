@@ -278,10 +278,10 @@ export const ja = {
 				debug: 'デバッグ',
 			},
 			notificationLevel: {
-				name: 'Notification level',
-				desc: 'Controls which sync notifications are shown. "All" shows progress and success messages. "Errors only" suppresses informational notices — ideal when syncing on every file change.',
-				all: 'All notifications',
-				errorsOnly: 'Errors and conflicts only',
+				name: '通知レベル',
+				desc: '表示する同期通知を制御します。「すべて」は進捗と成功メッセージを表示します。「エラーのみ」は情報通知を抑制します — ファイル変更時に自動同期する場合に最適です。',
+				all: 'すべての通知',
+				errorsOnly: 'エラーと競合のみ',
 			},
 			largeDeleteThreshold: {
 				name: '大量削除警告閾値',
