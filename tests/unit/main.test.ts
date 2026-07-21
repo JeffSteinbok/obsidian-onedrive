@@ -70,6 +70,7 @@ const mocks = vi.hoisted(() => {
 		getDirtyFiles: vi.fn().mockReturnValue([]),
 		clearDirtyFiles: vi.fn(),
 		setPullOnlyModeCheck: vi.fn(),
+		setSyncOnFileChange: vi.fn(),
 	};
 
 	const statusBarManager = {
@@ -574,6 +575,35 @@ describe('OneDriveSyncPlugin', () => {
 		const options = syncEngineCall[7];
 		expect(options.remoteRoot).toBe('/Documents/MyVault'); // remoteRoot
 		expect(options.remoteRootOnDrive).toBeUndefined(); // remoteRootOnDrive (undefined for full access)
+	});
+
+	it('applies syncOnFileChange setting from stored data during initialization', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			appFolderSubpathConfirmed: true,
+			syncOnFileChange: false,
+		});
+
+		await plugin.onload();
+
+		// setSyncOnFileChange must be called with the persisted value (false) so
+		// the EventManager does not schedule automatic syncs on file-change events
+		// even before the user opens Settings and saves.
+		expect(mocks.eventManager.setSyncOnFileChange).toHaveBeenCalledWith(false);
+	});
+
+	it('applies syncOnFileChange=true when the setting is enabled', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			appFolderSubpathConfirmed: true,
+			syncOnFileChange: true,
+		});
+
+		await plugin.onload();
+
+		expect(mocks.eventManager.setSyncOnFileChange).toHaveBeenCalledWith(true);
 	});
 
 });
