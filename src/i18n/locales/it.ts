@@ -277,6 +277,12 @@ export const it = {
 				info: 'Info',
 				debug: 'Debug',
 			},
+			notificationLevel: {
+				name: 'Notification level',
+				desc: 'Controls which sync notifications are shown. "All" shows progress and success messages. "Errors only" suppresses informational notices — ideal when syncing on every file change.',
+				all: 'All notifications',
+				errorsOnly: 'Errors and conflicts only',
+			},
 			largeDeleteThreshold: {
 				name: 'Soglia avviso eliminazione massiva',
 				desc: 'Pausa e chiedi prima di una sincronizzazione che eliminerebbe questo numero di file. Aiuta a rilevare eliminazioni remote non intenzionali o eliminazioni locali accidentali. Imposta a 0 per disabilitare.',

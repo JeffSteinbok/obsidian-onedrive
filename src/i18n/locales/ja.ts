@@ -277,6 +277,12 @@ export const ja = {
 				info: '情報',
 				debug: 'デバッグ',
 			},
+			notificationLevel: {
+				name: 'Notification level',
+				desc: 'Controls which sync notifications are shown. "All" shows progress and success messages. "Errors only" suppresses informational notices — ideal when syncing on every file change.',
+				all: 'All notifications',
+				errorsOnly: 'Errors and conflicts only',
+			},
 			largeDeleteThreshold: {
 				name: '大量削除警告閾値',
 				desc: 'この数のファイルを削除する同期の前に一時停止して確認。意図しないリモート削除や誤ったローカル削除を検出するのに役立ちます。0で無効化。',

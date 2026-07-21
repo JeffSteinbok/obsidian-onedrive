@@ -403,6 +403,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 					maxConcurrentOperations: this.getExperimentalSetting('maxConcurrentOperations'),
 					useAtomicMoves: this.getExperimentalSetting('useAtomicMoves'),
 					isPullOnlyMode: () => this.getExperimentalSetting('pullOnlyMode'),
+					suppressInfoNotices: this.settings.notificationLevel === 'errors-only',
 				}
 			);
 
@@ -895,6 +896,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 	private updateMobileProgressNotice(): void {
 		if (!this.isMobileClient()) return;
+		// Suppress progress notices when the user has chosen 'errors-only' notifications
+		if (this.settings.notificationLevel === 'errors-only') {
+			this.hideMobileProgressNotice();
+			return;
+		}
 		if (this.currentSyncStatus !== SyncStatus.SYNCING) {
 			this.hideMobileProgressNotice();
 			return;

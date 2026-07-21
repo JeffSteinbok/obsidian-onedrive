@@ -280,6 +280,12 @@ export const zhCn = {
 				info: '信息',
 				debug: '调试',
 			},
+			notificationLevel: {
+				name: 'Notification level',
+				desc: 'Controls which sync notifications are shown. "All" shows progress and success messages. "Errors only" suppresses informational notices — ideal when syncing on every file change.',
+				all: 'All notifications',
+				errorsOnly: 'Errors and conflicts only',
+			},
 			largeDeleteThreshold: {
 				name: '大量删除警告阈值',
 				desc: '当一次同步将删除达到此数量的文件时先暂停并确认，用于发现误删或意外的远程删除。设为 0 可关闭。',

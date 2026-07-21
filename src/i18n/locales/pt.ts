@@ -277,6 +277,12 @@ export const pt = {
 				info: 'Info',
 				debug: 'Debug',
 			},
+			notificationLevel: {
+				name: 'Notification level',
+				desc: 'Controls which sync notifications are shown. "All" shows progress and success messages. "Errors only" suppresses informational notices — ideal when syncing on every file change.',
+				all: 'All notifications',
+				errorsOnly: 'Errors and conflicts only',
+			},
 			largeDeleteThreshold: {
 				name: 'Limite de aviso de exclusão em massa',
 				desc: 'Pausar e perguntar antes de uma sincronização que excluiria esta quantidade de arquivos. Ajuda a detectar exclusões remotas não intencionais ou exclusões locais acidentais. Defina como 0 para desabilitar.',

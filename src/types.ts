@@ -213,6 +213,11 @@ export interface SyncEngineOptions {
 	useAtomicMoves?: boolean;
 	/** Returns true if pull-only mode is enabled */
 	isPullOnlyMode?: () => boolean;
+	/**
+	 * When true, informational/progress notices are suppressed and only
+	 * error and conflict notices are shown. Matches notificationLevel = 'errors-only'.
+	 */
+	suppressInfoNotices?: boolean;
 }
 
 export enum ConflictResolutionStrategy {
@@ -264,6 +269,14 @@ export enum OneDriveAccessMode {
 	APP_FOLDER = 'app-folder', // Secure, isolated folder
 	FULL_ACCESS = 'full-access', // Access to all OneDrive files
 }
+
+/**
+ * Controls how frequently the plugin shows Obsidian notices.
+ * - 'all': Show all notices including progress and success messages (default).
+ * - 'errors-only': Only show notices for errors and conflicts; suppress
+ *   informational/progress notices that appear on every automatic sync.
+ */
+export type NotificationLevel = 'all' | 'errors-only';
 
 /** Experimental settings — performance tuning and unstable features */
 export interface ExperimentalSettings {
@@ -317,6 +330,7 @@ export interface PluginSettings {
 	remoteRootPath?: string; // Full path of the folder on the remote drive (e.g. /Documents/ObsidianVaults/JeffBrain)
 	logLevel: 'off' | 'error' | 'warn' | 'info' | 'debug';
 	largeDeleteThreshold: number; // Warn if a sync would delete more than this many files (0 = disabled)
+	notificationLevel: NotificationLevel; // Controls which notices are shown
 
 	// Experimental
 	experimental?: ExperimentalSettings;
@@ -350,6 +364,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	appFolderSubpathConfirmed: false, // Must be explicitly confirmed on first App Folder setup
 	logLevel: 'off',
 	largeDeleteThreshold: 25,
+	notificationLevel: 'all',
 
 	// Experimental — defaults applied via DEFAULT_EXPERIMENTAL_SETTINGS in main.ts
 	experimental: undefined,

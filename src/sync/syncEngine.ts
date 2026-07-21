@@ -182,6 +182,8 @@ export class SyncEngine {
 	private readonly onProgress?: (message: string | undefined) => void;
 	private readonly pluginVersion: string;
 	private readonly isPullOnlyMode: () => boolean;
+	/** When true, informational/progress notices are suppressed. */
+	private readonly suppressInfoNotices: boolean;
 
 	constructor(
 		private app: App,
@@ -204,6 +206,7 @@ export class SyncEngine {
 		this.maxConcurrentOperations = options.maxConcurrentOperations ?? 4;
 		this.useAtomicMoves = options.useAtomicMoves ?? true;
 		this.isPullOnlyMode = options.isPullOnlyMode ?? (() => false);
+		this.suppressInfoNotices = options.suppressInfoNotices ?? false;
 
 		this.isSharedDrive = oneDriveClient.isSharedDrive();
 		// For shared drives, delta items have paths relative to the remote drive root,
@@ -288,7 +291,9 @@ export class SyncEngine {
 					logger.info(
 						'First sync with no local dirty files and empty remote — nothing to do. Edit or create files, then sync again.'
 					);
-					new Notice(t('notices.sync.noFilesToSync'));
+					if (!this.suppressInfoNotices) {
+						new Notice(t('notices.sync.noFilesToSync'));
+					}
 				} else if (folderChanges.length === 0 && deletedFolderPaths.length === 0) {
 					logger.info('Everything up to date — no operations needed');
 				}
@@ -875,7 +880,9 @@ export class SyncEngine {
 		const conflictedPaths: string[] = [];
 		progress(t('progress.files', { completed: 0, total: operations.length }));
 		const progressNotice =
-			operations.length >= 5 ? new ProgressNotice(t('progress.syncing'), operations.length) : null;
+			!this.suppressInfoNotices && operations.length >= 5
+				? new ProgressNotice(t('progress.syncing'), operations.length)
+				: null;
 		const updateProgress = () => {
 			const progressLabel = t('progress.files', { completed: finished, total: operations.length });
 			progress(progressLabel);
@@ -1891,7 +1898,9 @@ export class SyncEngine {
 
 		try {
 			progress(t('progress.listingCloud'));
-			new Notice(t('notices.reconcile.listing'), 6000);
+			if (!this.suppressInfoNotices) {
+				new Notice(t('notices.reconcile.listing'), 6000);
+			}
 			const ignoreMatchers = await this.loadIgnoreMatchers();
 
 			// 1. Enumerate the entire remote vault. listAllItems recurses
@@ -2016,21 +2025,25 @@ export class SyncEngine {
 
 			if (operations.length === 0) {
 				logger.info('Reconcile: nothing to do — local already matches cloud');
-				new Notice(t('notices.reconcile.alreadyInSync'));
+				if (!this.suppressInfoNotices) {
+					new Notice(t('notices.reconcile.alreadyInSync'));
+				}
 				return;
 			}
 
 			// 6. Execute.
 			let completed = 0;
 			progress(t('progress.files', { completed: 0, total: operations.length }));
-			const progressNotice = new ProgressNotice(t('progress.reconciling'), operations.length);
+			const progressNotice = !this.suppressInfoNotices
+				? new ProgressNotice(t('progress.reconciling'), operations.length)
+				: null;
 			const failures = await this.executeOperations(operations, () => {
 				completed++;
 				const label = t('progress.files', { completed, total: operations.length });
 				progress(label);
-				progressNotice.update(completed, t('progress.reconciling'));
+				progressNotice?.update(completed, t('progress.reconciling'));
 			});
-			progressNotice.hide();
+			progressNotice?.hide();
 			progress(undefined);
 			if (failures.length > 0) {
 				throw new Error(`Reconcile failed for ${failures.length} operation(s)`);
@@ -2066,13 +2079,15 @@ export class SyncEngine {
 
 			this.stateManager.setLastSyncTime(Date.now());
 			logger.info(`Reconcile from cloud complete: ${operations.length} operations executed`);
-			new Notice(
-				t('notices.reconcile.complete', {
-					downloaded: remoteOnly.length,
-					deleted: localOnly.length,
-					refreshed: sizeMismatch.length,
-				})
-			);
+			if (!this.suppressInfoNotices) {
+				new Notice(
+					t('notices.reconcile.complete', {
+						downloaded: remoteOnly.length,
+						deleted: localOnly.length,
+						refreshed: sizeMismatch.length,
+					})
+				);
+			}
 		} catch (error) {
 			logger.error('Reconcile from cloud failed:', error);
 			new Notice(t('notices.reconcile.failed', { message: String(error) }));

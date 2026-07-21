@@ -277,6 +277,12 @@ export const fr = {
 				info: 'Info',
 				debug: 'Débogage',
 			},
+			notificationLevel: {
+				name: 'Notification level',
+				desc: 'Controls which sync notifications are shown. "All" shows progress and success messages. "Errors only" suppresses informational notices — ideal when syncing on every file change.',
+				all: 'All notifications',
+				errorsOnly: 'Errors and conflicts only',
+			},
 			largeDeleteThreshold: {
 				name: 'Seuil d\'avertissement de suppression massive',
 				desc: 'Pause et demande avant une synchronisation qui supprimerait ce nombre de fichiers. Aide à détecter les suppressions distantes non prévues ou les suppressions locales accidentelles. Définir à 0 pour désactiver.',

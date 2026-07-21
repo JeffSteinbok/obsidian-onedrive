@@ -281,6 +281,12 @@ export const en = {
 				info: 'Info',
 				debug: 'Debug',
 			},
+			notificationLevel: {
+				name: 'Notification level',
+				desc: 'Controls which sync notifications are shown. "All" shows progress and success messages. "Errors only" suppresses informational notices — ideal when syncing on every file change.',
+				all: 'All notifications',
+				errorsOnly: 'Errors and conflicts only',
+			},
 			largeDeleteThreshold: {
 				name: 'Large delete warning threshold',
 				desc: 'Pause and ask before a sync that would delete this many files. Helps catch unintended remote deletions or accidental local deletes. Set to 0 to disable.',

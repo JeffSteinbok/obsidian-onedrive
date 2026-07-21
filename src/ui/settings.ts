@@ -187,6 +187,10 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						desc: t('settings.advanced.logLevel.desc'),
 					},
 					{
+						name: t('settings.advanced.notificationLevel.name'),
+						desc: t('settings.advanced.notificationLevel.desc'),
+					},
+					{
 						name: t('settings.advanced.largeDeleteThreshold.name'),
 						desc: t('settings.advanced.largeDeleteThreshold.desc'),
 					},
@@ -609,6 +613,21 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.logLevel)
 					.onChange(async (value) => {
 						this.plugin.settings.logLevel = value as PluginSettings['logLevel'];
+						await this.plugin.saveSettings();
+					})
+			);
+
+		// Notification level
+		new Setting(containerEl)
+			.setName(t('settings.advanced.notificationLevel.name'))
+			.setDesc(t('settings.advanced.notificationLevel.desc'))
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('all', t('settings.advanced.notificationLevel.all'))
+					.addOption('errors-only', t('settings.advanced.notificationLevel.errorsOnly'))
+					.setValue(this.plugin.settings.notificationLevel ?? 'all')
+					.onChange(async (value) => {
+						this.plugin.settings.notificationLevel = value as PluginSettings['notificationLevel'];
 						await this.plugin.saveSettings();
 					})
 			);
