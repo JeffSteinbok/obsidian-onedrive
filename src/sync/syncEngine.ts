@@ -105,6 +105,7 @@ function hashContent(data: Uint8Array): string {
 
 /** Progress callback — pass undefined to clear the status bar message. */
 type ProgressFn = (message: string | undefined) => void;
+type OperationFailureProgressFn = () => void;
 
 /** Returned by gatherLocalChanges: filtered dirty files, folder changes, and the count of ignored paths. */
 interface LocalChangesResult {
@@ -948,7 +949,7 @@ export class SyncEngine {
 			}
 
 			updateProgress();
-		}, (_failure) => {
+		}, () => {
 			finished++;
 			updateProgress();
 		});
@@ -1325,7 +1326,7 @@ export class SyncEngine {
 	private async executeOperations(
 		operations: SyncOperation[],
 		onComplete: (operation: SyncOperation) => void,
-		onFailure?: (failure: SyncOperationFailure) => void
+		onFailure?: OperationFailureProgressFn
 	): Promise<SyncOperationFailure[]> {
 		const parallelCount = Math.min(this.maxConcurrentOperations, operations.length);
 		let nextIndex = 0;
@@ -1358,7 +1359,9 @@ export class SyncEngine {
 								normalizedError
 							);
 						}
-						onFailure?.(failure);
+						// Failure details are returned to the caller; the callback is
+						// only for per-operation progress bookkeeping.
+						onFailure?.();
 					}
 				}
 			})

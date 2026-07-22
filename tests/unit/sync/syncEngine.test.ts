@@ -1914,6 +1914,52 @@ describe('SyncEngine progress reporting', () => {
 		// Final clear so the status bar drops back to idle.
 		expect(messages[messages.length - 1]).toBeUndefined();
 	});
+
+	it.each(['upload', 'download'] as const)(
+		'counts failed %s operations toward progress completion',
+		async (direction) => {
+			const onProgress = vi.fn();
+			stateManager.setDeltaLink('prev-delta');
+			stateManager.setLastSyncTime(Date.now());
+
+			if (direction === 'upload') {
+				mockEventManager.getDirtyFiles.mockReturnValue([
+					{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+				]);
+				(mockApp.vault.getAbstractFileByPath as Mock).mockReturnValue(
+					makeTFile('notes/test.md', 100, Date.now())
+				);
+				mockFileOps.uploadFile.mockRejectedValue(new Error('Upload failed'));
+			} else {
+				mockClient.getDelta.mockResolvedValue({
+					items: [makeRemoteFile('notes/new.md', { id: 'new-id' })],
+					deltaLink: 'next-delta',
+				});
+				(mockApp.vault.getAbstractFileByPath as Mock).mockReturnValue(null);
+				mockFileOps.downloadFile.mockRejectedValue(new Error('Download failed'));
+			}
+
+			const engine = new SyncEngine(
+				mockApp as any,
+				mockFileOps,
+				mockClient,
+				stateManager,
+				conflictResolver,
+				mockEventManager,
+				'.obsidian',
+				{
+					remoteRoot: '/remote/root',
+					onProgress,
+				}
+			);
+
+			await expect(engine.performSync()).resolves.toBeUndefined();
+
+			const messages = onProgress.mock.calls.map((c: any[]) => c[0]);
+			expect(messages).toContain('1/1 files');
+			expect(messages[messages.length - 1]).toBeUndefined();
+		}
+	);
 });
 
 
