@@ -1810,6 +1810,108 @@ describe('SyncEngine first-sync local vault enumeration', () => {
 		expect(stateManager.getFileState('notes/keep.md')).toBeDefined();
 	});
 
+	// Sibling-case 1: remote item is deleted — the CREATE dirty entry must NOT be
+	// suppressed; the file should be re-uploaded so it reappears in OneDrive.
+	it('does not suppress first-sync create events when the remote item is deleted', async () => {
+		const localFiles = [makeTFile('notes/revived.md', 50, Date.now())];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/revived.md', type: LocalChangeType.CREATE },
+		]);
+		// Remote has a tombstone for this path
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('notes/revived.md', { id: 'remote-revived', size: 50, deleted: { '@odata.type': '#microsoft.graph.deleted' } as any })],
+			deltaLink: 'first-delta',
+		});
+
+		await makeEngine().performSync();
+
+		// The file was deleted remotely — local CREATE must win and re-upload it.
+		expect(mockFileOps.uploadFile).toHaveBeenCalled();
+	});
+
+	// Sibling-case 2: file exists remotely but with a different size — the CREATE
+	// guard skips the local change, then the remote-pass downloads the remote version.
+	it('downloads remote version when first-sync create event exists but sizes differ', async () => {
+		const localFiles = [makeTFile('notes/conflict.md', 100, Date.now())];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/conflict.md', type: LocalChangeType.CREATE },
+		]);
+		// Remote has the same file but with a different size
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('notes/conflict.md', { id: 'remote-conflict', size: 200 })],
+			deltaLink: 'first-delta',
+		});
+
+		await makeEngine().performSync();
+
+		// CREATE is ignored; remote size differs → remote wins → download.
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		expect(mockFileOps.downloadFile).toHaveBeenCalled();
+	});
+
+	// Sibling-case 3: on a subsequent (non-first) sync, CREATE dirty entries must
+	// not be filtered — they represent genuine new local files and should upload.
+	it('uploads new files via dirty-queue CREATE on a subsequent sync', async () => {
+		// Establish prior sync state so isFirstSync() is false.
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setDeltaLink('prev-delta');
+		const localFiles = [makeTFile('notes/new-file.md', 30, Date.now())];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+		// Dirty queue has a CREATE for a file that also appears remotely
+		// (e.g. synced from another device).  On a subsequent sync this is
+		// a genuine conflict/upload, not startup noise.
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/new-file.md', type: LocalChangeType.CREATE },
+		]);
+		mockClient.getDelta.mockResolvedValue({
+			items: [],
+			deltaLink: 'next-delta',
+		});
+
+		await makeEngine().performSync();
+
+		// Non-first-sync: CREATE must not be suppressed.
+		expect(mockFileOps.uploadFile).toHaveBeenCalled();
+		const uploadedPath = mockFileOps.uploadFile.mock.calls[0][0];
+		expect(uploadedPath).toContain('new-file.md');
+	});
+
+	// Sibling-case 4: first-sync CREATE for a purely local file (no remote match)
+	// must still be uploaded even through the dirty queue.
+	it('uploads local-only files via dirty-queue CREATE on first sync', async () => {
+		const localFiles = [makeTFile('notes/brand-new.md', 40, Date.now())];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+		// Dirty queue has a CREATE but no matching remote item
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/brand-new.md', type: LocalChangeType.CREATE },
+		]);
+		mockClient.getDelta.mockResolvedValue({
+			items: [],
+			deltaLink: 'first-delta',
+		});
+
+		await makeEngine().performSync();
+
+		// The file has no remote counterpart — must be uploaded.
+		expect(mockFileOps.uploadFile).toHaveBeenCalled();
+		const uploadedPath = mockFileOps.uploadFile.mock.calls[0][0];
+		expect(uploadedPath).toContain('brand-new.md');
+	});
+
 	it('skips local files that should not be synced (e.g. the log folder)', async () => {
 		const localFiles = [
 			makeTFile('notes/keep.md', 10, Date.now()),
