@@ -571,7 +571,91 @@ describe('EventManager', () => {
 
 			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
 		});
-	});
+
+		// Regression tests: the constructor syncOnFileChange parameter must be applied
+		// *before* startListening() — callers must not rely on a separate post-construction
+		// setSyncOnFileChange() call that is easy to forget (the bug fixed in PR #100).
+		describe('constructor syncOnFileChange parameter', () => {
+			it('does not auto-sync on modify when constructed with syncOnFileChange=false', async () => {
+				const em = new EventManager(
+					mockApp as any,
+					onSyncTriggered,
+					stateManager,
+					undefined,
+					false
+				);
+				em.startListening();
+				eventCallbacks.modify(makeTFile('test.md', 100));
+				await vi.advanceTimersByTimeAsync(200);
+				expect(onSyncTriggered).not.toHaveBeenCalled();
+				// dirty file is still tracked
+				expect(em.getDirtyFiles()).toEqual([
+					{ path: 'test.md', type: LocalChangeType.MODIFY },
+				]);
+			});
+
+			it('does not auto-sync on create when constructed with syncOnFileChange=false', async () => {
+				const em = new EventManager(
+					mockApp as any,
+					onSyncTriggered,
+					stateManager,
+					undefined,
+					false
+				);
+				em.startListening();
+				eventCallbacks.create(makeTFile('new.md', 100));
+				await vi.advanceTimersByTimeAsync(200);
+				expect(onSyncTriggered).not.toHaveBeenCalled();
+				expect(em.getDirtyFiles()).toEqual([
+					{ path: 'new.md', type: LocalChangeType.CREATE },
+				]);
+			});
+
+			it('does not auto-sync on delete when constructed with syncOnFileChange=false', async () => {
+				const em = new EventManager(
+					mockApp as any,
+					onSyncTriggered,
+					stateManager,
+					undefined,
+					false
+				);
+				em.startListening();
+				eventCallbacks.delete(makeTFile('gone.md', 100));
+				await vi.advanceTimersByTimeAsync(200);
+				expect(onSyncTriggered).not.toHaveBeenCalled();
+				expect(em.getDirtyFiles()).toEqual([
+					{ path: 'gone.md', type: LocalChangeType.DELETE },
+				]);
+			});
+
+			it('does not auto-sync on rename when constructed with syncOnFileChange=false', async () => {
+				const em = new EventManager(
+					mockApp as any,
+					onSyncTriggered,
+					stateManager,
+					undefined,
+					false
+				);
+				em.startListening();
+				eventCallbacks.rename(makeTFile('renamed.md', 100), 'old.md');
+				await vi.advanceTimersByTimeAsync(200);
+				expect(onSyncTriggered).not.toHaveBeenCalled();
+				expect(em.getDirtyFiles()).toEqual([
+					{ path: 'renamed.md', type: LocalChangeType.RENAME, oldPath: 'old.md' },
+				]);
+			});
+
+			it('auto-syncs normally when constructed with default (syncOnFileChange=true)', async () => {
+				// Default constructor — no 5th argument — must preserve auto-sync behaviour
+				const em = new EventManager(mockApp as any, onSyncTriggered, stateManager);
+				em.startListening();
+				eventCallbacks.modify(makeTFile('test.md', 100));
+				await vi.advanceTimersByTimeAsync(200);
+				expect(onSyncTriggered).toHaveBeenCalledTimes(1);
+			});
+		});
+
+	}); // end describe('sync scheduling')
 
 	describe('periodic sync', () => {
 		it('starts periodic sync at the requested interval', async () => {

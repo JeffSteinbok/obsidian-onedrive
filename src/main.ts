@@ -314,7 +314,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 				);
 			}
 
-			// Initialize event manager — listening starts after initial sync
+			// Initialize event manager — listening starts after initial sync.
+			// Pass syncOnFileChange via constructor so the setting is correct from
+			// the moment the EventManager is constructed, before startListening().
 			this.eventManager = new EventManager(
 				this.app,
 				async () => {
@@ -329,14 +331,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 						this.app.vault.configDir,
 						this.settings.syncCssSnippets,
 						this.settings.syncBookmarks
-					)
+					),
+				this.settings.syncOnFileChange ?? true
 			);
-			// Apply current settings immediately — the EventManager defaults syncOnFileChange
-			// to true, but the user may have disabled it. Without this call the setting
-			// is only applied the first time saveSettings() runs (i.e. when the user
-			// changes something in the UI), so on every cold start the setting is ignored
-			// until then and can trigger unexpected syncs.
-			this.eventManager.setSyncOnFileChange(this.settings.syncOnFileChange ?? true);
 			// Wire up pull-only mode check
 			this.eventManager.setPullOnlyModeCheck(() => this.getExperimentalSetting('pullOnlyMode'));
 
