@@ -161,10 +161,14 @@ jobs:
               core.warning(`Could not assign Copilot automatically: ${e.message}`);
             }
 
-            // ---- Link back from the PR ----
+            // ---- Link back from the PR (best-effort; don't fail the job) ----
             const note = assigned
               ? `🔬 Opened postmortem #${issue.number} and assigned the Copilot coding agent to run a 5-Whys analysis and propose hardening changes.`
               : `🔬 Opened postmortem #${issue.number}. Assign it to the Copilot coding agent (or run the postmortem skill manually) to generate the 5-Whys analysis and hardening PR.`;
-            await github.rest.issues.createComment({
-              owner, repo, issue_number: pr.number, body: note,
-            });
+            try {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pr.number, body: note,
+              });
+            } catch (e) {
+              core.warning(`Could not comment on PR #${pr.number} (needs Pull requests: write): ${e.message}`);
+            }
