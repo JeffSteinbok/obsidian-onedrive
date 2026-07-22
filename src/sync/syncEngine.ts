@@ -1036,8 +1036,19 @@ export class SyncEngine {
 			remoteByPath.set(vaultPath, item);
 		}
 
-		// Build a set of locally changed paths
-		const localChangedPaths = new Set(localChanges.map((c) => c.path));
+		// Build a set of locally changed paths. On first sync, ignore CREATE
+		// events for paths that already exist remotely; startup indexing can
+		// queue these as "local creates", but treating them as local-wins would
+		// overwrite cloud mtimes by re-uploading unchanged files.
+		const localChangedPaths = new Set(
+			localChanges
+				.filter((change) => {
+					if (!isFirstSync || change.type !== LocalChangeType.CREATE) return true;
+					const remoteItem = remoteByPath.get(change.path);
+					return !remoteItem || !!remoteItem.deleted;
+				})
+				.map((c) => c.path)
+		);
 
 		// Process local changes
 		for (const change of localChanges) {
@@ -1049,6 +1060,11 @@ export class SyncEngine {
 			}
 
 			const remoteItem = remoteByPath.get(change.path);
+			if (isFirstSync && change.type === LocalChangeType.CREATE && remoteItem && !remoteItem.deleted) {
+				// Ignore startup CREATE noise and let the remote-pass first-sync
+				// logic decide via size match / download.
+				continue;
+			}
 
 			if (change.type === LocalChangeType.DELETE) {
 				// Local delete — delete from remote if it exists there

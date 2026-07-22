@@ -1789,6 +1789,27 @@ describe('SyncEngine first-sync local vault enumeration', () => {
 		expect(uploadedPaths).toEqual(['/remote/root/notes/local-only.md']);
 	});
 
+	it('ignores first-sync create events for files that already exist remotely', async () => {
+		const localFiles = [makeTFile('notes/keep.md', 100, Date.now())];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/keep.md', type: LocalChangeType.CREATE },
+		]);
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('notes/keep.md', { id: 'remote-keep', size: 100 })],
+			deltaLink: 'first-delta',
+		});
+
+		await makeEngine().performSync();
+
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
+		expect(stateManager.getFileState('notes/keep.md')).toBeDefined();
+	});
+
 	it('skips local files that should not be synced (e.g. the log folder)', async () => {
 		const localFiles = [
 			makeTFile('notes/keep.md', 10, Date.now()),
