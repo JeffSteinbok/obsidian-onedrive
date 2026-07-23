@@ -173,10 +173,18 @@ export class EventManager {
 			this.app.vault.on('create', (file) => {
 				if (file instanceof TFile && !this.shouldIgnoreEvent(file.path)) {
 					// If file is already tracked in sync state, this is Obsidian
-					// re-indexing on startup — not a real new file
+					// re-indexing on startup — not a real new file.
+					//
+					// NOTE: This guard is only reliable for *subsequent* syncs where
+					// state has already been persisted.  On the very first sync no
+					// file is tracked yet, so startup CREATE events for files that
+					// already exist in OneDrive will still be queued here.
+					// planOperations() compensates: when isFirstSync is true it
+					// ignores CREATE dirty entries whose path appears as a live
+					// (non-deleted) item in the remote delta.
 					if (this.stateManager.getFileState(file.path)) {
-							return;
-						}
+						return;
+					}
 					this.dirtyFiles.set(file.path, { path: file.path, type: LocalChangeType.CREATE });
 					this.scheduleSync();
 				} else if (file instanceof TFolder && !this.shouldIgnoreEvent(file.path)) {
