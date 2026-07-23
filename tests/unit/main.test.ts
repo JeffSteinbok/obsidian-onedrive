@@ -587,10 +587,17 @@ describe('OneDriveSyncPlugin', () => {
 
 		await plugin.onload();
 
-		// setSyncOnFileChange must be called with the persisted value (false) so
-		// the EventManager does not schedule automatic syncs on file-change events
-		// even before the user opens Settings and saves.
-		expect(mocks.eventManager.setSyncOnFileChange).toHaveBeenCalledWith(false);
+		// syncOnFileChange must be passed to the EventManager constructor so the
+		// setting is baked in before startListening() is ever called — not applied
+		// as a post-construction setter that is easy to forget.
+		// The 5th constructor argument (index 4) is syncOnFileChange.
+		expect(mocks.EventManager).toHaveBeenCalledWith(
+			expect.anything(),       // app
+			expect.any(Function),    // onSyncTriggered
+			expect.anything(),       // stateManager
+			expect.any(Function),    // shouldSyncPath
+			false                    // syncOnFileChange — persisted value
+		);
 	});
 
 	it('applies syncOnFileChange=true when the setting is enabled', async () => {
@@ -603,7 +610,13 @@ describe('OneDriveSyncPlugin', () => {
 
 		await plugin.onload();
 
-		expect(mocks.eventManager.setSyncOnFileChange).toHaveBeenCalledWith(true);
+		expect(mocks.EventManager).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.any(Function),
+			expect.anything(),
+			expect.any(Function),
+			true
+		);
 	});
 
 });

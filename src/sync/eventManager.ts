@@ -33,12 +33,26 @@ export class EventManager {
 	// Callback to check if pull-only mode is enabled
 	private isPullOnlyMode: () => boolean = () => false;
 
+	/**
+	 * @param app - The Obsidian App instance.
+	 * @param onSyncTriggered - Callback invoked when a debounced sync fires.
+	 * @param stateManager - Sync state manager for tracking file state.
+	 * @param shouldSyncPath - Predicate that decides whether a given vault path participates in sync.
+	 * @param syncOnFileChange - Whether vault-change events should trigger a debounced auto-sync.
+	 *   **Pass the persisted setting here** so the EventManager is correctly configured from the
+	 *   moment it is constructed, before `startListening()` is ever called.  Defaulting to `true`
+	 *   preserves backward-compatible behaviour for callers that don't pass the argument (e.g. the
+	 *   DEV-only `createTestConflict` path that never calls `startListening`).
+	 */
 	constructor(
 		private app: App,
 		private onSyncTriggered: () => Promise<void>,
 		private stateManager: SyncStateManager,
-		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path, false, false, app.vault.configDir)
-	) {}
+		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path, false, false, app.vault.configDir),
+		syncOnFileChange = true
+	) {
+		this.syncOnFileChange = syncOnFileChange;
+	}
 
 	/**
 	 * Set the callback to check if pull-only mode is enabled.
