@@ -1211,10 +1211,38 @@ export default class OneDriveSyncPlugin extends Plugin {
 		applyPluginVaultLogHook({
 			enabled: this.settings.logLevel !== 'off',
 			adapter,
+			stamp: this.buildVaultLogStamp(),
 			setVaultLogHook: (hook) => {
 				logger.setVaultLogHook(hook);
 			},
 		});
+	}
+
+	private buildVaultLogStamp(): string {
+		const syncRoot =
+			this.settings.accessMode === OneDriveAccessMode.APP_FOLDER
+				? this.settings.appFolderSubpath || '(app-folder root)'
+				: this.settings.remoteRootPath || this.settings.remotePath || '/';
+		const config = {
+			accessMode: this.settings.accessMode,
+			syncRoot,
+			syncInterval: this.settings.syncInterval,
+			syncOnFileChange: this.settings.syncOnFileChange ?? true,
+			startupSyncDelay: this.settings.startupSyncDelay,
+			conflictResolution: this.settings.conflictResolution,
+			syncAppSettings: this.settings.syncAppSettings,
+			syncPluginManifests: this.settings.syncPluginManifests,
+			syncCssSnippets: this.settings.syncCssSnippets,
+			syncBookmarks: this.settings.syncBookmarks,
+			notificationLevel: this.settings.notificationLevel ?? 'all',
+			logLevel: this.settings.logLevel,
+			pullOnlyMode: this.getExperimentalSetting('pullOnlyMode'),
+		};
+
+		return [
+			`**Plugin version:** \`${this.manifest.version}\``,
+			`**Config:** \`${JSON.stringify(config)}\``,
+		].join('\n');
 	}
 
 	/**
