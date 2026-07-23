@@ -210,6 +210,13 @@ describe('errors utils', () => {
 			}
 		);
 
+		it('returns true for retryable numeric-string status codes', () => {
+			const oneDriveError = Object.assign(new OneDriveError('Retry me', 'code', 400), { statusCode: '423' });
+			const graphError = Object.assign(new Error('Graph SDK error'), { statusCode: '423' });
+			expect(isRetryableError(oneDriveError)).toBe(true);
+			expect(isRetryableError(graphError)).toBe(true);
+		});
+
 		it.each([400, 404])('returns false for Graph SDK errors with non-retryable statusCode %s', (statusCode) => {
 			const error = Object.assign(new Error('Graph SDK error'), { statusCode, code: 'BadRequest' });
 			expect(isRetryableError(error)).toBe(false);
@@ -228,6 +235,13 @@ describe('errors utils', () => {
 		it.each([423, 501])('returns true for Graph SDK errors with deferrable statusCode %s', (statusCode) => {
 			const error = Object.assign(new Error('Graph SDK error'), { statusCode });
 			expect(isDeferrableError(error)).toBe(true);
+		});
+
+		it('returns true for deferrable numeric-string status codes', () => {
+			const oneDriveError = Object.assign(new OneDriveError('Retry later', 'code', 400), { statusCode: '423' });
+			const graphError = Object.assign(new Error('Graph SDK error'), { statusCode: '501' });
+			expect(isDeferrableError(oneDriveError)).toBe(true);
+			expect(isDeferrableError(graphError)).toBe(true);
 		});
 
 		it.each([400, 404, 500])('returns false for non-deferrable status %s', (statusCode) => {

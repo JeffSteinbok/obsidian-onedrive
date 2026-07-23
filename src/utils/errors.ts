@@ -131,17 +131,9 @@ export function isRetryableError(error: Error): boolean {
 	}
 
 	const retryableStatusCodes = [408, 423, 429, 500, 501, 502, 503, 504];
-
-	if (error instanceof OneDriveError) {
-		return error.statusCode ? retryableStatusCodes.includes(error.statusCode) : false;
-	}
-
-	// Graph SDK throws errors with statusCode property but not as OneDriveError instances
-	if (error && typeof error === 'object' && 'statusCode' in error) {
-		const statusCode = (error as unknown as { statusCode: number }).statusCode;
-		if (typeof statusCode === 'number') {
-			return retryableStatusCodes.includes(statusCode);
-		}
+	const statusCode = extractStatusCode(error);
+	if (statusCode !== undefined) {
+		return retryableStatusCodes.includes(statusCode);
 	}
 
 	// Network errors are retryable
@@ -157,19 +149,30 @@ export function isRetryableError(error: Error): boolean {
  */
 export function isDeferrableError(error: Error): boolean {
 	const deferrableStatusCodes = [423, 501];
+	const statusCode = extractStatusCode(error);
+	return statusCode !== undefined ? deferrableStatusCodes.includes(statusCode) : false;
+}
 
+function extractStatusCode(error: Error): number | undefined {
+	let rawStatusCode: unknown;
 	if (error instanceof OneDriveError) {
-		return error.statusCode ? deferrableStatusCodes.includes(error.statusCode) : false;
+		rawStatusCode = error.statusCode;
+	} else if (error && typeof error === 'object' && 'statusCode' in error) {
+		rawStatusCode = (error as unknown as { statusCode?: unknown }).statusCode;
 	}
 
-	if (error && typeof error === 'object' && 'statusCode' in error) {
-		const statusCode = (error as unknown as { statusCode: number }).statusCode;
-		if (typeof statusCode === 'number') {
-			return deferrableStatusCodes.includes(statusCode);
+	if (typeof rawStatusCode === 'number' && Number.isFinite(rawStatusCode)) {
+		return rawStatusCode;
+	}
+
+	if (typeof rawStatusCode === 'string' && rawStatusCode.trim().length > 0) {
+		const parsed = Number(rawStatusCode);
+		if (Number.isFinite(parsed)) {
+			return parsed;
 		}
 	}
 
-	return false;
+	return undefined;
 }
 
 /**
