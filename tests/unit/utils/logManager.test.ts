@@ -71,5 +71,43 @@ describe('logManager', () => {
 				'second line\n'
 			);
 		});
+
+		it('stamps new daily log files before the first mirrored line', async () => {
+			const adapter = {
+				exists: vi
+					.fn()
+					.mockResolvedValueOnce(false)
+					.mockResolvedValueOnce(true),
+				mkdir: vi.fn().mockResolvedValue(undefined),
+				write: vi.fn().mockResolvedValue(undefined),
+				append: vi.fn().mockResolvedValue(undefined),
+			};
+			const setVaultLogHook = vi.fn();
+			const flushAsyncWork = async () => {
+				for (let i = 0; i < 10; i++) {
+					await Promise.resolve();
+				}
+			};
+
+			applyVaultLogHook({
+				enabled: true,
+				adapter,
+				stamp: '**Plugin version:** `1.5.1`\n**Config:** `{\"accessMode\":\"app-folder\"}`',
+				setVaultLogHook,
+				now: () => new Date('2026-06-05T00:00:01.000Z'),
+			});
+
+			const writeHook = setVaultLogHook.mock.calls[0][0] as unknown as (line: string) => void;
+			writeHook('first line');
+			await flushAsyncWork();
+
+			expect(adapter.write).toHaveBeenCalledWith(
+				`${LIVE_LOG_FOLDER}/2026-06-05.md`,
+				LIVE_LOG_HEADER +
+					'**Plugin version:** `1.5.1`\n' +
+					'**Config:** `{"accessMode":"app-folder"}`\n\n' +
+					'first line\n'
+			);
+		});
 	});
 });

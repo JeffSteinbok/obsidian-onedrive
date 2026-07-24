@@ -74,7 +74,7 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 | **Sync CSS Snippets**    | Optional — sync CSS snippets from `.obsidian/snippets/` to keep custom styles consistent across devices                                                                   |
 | **Sync Bookmarks**       | Optional — sync `.obsidian/bookmarks.json` to keep bookmarks consistent across devices                                                                                    |
 | **Pull-Only Mode**       | (Experimental) Download changes from OneDrive but never upload local edits. Useful for read-only vaults or backup recovery. Enable under Settings → Experimental          |
-| **Debug Logging**        | Enable for troubleshooting. Writes a daily note under `_OneDriveSyncLogs/YYYY-MM-DD.md` (device-local, never synced)                                                      |
+| **Debug Logging**        | Enable for troubleshooting. Writes a daily note under `_OneDriveSyncLogs/YYYY-MM-DD.md` (device-local, never synced), stamped with the plugin version and current config |
 
 For advanced settings (reset sync token, reconcile from cloud, custom client ID, experimental performance options), see [Advanced Usage](docs/ADVANCED.md).
 

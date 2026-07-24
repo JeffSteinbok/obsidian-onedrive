@@ -19,7 +19,15 @@ export interface ApplyVaultLogHookParams {
 	enabled: boolean;
 	adapter: VaultLogAdapter;
 	setVaultLogHook(this: void, hook: ((line: string) => void) | null): void;
+	stamp?: string;
 	now?: (this: void) => Date;
+}
+
+function formatInitialLogStamp(stamp?: string): string {
+	if (!stamp) return '';
+	if (stamp.endsWith('\n\n')) return stamp;
+	if (stamp.endsWith('\n')) return `${stamp}\n`;
+	return `${stamp}\n\n`;
 }
 
 export function liveLogNotePath(date: Date = new Date()): string {
@@ -33,6 +41,7 @@ export function applyVaultLogHook({
 	enabled,
 	adapter,
 	setVaultLogHook,
+	stamp,
 	now = () => new Date(),
 }: ApplyVaultLogHookParams): void {
 	if (!enabled) {
@@ -51,7 +60,10 @@ export function applyVaultLogHook({
 					if (!folderExists) {
 						await adapter.mkdir(LIVE_LOG_FOLDER);
 					}
-					await adapter.write(path, LIVE_LOG_HEADER + line + '\n');
+					await adapter.write(
+						path,
+						LIVE_LOG_HEADER + formatInitialLogStamp(stamp) + line + '\n'
+					);
 				} else {
 					await adapter.append(path, line + '\n');
 				}
