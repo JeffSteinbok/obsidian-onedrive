@@ -48,6 +48,11 @@ import { AuthenticationError } from '../types';
  * Implements Microsoft Graph's AuthenticationProvider interface
  */
 export class OneDriveAuthProvider implements AuthenticationProvider {
+	// In-flight refresh, shared across concurrent getAccessToken() callers.
+	// Microsoft rotates refresh tokens, so parallel refreshes can invalidate
+	// each other's tokens — only one refresh may run at a time.
+	private refreshPromise: Promise<void> | null = null;
+
 	constructor(
 		private tokenStorage: TokenStorage,
 		private deviceCodeClient: DeviceCodeFlowClient,
@@ -67,8 +72,15 @@ export class OneDriveAuthProvider implements AuthenticationProvider {
 
 		// Check if token needs refresh (with 2-minute buffer)
 		if (this.tokenStorage.isAccessTokenExpired(SYNC_CONFIG.TOKEN_REFRESH_BUFFER_MS)) {
-			logger.debug('Access token expired or expiring soon, refreshing...');
-			await this.refreshAccessToken();
+			if (!this.refreshPromise) {
+				logger.debug('Access token expired or expiring soon, refreshing...');
+				this.refreshPromise = this.refreshAccessToken().finally(() => {
+					this.refreshPromise = null;
+				});
+			} else {
+				logger.debug('Refresh already in flight, awaiting it');
+			}
+			await this.refreshPromise;
 		}
 
 		const accessToken = this.tokenStorage.getAccessToken();

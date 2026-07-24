@@ -216,6 +216,8 @@ export const en = {
 			automaticInterval: {
 				name: 'Automatic sync interval',
 				desc: 'Set to 0 for manual sync only (recommended for battery life)',
+				currentValue: 'Currently: every {{minutes}} minutes.',
+				currentDisabled: 'Currently: manual sync only.',
 				resetTooltip: 'Reset to default',
 			},
 			syncOnFileChange: {

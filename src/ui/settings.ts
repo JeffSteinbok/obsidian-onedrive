@@ -36,7 +36,7 @@ interface OneDrivePlugin {
 	resetSyncToken(): Promise<void>;
 	reconcileFromCloud(): Promise<void>;
 	authenticate(): Promise<void>;
-	disconnect(): void;
+	disconnect(): Promise<void>;
 	triggerManualSync(): Promise<void>;
 	listFoldersForPicker(
 		path: string,
@@ -298,7 +298,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			// Disconnect button
 				statusSetting.addButton((button) =>
 					button.setButtonText(t('settings.auth.connectionStatus.disconnect')).onClick(async () => {
-						this.plugin.disconnect();
+						await this.plugin.disconnect();
 						this.renderSettings();
 					})
 				);
@@ -424,16 +424,28 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 		const { configDir } = this.app.vault;
 
-		// Sync interval
-		new Setting(containerEl)
+		// Sync interval — show the current value in the description (and via
+		// the slider's dynamic tooltip) since sliders give no feedback on
+		// mobile otherwise.
+		const intervalDesc = (minutes: number): string => {
+			const current =
+				minutes > 0
+					? t('settings.sync.automaticInterval.currentValue', { minutes })
+					: t('settings.sync.automaticInterval.currentDisabled');
+			return `${t('settings.sync.automaticInterval.desc')} ${current}`;
+		};
+		const intervalSetting = new Setting(containerEl)
 			.setName(t('settings.sync.automaticInterval.name'))
-			.setDesc(t('settings.sync.automaticInterval.desc'))
+			.setDesc(intervalDesc(this.plugin.settings.syncInterval));
+		intervalSetting
 			.addSlider((slider) =>
 				slider
 					.setLimits(0, 60, 5)
 					.setValue(this.plugin.settings.syncInterval)
+					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.syncInterval = value;
+						intervalSetting.setDesc(intervalDesc(value));
 						await this.plugin.saveSettings();
 					})
 			)

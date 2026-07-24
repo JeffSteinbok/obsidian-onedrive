@@ -10,6 +10,11 @@ import { logger } from '../utils/logger';
  */
 export class SyncStateManager {
 	private state: SyncState;
+	// Reverse indexes kept in sync with fileStates/folderStates so hot-path
+	// lookups (delta delete resolution, folder discovery) stay O(1) instead
+	// of scanning every tracked entry.
+	private oneDriveIdToPath: Map<string, string> = new Map();
+	private folderPathToId: Map<string, string> = new Map();
 
 	constructor() {
 		this.state = {
@@ -17,6 +22,20 @@ export class SyncStateManager {
 			fileStates: new Map(),
 			folderStates: new Map(),
 		};
+	}
+
+	/**
+	 * Rebuild both reverse indexes from the primary maps.
+	 */
+	private rebuildIndexes(): void {
+		this.oneDriveIdToPath.clear();
+		this.folderPathToId.clear();
+		for (const [path, state] of this.state.fileStates) {
+			if (state.oneDriveId) this.oneDriveIdToPath.set(state.oneDriveId, path);
+		}
+		for (const [id, path] of this.state.folderStates) {
+			this.folderPathToId.set(path, id);
+		}
 	}
 
 	/**
@@ -36,6 +55,7 @@ export class SyncStateManager {
 				fileStates: new Map(),
 				folderStates: new Map(),
 			};
+			this.rebuildIndexes();
 			return;
 		}
 
@@ -47,6 +67,7 @@ export class SyncStateManager {
 			deltaLinkScoped: data.deltaLinkScoped,
 			obsidianDeltaLink: data.obsidianDeltaLink,
 		};
+		this.rebuildIndexes();
 
 		logger.debug('Sync state loaded', {
 			lastSyncTime: new Date(data.lastSyncTime).toISOString(),
@@ -157,13 +178,28 @@ export class SyncStateManager {
 	 * Set file state
 	 */
 	setFileState(path: string, state: FileState): void {
+		const previous = this.state.fileStates.get(path);
+		if (
+			previous?.oneDriveId &&
+			previous.oneDriveId !== state.oneDriveId &&
+			this.oneDriveIdToPath.get(previous.oneDriveId) === path
+		) {
+			this.oneDriveIdToPath.delete(previous.oneDriveId);
+		}
 		this.state.fileStates.set(path, state);
+		if (state.oneDriveId) {
+			this.oneDriveIdToPath.set(state.oneDriveId, path);
+		}
 	}
 
 	/**
 	 * Remove file state
 	 */
 	removeFileState(path: string): void {
+		const previous = this.state.fileStates.get(path);
+		if (previous?.oneDriveId && this.oneDriveIdToPath.get(previous.oneDriveId) === path) {
+			this.oneDriveIdToPath.delete(previous.oneDriveId);
+		}
 		this.state.fileStates.delete(path);
 	}
 
@@ -183,10 +219,7 @@ export class SyncStateManager {
 	 */
 	getPathByOneDriveId(oneDriveId: string): string | undefined {
 		if (!oneDriveId) return undefined;
-		for (const [path, state] of this.state.fileStates) {
-			if (state.oneDriveId === oneDriveId) return path;
-		}
-		return undefined;
+		return this.oneDriveIdToPath.get(oneDriveId);
 	}
 
 	/**
@@ -197,7 +230,16 @@ export class SyncStateManager {
 	 */
 	setFolderState(oneDriveId: string, vaultPath: string): void {
 		if (!oneDriveId) return;
+		const previousPath = this.state.folderStates.get(oneDriveId);
+		if (
+			previousPath &&
+			previousPath !== vaultPath &&
+			this.folderPathToId.get(previousPath) === oneDriveId
+		) {
+			this.folderPathToId.delete(previousPath);
+		}
 		this.state.folderStates.set(oneDriveId, vaultPath);
+		this.folderPathToId.set(vaultPath, oneDriveId);
 	}
 
 	getFolderPathById(oneDriveId: string): string | undefined {
@@ -206,6 +248,10 @@ export class SyncStateManager {
 	}
 
 	removeFolderState(oneDriveId: string): void {
+		const path = this.state.folderStates.get(oneDriveId);
+		if (path !== undefined && this.folderPathToId.get(path) === oneDriveId) {
+			this.folderPathToId.delete(path);
+		}
 		this.state.folderStates.delete(oneDriveId);
 	}
 
@@ -213,22 +259,17 @@ export class SyncStateManager {
 	 * Reverse-resolve a vault folder path to its OneDrive item id.
 	 */
 	getFolderIdByPath(vaultPath: string): string | undefined {
-		for (const [id, path] of this.state.folderStates) {
-			if (path === vaultPath) return id;
-		}
-		return undefined;
+		return this.folderPathToId.get(vaultPath);
 	}
 
 	/**
 	 * Remove a folder state entry by its vault path.
 	 */
 	removeFolderStateByPath(vaultPath: string): void {
-		for (const [id, path] of this.state.folderStates) {
-			if (path === vaultPath) {
-				this.state.folderStates.delete(id);
-				return;
-			}
-		}
+		const id = this.folderPathToId.get(vaultPath);
+		if (id === undefined) return;
+		this.folderPathToId.delete(vaultPath);
+		this.state.folderStates.delete(id);
 	}
 
 	/**
@@ -284,12 +325,14 @@ export class SyncStateManager {
 			fileStates: new Map(),
 			folderStates: new Map(),
 		};
+		this.rebuildIndexes();
 		logger.debug('Sync state cleared');
 	}
 
 	/** Wipe all tracked file states but keep folder states and delta link. */
 	clearFileStates(): void {
 		this.state.fileStates.clear();
+		this.oneDriveIdToPath.clear();
 		logger.debug('Tracked file states cleared');
 	}
 }

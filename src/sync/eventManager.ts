@@ -22,6 +22,10 @@ export class EventManager {
 	private throttleTimer?: number;
 	private syncTimer?: number;
 	private isSyncing = false;
+	// Set when a vault change arrives while a sync is running, so a follow-up
+	// sync gets scheduled once the current one finishes (instead of the change
+	// sitting in the dirty queue until the next unrelated trigger).
+	private syncRequestedDuringSync = false;
 	private dirtyFiles: Map<string, LocalChange> = new Map();
 	// Paths we wrote during sync — events for these are our own writes, not user edits
 	private ownWritePaths: Set<string> = new Set();
@@ -276,7 +280,10 @@ export class EventManager {
 	 */
 	private scheduleSync(): void {
 		if (!this.syncOnFileChange) return;
-		if (this.isSyncing) return;
+		if (this.isSyncing) {
+			this.syncRequestedDuringSync = true;
+			return;
+		}
 
 		if (this.throttleTimer !== undefined) {
 			timerApi.clearTimeout(this.throttleTimer);
@@ -351,6 +358,14 @@ export class EventManager {
 			logger.error('Error during sync:', error);
 		} finally {
 			this.isSyncing = false;
+			// Changes that arrived mid-sync couldn't schedule — do it now so
+			// they don't wait for the next unrelated trigger. Only vault-event
+			// callers set the flag, so failed operations re-queued by the sync
+			// engine can't create a retry loop here.
+			if (this.syncRequestedDuringSync) {
+				this.syncRequestedDuringSync = false;
+				this.scheduleSync();
+			}
 		}
 	}
 

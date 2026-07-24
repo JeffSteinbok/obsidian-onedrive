@@ -215,6 +215,8 @@ export const zhCn = {
 			automaticInterval: {
 				name: '自动同步间隔',
 				desc: '设为 0 时仅手动同步，推荐用于节省电量。',
+				currentValue: '当前：每 {{minutes}} 分钟同步一次。',
+				currentDisabled: '当前：仅手动同步。',
 				resetTooltip: '恢复默认值',
 			},
 			syncOnFileChange: {

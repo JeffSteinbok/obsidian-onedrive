@@ -216,6 +216,8 @@ export const ja = {
 			automaticInterval: {
 				name: '自動同期間隔',
 				desc: '手動同期のみにするには0に設定（バッテリー寿命のため推奨）',
+				currentValue: '現在：{{minutes}}分ごとに同期。',
+				currentDisabled: '現在：手動同期のみ。',
 				resetTooltip: 'デフォルトにリセット',
 			},
 			startupDelay: {

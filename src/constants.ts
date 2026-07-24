@@ -35,8 +35,6 @@ export const SYNC_CONFIG = {
 	EVENT_THROTTLE_MS: 3000,
 	// Token refresh buffer (milliseconds before expiry)
 	TOKEN_REFRESH_BUFFER_MS: 120000, // 2 minutes
-	// Default chunk size for large file uploads
-	DEFAULT_CHUNK_SIZE: 6815744, // 6.5 MB (proven size from remotely-save)
 	// Minimum chunk size for OneDrive API
 	MIN_CHUNK_SIZE: 327680, // 320 KB
 	// Maximum chunk size for OneDrive API
@@ -53,11 +51,4 @@ export const ONEDRIVE_PATHS = {
 	APP_FOLDER: '/Apps/ObsidianOneDrive',
 	// Special value for app folder API endpoint
 	APP_ROOT: 'approot',
-};
-
-// Plugin metadata
-export const PLUGIN_INFO = {
-	NAME: 'OneDrive Sync',
-	ID: 'onedrive-sync',
-	VERSION: '0.1.0',
 };
