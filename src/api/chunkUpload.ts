@@ -6,11 +6,32 @@
  */
 
 import { requestUrl } from 'obsidian';
-import { OneDriveUploadSession, OneDriveItem, OneDriveError } from '../types';
+import { OneDriveUploadSession, OneDriveItem, OneDriveError, RateLimitError } from '../types';
 import { SYNC_CONFIG, GRAPH_API_ENDPOINT } from '../constants';
 import { logger } from '../utils/logger';
 import { retryWithBackoff } from '../utils/retry';
+import { parseRetryAfterHeader } from '../utils/errors';
 import { OneDriveClient } from './oneDriveClient';
+
+// How many times a large-file upload may consult the session's
+// nextExpectedRanges to resume after a chunk fails its retries.
+const MAX_SESSION_RESUMES = 3;
+
+/**
+ * Build the error for a failed upload HTTP response. 429s become
+ * RateLimitError carrying the server's Retry-After hint (Graph sends it
+ * in the header, not the body); everything else keeps its status code so
+ * retryWithBackoff can classify it.
+ */
+function uploadHttpError(
+	prefix: string,
+	response: { status: number; headers: Record<string, string> }
+): OneDriveError {
+	if (response.status === 429) {
+		return new RateLimitError(`${prefix}: HTTP 429`, parseRetryAfterHeader(response.headers));
+	}
+	return new OneDriveError(`${prefix}: HTTP ${response.status}`, undefined, response.status);
+}
 
 /**
  * Calculate optimal chunk size based on file size
@@ -83,11 +104,7 @@ export class ChunkUploader {
 				});
 
 				if (response.status < 200 || response.status >= 300) {
-					throw new OneDriveError(
-						`Failed to upload file: HTTP ${response.status}`,
-						undefined,
-						response.status
-					);
+					throw uploadHttpError('Failed to upload file', response);
 				}
 
 				return response.json as OneDriveItem;
@@ -116,27 +133,50 @@ export class ChunkUploader {
 		// Step 1: Create upload session
 		const session = await this.createUploadSession(filePath);
 
-		// Step 2: Upload chunks
-		let uploadedBytes = 0;
-		const chunks = Math.ceil(fileSize / chunkSize);
+		// Step 2: Upload chunks sequentially (Graph requires in-order ranges).
+		// If a chunk fails after its retries, consult the session's
+		// nextExpectedRanges to resume — already-accepted bytes are kept
+		// server-side and don't need re-uploading.
+		const totalChunks = Math.ceil(fileSize / chunkSize);
+		let position = 0;
+		let resumesLeft = MAX_SESSION_RESUMES;
 		let finalItem: OneDriveItem | null = null;
 
-		for (let i = 0; i < chunks; i++) {
-			const start = i * chunkSize;
-			const end = Math.min(start + chunkSize, fileSize);
-			const chunk = content.slice(start, end);
+		while (position < fileSize) {
+			const end = Math.min(position + chunkSize, fileSize);
+			const chunk = content.slice(position, end);
 
-			const result = await this.uploadChunk(session.uploadUrl, chunk, start, end - 1, fileSize);
+			let result: OneDriveItem | null;
+			try {
+				result = await this.uploadChunk(session.uploadUrl, chunk, position, end - 1, fileSize);
+			} catch (error) {
+				if (resumesLeft <= 0) {
+					throw error;
+				}
+				resumesLeft--;
+				const resumePosition = await this.getResumePosition(session.uploadUrl);
+				if (resumePosition === undefined || resumePosition >= fileSize) {
+					throw error;
+				}
+				logger.warn(
+					`Chunk upload interrupted at byte ${position}; session resume from byte ${resumePosition}`
+				);
+				position = resumePosition;
+				continue;
+			}
+
 			if (result) {
 				finalItem = result;
 			}
 
-			uploadedBytes = end;
+			position = end;
 			if (onProgress) {
-				onProgress(uploadedBytes, fileSize);
+				onProgress(position, fileSize);
 			}
 
-			logger.debug(`Uploaded chunk ${i + 1}/${chunks} (${uploadedBytes}/${fileSize} bytes)`);
+			logger.debug(
+				`Uploaded chunk ${Math.ceil(position / chunkSize)}/${totalChunks} (${position}/${fileSize} bytes)`
+			);
 		}
 
 		// The last chunk (200/201) returns the completed item directly.
@@ -200,7 +240,7 @@ export class ChunkUploader {
 
 				// 202 = chunk accepted, 201/200 = upload complete
 				if (![200, 201, 202].includes(response.status)) {
-					throw new OneDriveError(`Failed to upload chunk: HTTP ${response.status}`);
+					throw uploadHttpError('Failed to upload chunk', response);
 				}
 
 				// Final chunk — server returns the completed item
@@ -219,6 +259,33 @@ export class ChunkUploader {
 	}
 
 	/**
+	 * Query the upload session for the next byte offset the server expects.
+	 * Used to resume a chunked upload after a failed chunk. Returns undefined
+	 * when the session status can't be read (caller rethrows the chunk error).
+	 */
+	private async getResumePosition(uploadUrl: string): Promise<number | undefined> {
+		try {
+			const response = await requestUrl({
+				url: uploadUrl,
+				method: 'GET',
+				throw: false,
+			});
+			if (response.status !== 200) {
+				return undefined;
+			}
+			const ranges = (response.json as { nextExpectedRanges?: string[] }).nextExpectedRanges;
+			const firstRange = ranges?.[0];
+			if (!firstRange) {
+				return undefined;
+			}
+			const start = Number(firstRange.split('-')[0]);
+			return Number.isFinite(start) ? start : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
 	 * Get final item after upload completes
 	 */
 	private async getFinalItem(uploadUrl: string): Promise<OneDriveItem> {
@@ -226,6 +293,7 @@ export class ChunkUploader {
 			const response = await requestUrl({
 				url: uploadUrl,
 				method: 'GET',
+				throw: false,
 			});
 
 			if (response.status !== 200) {

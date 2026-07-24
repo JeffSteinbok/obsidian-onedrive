@@ -43,10 +43,10 @@ import { ONEDRIVE_PATHS } from '../constants';
 
 interface GraphCollectionResponse<T> {
 	value: T[];
+	'@odata.nextLink'?: string;
 }
 
 interface GraphDeltaApiResponse<T> extends GraphCollectionResponse<T> {
-	'@odata.nextLink'?: string;
 	'@odata.deltaLink'?: string;
 }
 
@@ -179,6 +179,23 @@ export class OneDriveClient {
 		return retryWithBackoff<T>(() => this.client.api(endpoint).get() as Promise<T>);
 	}
 
+	/**
+	 * Fetch every page of a Graph collection endpoint by following
+	 * @odata.nextLink. Graph caps /children responses at ~200 items per page,
+	 * so a single GET silently truncates large folders.
+	 */
+	private async getAllPages(endpoint: string): Promise<OneDriveItem[]> {
+		const items: OneDriveItem[] = [];
+		let nextUrl: string | undefined = endpoint;
+		while (nextUrl) {
+			const response: GraphCollectionResponse<OneDriveItem> =
+				await this.getGraph<GraphCollectionResponse<OneDriveItem>>(nextUrl);
+			items.push(...response.value);
+			nextUrl = response['@odata.nextLink'];
+		}
+		return items;
+	}
+
 	private async postGraph<T>(endpoint: string, body: unknown): Promise<T> {
 		return retryWithBackoff<T>(() => this.client.api(endpoint).post(body) as Promise<T>);
 	}
@@ -207,17 +224,6 @@ export class OneDriveClient {
 			throw new OneDriveError(
 				`Failed to resolve shared folder: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
-		}
-	}
-
-	/**
-	 * @deprecated Use buildEndpoint() instead. Kept for backward compat during migration.
-	 */
-	getDriveEndpoint(path: string): string {
-		if (this.accessMode === OneDriveAccessMode.APP_FOLDER) {
-			return `/me/drive/special/approot:/${path}`;
-		} else {
-			return `/me/drive/root:/${path}`;
 		}
 	}
 
@@ -287,9 +293,7 @@ export class OneDriveClient {
 
 		try {
 			const apiPath = this.buildEndpoint(folderPath, 'children');
-			const response = await this.getGraph<GraphCollectionResponse<OneDriveItem>>(apiPath);
-
-			return response.value;
+			return await this.getAllPages(apiPath);
 		} catch (error) {
 			logger.error(`Failed to list folder ${folderPath}:`, error);
 			throw new OneDriveError(
@@ -334,8 +338,7 @@ export class OneDriveClient {
 				}
 			}
 
-			const response = await this.getGraph<GraphCollectionResponse<OneDriveItem>>(apiPath);
-			const items = response.value;
+			const items = await this.getAllPages(apiPath);
 
 			// Return only folders (including shared/mounted shortcuts)
 			return items.filter((item) => item.folder || item.remoteItem?.folder);
@@ -365,9 +368,9 @@ export class OneDriveClient {
 				apiPath = `/me/drive/special/approot:/${encoded}:/children`;
 			}
 
-			const response = await this.getGraph<GraphCollectionResponse<OneDriveItem>>(apiPath);
+			const items = await this.getAllPages(apiPath);
 			// Return only folders
-			return response.value.filter((item) => item.folder);
+			return items.filter((item) => item.folder);
 		} catch (error) {
 			logger.error(`Failed to list App Folder subfolders at ${folderPath}:`, error);
 			throw new OneDriveError(
@@ -414,8 +417,13 @@ export class OneDriveClient {
 				'@microsoft.graph.conflictBehavior': 'fail',
 			});
 		} catch (error) {
-			// Ignore if folder already exists
-			if (error instanceof Error && error.message.includes('nameAlreadyExists')) {
+			// Ignore if folder already exists — check the Graph error code first,
+			// with a message-text fallback for errors that don't carry one
+			const graphCode = (error as { code?: unknown })?.code;
+			if (
+				graphCode === 'nameAlreadyExists' ||
+				(error instanceof Error && error.message.includes('nameAlreadyExists'))
+			) {
 				logger.debug(`Folder ${folderName} already exists`);
 				return this.getItemByPath(folderPath ? `${folderPath}/${folderName}` : folderName);
 			}

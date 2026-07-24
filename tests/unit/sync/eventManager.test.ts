@@ -520,7 +520,7 @@ describe('EventManager', () => {
 			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
 		});
 
-		it('does not schedule a new sync while one is already running', async () => {
+		it('defers a sync requested during a running sync until it completes', async () => {
 			const deferred = createDeferred();
 			onSyncTriggered = vi.fn().mockImplementation(() => deferred.promise);
 			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager);
@@ -534,13 +534,15 @@ describe('EventManager', () => {
 			eventCallbacks.modify(makeTFile('second.md', 100));
 			await vi.advanceTimersByTimeAsync(500);
 
+			// No overlapping sync while one is still running
 			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
 
 			deferred.resolve();
 			await Promise.resolve();
 			await vi.advanceTimersByTimeAsync(200);
 
-			expect(onSyncTriggered).toHaveBeenCalledTimes(1);
+			// The change that arrived mid-sync schedules a follow-up sync
+			expect(onSyncTriggered).toHaveBeenCalledTimes(2);
 		});
 
 		it('still tracks dirty files but does not schedule sync when syncOnFileChange is disabled', async () => {

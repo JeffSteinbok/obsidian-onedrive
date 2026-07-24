@@ -77,6 +77,7 @@ import {
 } from '../types';
 import { logger } from '../utils/logger';
 import { isDeferrableError } from '../utils/errors';
+import { sha1HexUpper } from '../utils/contentHash';
 import {
 	normalizePath,
 	toOneDrivePath,
@@ -275,7 +276,7 @@ export class SyncEngine {
 				await this.fetchAndFilterRemoteChanges(ignoreMatchers, progress);
 
 			// Phase 3: Diff local vs remote to produce upload/download/conflict ops
-			const operations = this.planOperations(localChanges, remoteChanges, isFirstSync);
+			const operations = await this.planOperations(localChanges, remoteChanges, isFirstSync);
 
 			// On first sync the dirty queue is empty, so walk the vault and add
 			// uploads for any local-only files not already covered by the delta
@@ -493,8 +494,10 @@ export class SyncEngine {
 
 		// Config files inside .obsidian/ don't fire vault events (they
 		// aren't TFile instances). Detect changes by comparing their
-		// current mtime/size against tracked sync state.
-		const configChanges = await this.detectConfigFileChanges(ignoreMatchers);
+		// current mtime/size against tracked sync state. Pass the dirty
+		// snapshot we already took so both phases see the same queue.
+		const dirtyPaths = new Set(allLocalChanges.map((change) => change.path));
+		const configChanges = await this.detectConfigFileChanges(ignoreMatchers, dirtyPaths);
 		localChanges.push(...configChanges);
 
 		logger.info(
@@ -569,8 +572,14 @@ export class SyncEngine {
 	 * Detect local changes to .obsidian/ config files by comparing their
 	 * current mtime/size against the last-synced state. Returns synthetic
 	 * LocalChange entries for any files that changed or were deleted.
+	 *
+	 * @param dirtyPaths Paths already queued by vault events (snapshot taken
+	 *   by the caller) — checked as a Set so large config sets stay O(1) per path.
 	 */
-	private async detectConfigFileChanges(ignoreMatchers: RegExp[]): Promise<LocalChange[]> {
+	private async detectConfigFileChanges(
+		ignoreMatchers: RegExp[],
+		dirtyPaths: Set<string>
+	): Promise<LocalChange[]> {
 		const adapter = this.app.vault.adapter;
 		const changes: LocalChange[] = [];
 
@@ -588,7 +597,7 @@ export class SyncEngine {
 			if (!this.shouldSyncPath(path)) continue;
 			if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
 			// Skip paths already queued by vault events
-			if (this.eventManager.getDirtyFiles().some((d) => d.path === path)) continue;
+			if (dirtyPaths.has(path)) continue;
 			// Skip paths we just wrote during a previous download
 			if (this.eventManager.isOwnWrite(path)) continue;
 
@@ -653,7 +662,7 @@ export class SyncEngine {
 			if (checkedPaths.has(path)) continue;
 			if (!this.shouldSyncPath(path)) continue;
 			if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
-			if (this.eventManager.getDirtyFiles().some((d) => d.path === path)) continue;
+			if (dirtyPaths.has(path)) continue;
 
 			try {
 				const stat = await adapter.stat(path);
@@ -713,11 +722,14 @@ export class SyncEngine {
 			this.shouldSyncPath(`${this.configDir}/app.json`);
 		const isFirstSync = this.stateManager.isFirstSync();
 		logger.info(`Delta query: isFirstSync=${isFirstSync}, hasDeltaLink=${!!deltaLink}`);
-		const deltaResponse = await this.oneDriveClient.getDelta(deltaLink, this.remoteRoot);
 		const obsidianDeltaLink = this.stateManager.getObsidianDeltaLink();
-		const obsidianDeltaResponse = shouldSyncObsidianScope
-			? await this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot, this.configDir)
-			: undefined;
+		// The two delta streams are independent — fetch them in parallel
+		const [deltaResponse, obsidianDeltaResponse] = await Promise.all([
+			this.oneDriveClient.getDelta(deltaLink, this.remoteRoot),
+			shouldSyncObsidianScope
+				? this.oneDriveClient.getDelta(obsidianDeltaLink, this.remoteRoot, this.configDir)
+				: Promise.resolve(undefined),
+		]);
 
 		progress(t('progress.planning'));
 
@@ -1023,11 +1035,11 @@ export class SyncEngine {
 	/**
 	 * Plan sync operations from local changes and remote delta
 	 */
-	private planOperations(
+	private async planOperations(
 		localChanges: LocalChange[],
 		remoteChanges: OneDriveItem[],
 		isFirstSync: boolean
-	): SyncOperation[] {
+	): Promise<SyncOperation[]> {
 		const operations: SyncOperation[] = [];
 
 		// Build a map of remote changes by vault path
@@ -1217,11 +1229,17 @@ export class SyncEngine {
 				const file = this.app.vault.getAbstractFileByPath(vaultPath);
 				if (file instanceof TFile) {
 					if (file.stat.size === (item.size || 0)) {
-						// Same size — likely identical, store state and skip
-						this.stateManager.setFileState(vaultPath, this.itemToFileState(item));
-						continue;
+						// Same size — verify content via hash when the remote item
+						// carries one (same-size-different-content would otherwise
+						// silently never sync). Falls back to trusting the size
+						// match when no hash is available.
+						const matches = await this.localContentMatchesRemote(vaultPath, item);
+						if (matches !== false) {
+							this.stateManager.setFileState(vaultPath, this.itemToFileState(item));
+							continue;
+						}
 					}
-					// File exists but different size — download remote version
+					// File exists but content differs — download remote version
 					operations.push({
 						path: vaultPath,
 						direction: SyncDirection.DOWNLOAD,
@@ -1250,6 +1268,32 @@ export class SyncEngine {
 		}
 
 		return operations;
+	}
+
+	/**
+	 * Verify a local file's content against the remote item's sha1Hash.
+	 * Returns true/false when a comparison was possible, or undefined when
+	 * it wasn't (no remote hash, unreadable file, or no WebCrypto) so the
+	 * caller can fall back to the size heuristic.
+	 */
+	private async localContentMatchesRemote(
+		path: string,
+		item: OneDriveItem
+	): Promise<boolean | undefined> {
+		const remoteSha1 = item.file?.hashes?.sha1Hash;
+		if (!remoteSha1) return undefined;
+		try {
+			const content = await this.app.vault.adapter.readBinary(path);
+			const localSha1 = await sha1HexUpper(content);
+			if (!localSha1) return undefined;
+			const matches = localSha1 === remoteSha1.toUpperCase();
+			if (!matches) {
+				logger.info(`Same-size content mismatch detected via sha1 for ${path}`);
+			}
+			return matches;
+		} catch {
+			return undefined;
+		}
 	}
 
 	/**
@@ -2047,7 +2091,13 @@ export class SyncEngine {
 					});
 				} else {
 					const remoteSize = item.size || 0;
-					if (local.size !== remoteSize) {
+					// Same-size files are verified via sha1 when the remote item
+					// carries a hash; without one we assume same content.
+					const contentMatches =
+						local.size === remoteSize
+							? await this.localContentMatchesRemote(path, item)
+							: false;
+					if (contentMatches === false) {
 						sizeMismatch.push(path);
 						operations.push({
 							path,
@@ -2055,7 +2105,7 @@ export class SyncEngine {
 							remoteState: this.itemToFileState(item),
 						});
 					} else {
-						// Same size — assume same content, just refresh tracked state.
+						// Content matches (or no hash to compare) — refresh tracked state.
 						this.stateManager.setFileState(path, this.itemToFileState(item));
 					}
 				}
@@ -2116,17 +2166,18 @@ export class SyncEngine {
 			// 8. Advance delta cursors so the next normal sync starts clean.
 			progress(t('progress.advancingDeltaCursor'));
 			try {
-				const newDelta = await this.oneDriveClient.getDelta(undefined, this.remoteRoot);
-				this.stateManager.setDeltaLink(newDelta.deltaLink, true);
 				const shouldSyncObsidianScope =
 					this.shouldSyncPath(`${this.configDir}/community-plugins.json`) ||
 					this.shouldSyncPath(`${this.configDir}/app.json`);
-				if (shouldSyncObsidianScope) {
-					const newObs = await this.oneDriveClient.getDelta(
-						undefined,
-						this.remoteRoot,
-						this.configDir
-					);
+				// The two delta streams are independent — fetch them in parallel
+				const [newDelta, newObs] = await Promise.all([
+					this.oneDriveClient.getDelta(undefined, this.remoteRoot),
+					shouldSyncObsidianScope
+						? this.oneDriveClient.getDelta(undefined, this.remoteRoot, this.configDir)
+						: Promise.resolve(undefined),
+				]);
+				this.stateManager.setDeltaLink(newDelta.deltaLink, true);
+				if (newObs) {
 					this.stateManager.setObsidianDeltaLink(newObs.deltaLink);
 				}
 			} catch (error) {
