@@ -334,6 +334,7 @@ export interface PluginSettings {
 	remoteItemId?: string; // Item ID of the root folder on the remote drive
 	remoteRootName?: string; // Display name of the root folder on the remote drive
 	remoteRootPath?: string; // Full path of the folder on the remote drive (e.g. /Documents/ObsidianVaults/JeffBrain)
+	remoteRelativePathInShared?: string; // Path from the shared root to the selected vault folder
 	logLevel: 'off' | 'error' | 'warn' | 'info' | 'debug';
 	notificationLevel: NotificationLevel; // On-screen notice verbosity: all, errors only, or off
 	largeDeleteThreshold: number; // Warn if a sync would delete more than this many files (0 = disabled)

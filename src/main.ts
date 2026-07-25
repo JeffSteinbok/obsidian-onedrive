@@ -302,9 +302,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.settings.remoteRootName
 			) {
 				// Compute the relative path from the shared root to the vault.
-				// e.g. remotePath="/Jeff Documents/ObsidianVaults/JeffBrain",
-				//      remoteRootName="Jeff Documents"
-				//      → relativePathInShared="ObsidianVaults/JeffBrain"
+				// Prefer the persisted value from folder selection; fall back to
+				// deriving it from the saved shortcut path for older settings.
 				const relativePathInShared = this.getRelativePathInShared();
 				this.oneDriveClient.setRemoteDrive(
 					this.settings.remoteDriveId,
@@ -542,6 +541,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.settings.remoteItemId = undefined;
 		this.settings.remoteRootName = undefined;
 		this.settings.remoteRootPath = undefined;
+		this.settings.remoteRelativePathInShared = undefined;
 
 		// Clear components
 		this.authProvider = undefined;
@@ -702,23 +702,26 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 	/**
 	 * Compute the relative path from the shared root to the vault folder.
-	 * e.g. remotePath="/Jeff Documents/ObsidianVaults/JeffBrain",
-	 *      remoteRootName="Jeff Documents"
-	 *      → "ObsidianVaults/JeffBrain"
-	 * Returns "" when the vault IS the shared root.
+	 * Prefer the value persisted from folder selection. For older settings
+	 * that predate that field, fall back to deriving it from the saved
+	 * shortcut path by locating the shared-root segment.
 	 */
 	private getRelativePathInShared(): string {
+		if (this.settings.remoteRelativePathInShared !== undefined) {
+			return this.settings.remoteRelativePathInShared.replace(/^\/+|\/+$/g, '');
+		}
+
 		const remotePath = this.settings.remotePath || '';
 		const rootName = this.settings.remoteRootName || '';
 		if (!remotePath || !rootName) return '';
 
-		// remotePath looks like "/Jeff Documents/ObsidianVaults/JeffBrain"
-		// Strip the leading "/{rootName}" prefix to get the relative part
-		const prefix = `/${rootName}`;
-		const normalized = remotePath.startsWith(prefix)
-			? remotePath.substring(prefix.length)
-			: remotePath;
-		return normalized.replace(/^\/+|\/+$/g, '');
+		const segments = remotePath.split('/').filter((segment) => segment.length > 0);
+		const sharedRootIndex = segments.lastIndexOf(rootName);
+		if (sharedRootIndex === -1) {
+			return remotePath.replace(/^\/+|\/+$/g, '');
+		}
+
+		return segments.slice(sharedRootIndex + 1).join('/');
 	}
 
 	/**
@@ -753,6 +756,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.settings.remoteDriveId = selection.driveId;
 			this.settings.remoteItemId = selection.itemId;
 			this.settings.remoteRootName = selection.name;
+			this.settings.remoteRelativePathInShared = selection.relativePathInShared?.replace(/^\/+|\/+$/g, '') || '';
 
 			// Resolve the actual path on the remote drive for delta path stripping
 			if (this.oneDriveClient) {
@@ -773,6 +777,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.settings.remoteItemId = undefined;
 			this.settings.remoteRootName = undefined;
 			this.settings.remoteRootPath = undefined;
+			this.settings.remoteRelativePathInShared = undefined;
 		}
 
 		// Clear stale sync state when the target folder changes
