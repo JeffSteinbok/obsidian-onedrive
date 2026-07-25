@@ -13,6 +13,7 @@ export interface FolderSelection {
 	isShared: boolean;
 	driveId?: string;
 	itemId?: string;
+	relativePathInShared?: string;
 }
 
 type FolderListFn = (
@@ -166,6 +167,7 @@ export class FolderBrowserModal extends Modal {
 									isShared,
 									driveId: this.sharedDriveId,
 									itemId: this.sharedItemId,
+									relativePathInShared: isShared ? this.relativePathInShared : undefined,
 								});
 								this.close();
 							};

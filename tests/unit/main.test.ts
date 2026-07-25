@@ -352,6 +352,26 @@ describe('OneDriveSyncPlugin', () => {
 		expect(mocks.syncStateManager.clearState).toHaveBeenCalled();
 	});
 
+	it('onRemoteFolderChanged persists the relative path inside a shared folder separately from the shortcut path', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		mocks.oneDriveClient.resolveSharedFolderPath.mockResolvedValue('/SharedVault');
+		await plugin.onload();
+
+		await plugin.onRemoteFolderChanged({
+			path: '/Desktop/Links/SharedVault/Obsidian',
+			name: 'SharedVault',
+			isShared: true,
+			driveId: 'drive-id',
+			itemId: 'item-id',
+			relativePathInShared: 'Obsidian',
+		});
+
+		expect(plugin.settings.remotePath).toBe('/Desktop/Links/SharedVault/Obsidian');
+		expect(plugin.settings.remoteRootName).toBe('SharedVault');
+		expect(plugin.settings.remoteRelativePathInShared).toBe('Obsidian');
+		expect(plugin.settings.remoteRootPath).toBe('/SharedVault');
+	});
+
 	it('onAppFolderSubpathChanged resets app settings and plugin sync options for a new subpath', async () => {
 		(plugin as any).loadData = vi.fn().mockResolvedValue({
 			accessMode: OneDriveAccessMode.APP_FOLDER,
@@ -456,6 +476,7 @@ describe('OneDriveSyncPlugin', () => {
 			remoteItemId: 'item-id',
 			remoteRootName: 'Shared Root',
 			remoteRootPath: '/Shared Root',
+			remoteRelativePathInShared: 'Vaults/MyVault',
 			connectedUser: {
 				id: '2',
 				displayName: 'Connected User',
@@ -474,8 +495,56 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.remoteItemId).toBeUndefined();
 		expect(plugin.settings.remoteRootName).toBeUndefined();
 		expect(plugin.settings.remoteRootPath).toBeUndefined();
+		expect(plugin.settings.remoteRelativePathInShared).toBeUndefined();
 		expect((plugin as any).syncEngine).toBeUndefined();
 		expect((plugin as any).eventManager).toBeUndefined();
+	});
+
+	it('onload prefers the persisted relative path for shared folders', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			remoteDriveId: 'drive-id',
+			remoteItemId: 'item-id',
+			remoteRootName: 'SharedVault',
+			remotePath: '/Desktop/Links/SharedVault/Obsidian',
+			remoteRelativePathInShared: 'Obsidian',
+		});
+
+		await plugin.onload();
+
+		expect(mocks.oneDriveClient.setRemoteDrive).toHaveBeenCalledWith(
+			'drive-id',
+			'item-id',
+			'SharedVault',
+			'Obsidian'
+		);
+	});
+
+	it('onload derives the shared relative path from the selected shortcut path for legacy settings', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			remoteDriveId: 'drive-id',
+			remoteItemId: 'item-id',
+			remoteRootName: 'SharedVault',
+			remotePath: '/Desktop/Links/SharedVault/Obsidian',
+		});
+
+		await plugin.onload();
+
+		expect(mocks.oneDriveClient.setRemoteDrive).toHaveBeenCalledWith(
+			'drive-id',
+			'item-id',
+			'SharedVault',
+			'Obsidian'
+		);
+	});
+
+	it('getRelativePathInShared returns an empty path for a moved shared-root shortcut', () => {
+		plugin.settings = { ...DEFAULT_SETTINGS };
+		plugin.settings.remotePath = '/Desktop/Links/SharedVault';
+		plugin.settings.remoteRootName = 'SharedVault';
+
+		expect((plugin as any).getRelativePathInShared()).toBe('');
 	});
 
 	it('getSyncStatusInfo reports disconnected and unsynced state by default', async () => {
