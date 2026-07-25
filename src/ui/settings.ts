@@ -424,9 +424,8 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 		const { configDir } = this.app.vault;
 
-		// Sync interval — show the current value in the description (and via
-		// the slider's dynamic tooltip) since sliders give no feedback on
-		// mobile otherwise.
+		// Sync interval — show the current value inline in the description
+		// since sliders give no numeric feedback on their own.
 		const intervalDesc = (minutes: number): string => {
 			const current =
 				minutes > 0
@@ -442,7 +441,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				slider
 					.setLimits(0, 60, 5)
 					.setValue(this.plugin.settings.syncInterval)
-					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.syncInterval = value;
 						intervalSetting.setDesc(intervalDesc(value));
