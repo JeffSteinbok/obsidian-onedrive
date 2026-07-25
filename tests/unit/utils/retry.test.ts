@@ -83,6 +83,26 @@ describe('retryWithBackoff', () => {
 		expect(endTime - startTime).toBeGreaterThanOrEqual(1900);
 	});
 
+	it('honors a server Retry-After even when it exceeds maxDelay', async () => {
+		// Retry-After of 1s must not be capped by a smaller maxDelay —
+		// we should never retry earlier than the server instructed.
+		const rateLimitError = new RateLimitError('Rate limited', 1);
+		const fn = vi.fn().mockRejectedValueOnce(rateLimitError).mockResolvedValue('success');
+
+		const startTime = Date.now();
+		const result = await retryWithBackoff(fn, {
+			maxAttempts: 3,
+			initialDelay: 10,
+			maxDelay: 100, // smaller than the 1000ms Retry-After
+		});
+		const endTime = Date.now();
+
+		expect(result).toBe('success');
+		expect(fn).toHaveBeenCalledTimes(2);
+		// Waited the full ~1000ms Retry-After, not the 100ms cap
+		expect(endTime - startTime).toBeGreaterThanOrEqual(900);
+	});
+
 	it('should throw error after max attempts', async () => {
 		const fn = vi.fn().mockRejectedValue(new OneDriveError('Server error', 'error', 500));
 

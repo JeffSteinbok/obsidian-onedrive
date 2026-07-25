@@ -67,8 +67,12 @@ export async function retryWithBackoff<T>(
 				delay = customDelay;
 			}
 
-			// Cap delay at maxDelay
-			delay = Math.min(delay, opts.maxDelay);
+			// Cap exponential backoff at maxDelay. A server-instructed
+			// Retry-After is honored in full — never cap it below what the
+			// server told us to wait, even when it exceeds maxDelay.
+			if (!customDelay) {
+				delay = Math.min(delay, opts.maxDelay);
+			}
 
 			// Add jitter so parallel operations don't retry in lock-step and
 			// re-thunder the API. Server-instructed delays (Retry-After) only
