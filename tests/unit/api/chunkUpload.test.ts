@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { calculateChunkSize, ChunkUploader } from '../../../src/api/chunkUpload';
 import { SYNC_CONFIG } from '../../../src/constants';
-import { OneDriveError } from '../../../src/types';
+import { OneDriveError, RateLimitError } from '../../../src/types';
 
 // Mock dependencies
 vi.mock('obsidian', () => ({
@@ -16,6 +16,7 @@ vi.mock('../../../src/utils/logger', () => ({
 	logger: {
 		debug: vi.fn(),
 		info: vi.fn(),
+		warn: vi.fn(),
 		error: vi.fn(),
 	},
 }));
@@ -363,6 +364,90 @@ describe('Chunk Upload', () => {
 
 				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
 					OneDriveError
+				);
+			});
+
+			it('resumes a chunked upload via nextExpectedRanges after a chunk fails', async () => {
+				const largeContent = new ArrayBuffer(5 * 1024 * 1024); // 5 MB
+
+				mockClient.getClient.mockReturnValue({
+					api: vi.fn().mockReturnValue({
+						post: vi.fn().mockResolvedValue({
+							uploadUrl: 'https://upload.example.com/session',
+						}),
+					}),
+				});
+
+				let putCalls = 0;
+				vi.mocked(requestUrl).mockImplementation(async (options) => {
+					if (options.method === 'PUT') {
+						putCalls++;
+						// Fail the very first chunk once to trigger a session resume
+						if (putCalls === 1) {
+							return { status: 500, json: { error: 'transient' }, headers: {} } as never;
+						}
+						const contentRange = options.headers?.['Content-Range'] as string;
+						const total = parseInt(contentRange?.split('/')[1] || '0');
+						const end = parseInt(contentRange?.split('-')[1]?.split('/')[0] || '0');
+						if (end + 1 >= total) {
+							return { status: 200, json: { id: 'resumed-123', name: 'large.bin' } } as never;
+						}
+						return { status: 202, json: {} } as never;
+					}
+					if (options.method === 'GET') {
+						// Session reports it still expects bytes from offset 0
+						return { status: 200, json: { nextExpectedRanges: ['0-'] } } as never;
+					}
+					return { status: 200, json: {} } as never;
+				});
+
+				const result = await uploader.uploadFile('large.bin', largeContent);
+
+				expect(result).toEqual({ id: 'resumed-123', name: 'large.bin' });
+				// A GET to the session was made to discover the resume offset
+				expect(
+					vi.mocked(requestUrl).mock.calls.some((c) => c[0].method === 'GET')
+				).toBe(true);
+			});
+
+			it('rethrows the chunk error when the session cannot report a resume offset', async () => {
+				const largeContent = new ArrayBuffer(5 * 1024 * 1024); // 5 MB
+
+				mockClient.getClient.mockReturnValue({
+					api: vi.fn().mockReturnValue({
+						post: vi.fn().mockResolvedValue({
+							uploadUrl: 'https://upload.example.com/session',
+						}),
+					}),
+				});
+
+				vi.mocked(requestUrl).mockImplementation(async (options) => {
+					if (options.method === 'PUT') {
+						return { status: 500, json: { error: 'server' }, headers: {} } as never;
+					}
+					// Session status unreadable → getResumePosition returns undefined
+					if (options.method === 'GET') {
+						return { status: 500, json: {} } as never;
+					}
+					return { status: 200, json: {} } as never;
+				});
+
+				await expect(uploader.uploadFile('large.bin', largeContent)).rejects.toThrow(
+					'Failed to upload chunk'
+				);
+			});
+
+			it('surfaces a RateLimitError with Retry-After on a 429 upload', async () => {
+				const smallContent = new ArrayBuffer(1024);
+
+				vi.mocked(requestUrl).mockResolvedValue({
+					status: 429,
+					headers: { 'retry-after': '30' },
+					json: {},
+				} as never);
+
+				await expect(uploader.uploadFile('test.txt', smallContent)).rejects.toBeInstanceOf(
+					RateLimitError
 				);
 			});
 		});
