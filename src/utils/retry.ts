@@ -67,18 +67,29 @@ export async function retryWithBackoff<T>(
 				delay = customDelay;
 			}
 
-			// Cap delay at maxDelay
-			delay = Math.min(delay, opts.maxDelay);
+			// Cap exponential backoff at maxDelay. A server-instructed
+			// Retry-After is honored in full — never cap it below what the
+			// server told us to wait, even when it exceeds maxDelay.
+			if (!customDelay) {
+				delay = Math.min(delay, opts.maxDelay);
+			}
+
+			// Add jitter so parallel operations don't retry in lock-step and
+			// re-thunder the API. Server-instructed delays (Retry-After) only
+			// jitter upward so we never retry earlier than instructed.
+			const jitteredDelay = customDelay
+				? delay + Math.round(Math.random() * 0.25 * delay)
+				: Math.round(delay * (0.75 + Math.random() * 0.5));
 
 			logger.debug(
-				`Attempt ${attempt}/${opts.maxAttempts} failed, retrying in ${delay}ms`,
+				`Attempt ${attempt}/${opts.maxAttempts} failed, retrying in ${jitteredDelay}ms`,
 				lastError.message
 			);
 
-			opts.onRetry(attempt, delay, lastError);
+			opts.onRetry(attempt, jitteredDelay, lastError);
 
 			// Wait before retrying
-			await sleep(delay);
+			await sleep(jitteredDelay);
 
 			// Exponential backoff for next attempt
 			delay *= opts.backoffMultiplier;

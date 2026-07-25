@@ -100,9 +100,30 @@ export function handleAuthErrors(
 }
 
 /**
- * Parse error from HTTP response
+ * Parse a Retry-After response header value into seconds.
+ * Graph sends the throttling wait hint in this header, not the JSON body.
  */
-export function parseHttpError(status: number, body: string): Error {
+export function parseRetryAfterHeader(
+	headers: Record<string, string> | undefined
+): number | undefined {
+	if (!headers) return undefined;
+	const raw = headers['retry-after'] ?? headers['Retry-After'];
+	if (!raw) return undefined;
+	const seconds = Number(raw);
+	return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
+}
+
+/**
+ * Parse error from HTTP response.
+ * Pass the response headers when available so 429s pick up the server's
+ * Retry-After hint instead of the fixed fallback.
+ */
+export function parseHttpError(
+	status: number,
+	body: string,
+	headers?: Record<string, string>
+): Error {
+	const headerRetryAfter = parseRetryAfterHeader(headers);
 	try {
 		const json = JSON.parse(body) as ParsedHttpErrorBody;
 		const errorCode = json.error || json.error_description || 'unknown_error';
@@ -111,12 +132,15 @@ export function parseHttpError(status: number, body: string): Error {
 		if (status === 401) {
 			return new AuthenticationError(errorMessage, errorCode);
 		} else if (status === 429) {
-			const retryAfter = json.retry_after || 60;
+			const retryAfter = headerRetryAfter || json.retry_after || 60;
 			return new RateLimitError(errorMessage, retryAfter);
 		} else {
 			return new OneDriveError(errorMessage, errorCode, status);
 		}
 	} catch {
+		if (status === 429) {
+			return new RateLimitError(`HTTP 429: ${body}`, headerRetryAfter || 60);
+		}
 		// Failed to parse JSON, return generic error
 		return new OneDriveError(`HTTP ${status}: ${body}`, undefined, status);
 	}

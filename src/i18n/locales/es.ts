@@ -216,6 +216,8 @@ export const es = {
 			automaticInterval: {
 				name: 'Intervalo de sincronización automática',
 				desc: 'Establecer en 0 para sincronización manual solamente (recomendado para duración de batería)',
+				currentValue: 'Actual: cada {{minutes}} minutos.',
+				currentDisabled: 'Actual: solo sincronización manual.',
 				resetTooltip: 'Restablecer a predeterminado',
 			},
 			startupDelay: {

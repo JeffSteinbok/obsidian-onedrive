@@ -124,6 +124,11 @@ export class DeviceCodeFlowClient {
 		this.cancelled = false;
 		const startTime = Date.now();
 		const expiresAt = startTime + expiresIn * 1000;
+		// Abort after this many back-to-back network failures instead of
+		// silently polling until the device code expires (a persistent server
+		// error would otherwise look like a multi-minute hang to the user).
+		const maxConsecutiveNetworkErrors = 5;
+		let consecutiveNetworkErrors = 0;
 
 		while (Date.now() < expiresAt) {
 			if (this.cancelled) {
@@ -152,6 +157,9 @@ export class DeviceCodeFlowClient {
 					return data;
 				}
 
+				// Got a response from the server — reset the network error streak
+				consecutiveNetworkErrors = 0;
+
 				// Handle error responses (including 400s from Obsidian's requestUrl)
 				const errorData = response.json as unknown as OAuthErrorResponse;
 				const errorCode = errorData.error;
@@ -178,6 +186,13 @@ export class DeviceCodeFlowClient {
 					throw error;
 				}
 				// Network or temporary error - log but continue polling
+				consecutiveNetworkErrors++;
+				if (consecutiveNetworkErrors >= maxConsecutiveNetworkErrors) {
+					logger.error('Aborting token polling after repeated network errors:', error);
+					throw new AuthenticationError(
+						'Repeated network errors during authentication. Please check your connection and try again.'
+					);
+				}
 				logger.warn('Network error during token polling, will retry:', error);
 				if (onPending) onPending();
 			}
