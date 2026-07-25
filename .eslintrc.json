@@ -21,7 +21,8 @@
 		"obsidian-compat/no-global-this": "warn",
 		"obsidian-compat/no-bare-timers": "warn",
 		"obsidian-compat/no-static-styles": "warn",
-		"obsidian-compat/no-deprecated-display": "warn"
+		"obsidian-compat/no-deprecated-display": "warn",
+		"obsidian-compat/no-deprecated-slider-api": "error"
 	},
 	"env": {
 		"node": true,

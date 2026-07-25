@@ -7,6 +7,8 @@
  *   obsidian-compat/no-bare-timers            – use window.setTimeout etc.
  *   obsidian-compat/no-static-styles          – use CSS classes, not element.style
  *   obsidian-compat/no-deprecated-display     – display() is deprecated since 1.13
+ *   obsidian-compat/no-deprecated-slider-api  – setDynamicTooltip() removed; value
+ *                                               is always shown next to the slider
  */
 
 "use strict";
@@ -145,6 +147,39 @@ module.exports = {
 								});
 							}
 						}
+					},
+				};
+			},
+		},
+
+		// ── no-deprecated-slider-api ────────────────────────────────────
+		// Flags calls to `.setDynamicTooltip()` on Obsidian SliderComponent.
+		// This method was removed; the current value is always shown beside
+		// the slider in Obsidian ≥ 1.x.  Keeping the call causes a runtime
+		// "is not a function" error and signals a stale understanding of the
+		// Obsidian component API.
+		"no-deprecated-slider-api": {
+			meta: {
+				type: "problem",
+				docs: {
+					description:
+						"'setDynamicTooltip()' is deprecated and removed from Obsidian's SliderComponent. " +
+						"Remove the call — the slider value is always shown next to the slider.",
+				},
+				schema: [],
+			},
+			create(context) {
+				const deprecated = new Set(["setDynamicTooltip"]);
+				return {
+					CallExpression(node) {
+						if (node.callee.type !== "MemberExpression") return;
+						const prop = node.callee.property;
+						if (prop.type !== "Identifier") return;
+						if (!deprecated.has(prop.name)) return;
+						context.report({
+							node,
+							message: `'${prop.name}()' is deprecated and removed from Obsidian's SliderComponent. Remove the call — the slider value is always displayed next to the slider.`,
+						});
 					},
 				};
 			},
