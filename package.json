@@ -46,5 +46,8 @@
 	"dependencies": {
 		"@microsoft/microsoft-graph-client": "^3.0.7",
 		"diff": "^9.0.0"
+	},
+	"allowScripts": {
+		"esbuild": true
 	}
 }
