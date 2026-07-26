@@ -156,6 +156,23 @@ describe('errors utils', () => {
 			});
 		});
 
+		it.each([-5, 0, 'bad-value'])(
+			'falls back to default retryAfter for invalid 429 retry_after body value (%s)',
+			(retryAfterValue) => {
+				const error = parseHttpError(
+					429,
+					JSON.stringify({ message: 'Slow down', retry_after: retryAfterValue })
+				);
+
+				expect(error).toBeInstanceOf(RateLimitError);
+				expect(error).toMatchObject({
+					message: 'Slow down',
+					retryAfter: 60,
+					statusCode: 429,
+				});
+			}
+		);
+
 		it('returns OneDriveError for other statuses', () => {
 			const error = parseHttpError(
 				500,
@@ -252,6 +269,11 @@ describe('errors utils', () => {
 	describe('getRetryDelay', () => {
 		it('returns retryAfter in milliseconds for RateLimitError', () => {
 			expect(getRetryDelay(new RateLimitError('Too many requests', 45))).toBe(45000);
+		});
+
+		it('falls back to default delay for invalid RateLimitError retryAfter values', () => {
+			expect(getRetryDelay(new RateLimitError('Too many requests', -5))).toBe(60000);
+			expect(getRetryDelay(new RateLimitError('Too many requests', 0))).toBe(60000);
 		});
 
 		it('returns undefined for non-rate-limit errors', () => {
