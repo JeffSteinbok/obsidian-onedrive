@@ -673,6 +673,77 @@ describe('SyncEngine', () => {
 			expect.stringContaining(' (conflict '),
 			expect.any(ArrayBuffer)
 		);
+		// The base file must be converged (local uploaded) so the conflict
+		// clears — otherwise it re-fires every sync and spawns a new copy
+		// each cycle (issue #128).
+		expect(mockFileOps.uploadFile).toHaveBeenCalledWith(
+			expect.stringContaining('test.md'),
+			expect.anything()
+		);
+	});
+
+	it('does not spawn a new duplicate on the next sync after a create-duplicate conflict (issue #128)', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState('notes/test.md', {
+			path: 'notes/test.md',
+			localMtime: 50,
+			remoteHash: 'known-hash',
+			size: 50,
+			remoteModifiedTime: 100,
+			oneDriveId: 'remote-id',
+		});
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('notes/test.md', { id: 'remote-id' })],
+			deltaLink: 'delta-link-2',
+		});
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			path === 'notes/test.md'
+				? makeTFile('notes/test.md', 100, Date.now())
+				: makeTFile(path, 10, Date.now())
+		);
+
+		const duplicateEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			new ConflictResolver(ConflictResolutionStrategy.CREATE_DUPLICATE),
+			mockEventManager as any,
+			'.obsidian',
+			{ remoteRoot: '/remote/root' }
+		);
+
+		await duplicateEngine.performSync();
+		const copiesAfterFirst = mockApp.vault.adapter.writeBinary.mock.calls.filter(
+			(call: unknown[]) => typeof call[0] === 'string' && call[0].includes(' (conflict ')
+		).length;
+		expect(copiesAfterFirst).toBe(1);
+
+		// Second sync: the converging upload set the base file's tracked hash to
+		// the uploaded value ('hash123'); the next delta reports that same hash,
+		// so it is not a real conflict and no new copy is made.
+		mockApp.vault.adapter.writeBinary.mockClear();
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		mockClient.getDelta.mockResolvedValue({
+			items: [
+				makeRemoteFile('notes/test.md', {
+					id: 'remote-id',
+					file: { mimeType: 'text/plain', hashes: { quickXorHash: 'hash123' } },
+				}),
+			],
+			deltaLink: 'delta-link-3',
+		});
+
+		await duplicateEngine.performSync();
+		const newCopies = mockApp.vault.adapter.writeBinary.mock.calls.filter(
+			(call: unknown[]) => typeof call[0] === 'string' && call[0].includes(' (conflict ')
+		).length;
+		expect(newCopies).toBe(0);
 	});
 
 	it('re-uploads local changes when the remote file was deleted', async () => {
