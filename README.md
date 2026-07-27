@@ -48,6 +48,7 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 
 1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) from Community Plugins
 2. BRAT settings → **Add Beta Plugin** → `JeffSteinbok/obsidian-onedrive`
+3. To receive pre-release builds, enable **"Enable beta versions"** in the Add Beta Plugin dialog (BRAT installs only the latest full release otherwise). You can toggle this later per-plugin in BRAT's settings.
 
 ### Manual
 
