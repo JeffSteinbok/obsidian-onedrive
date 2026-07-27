@@ -75,12 +75,24 @@ Do **not** refactor unrelated code. Keep changes surgical and reviewable.
   Both must pass. Any added regression test must fail before your hardening change
   and pass after it.
 
-### 6. Output — comment **and** hardening PR
+### 6. Output — hardening PR (the writeup is published for you)
 
-- **Comment** the postmortem on the tracking issue using the template below.
 - **Open a hardening PR** (`postmortem/<pr-number>-<slug>` branch) whose description
   links the tracking issue (`Closes #<issue>`) and summarizes the changes. Follow
   the repo `pull_request_template.md` and check `Bug fix`.
+- Put the **full 5-Whys writeup** (the template below) into the PR body, wrapped
+  in these exact marker lines so automation can mirror it to the tracking issue:
+
+  ```
+  <!-- postmortem-writeup:start -->
+  ...the filled-in postmortem template...
+  <!-- postmortem-writeup:end -->
+  ```
+
+  Do **not** comment on the tracking issue yourself — the coding agent cannot post
+  to a separate issue without manual approval. The `postmortem-publish.yml` workflow
+  reads the marked writeup from your PR body and posts/updates it as a comment on
+  the `Closes #<issue>` tracking issue automatically once the PR is opened.
 - Do **not** merge the PR — leave it for maintainer review.
 
 ## Postmortem comment template
