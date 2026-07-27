@@ -13,7 +13,15 @@ interface ParsedHttpErrorBody {
 	error?: string;
 	error_description?: string;
 	message?: string;
-	retry_after?: number;
+	retry_after?: unknown;
+}
+
+const DEFAULT_RETRY_AFTER_SECONDS = 60;
+
+function parsePositiveRetryAfterSeconds(value: unknown): number | undefined {
+	if (value === undefined || value === null) return undefined;
+	const seconds = typeof value === 'number' ? value : Number(value);
+	return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
 }
 
 function getDecoratedMethod(descriptor: PropertyDescriptor): DecoratedAsyncMethod {
@@ -108,9 +116,7 @@ export function parseRetryAfterHeader(
 ): number | undefined {
 	if (!headers) return undefined;
 	const raw = headers['retry-after'] ?? headers['Retry-After'];
-	if (!raw) return undefined;
-	const seconds = Number(raw);
-	return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
+	return parsePositiveRetryAfterSeconds(raw);
 }
 
 /**
@@ -132,14 +138,20 @@ export function parseHttpError(
 		if (status === 401) {
 			return new AuthenticationError(errorMessage, errorCode);
 		} else if (status === 429) {
-			const retryAfter = headerRetryAfter || json.retry_after || 60;
+			const retryAfter =
+				headerRetryAfter ??
+				parsePositiveRetryAfterSeconds(json.retry_after) ??
+				DEFAULT_RETRY_AFTER_SECONDS;
 			return new RateLimitError(errorMessage, retryAfter);
 		} else {
 			return new OneDriveError(errorMessage, errorCode, status);
 		}
 	} catch {
 		if (status === 429) {
-			return new RateLimitError(`HTTP 429: ${body}`, headerRetryAfter || 60);
+			return new RateLimitError(
+				`HTTP 429: ${body}`,
+				headerRetryAfter ?? DEFAULT_RETRY_AFTER_SECONDS
+			);
 		}
 		// Failed to parse JSON, return generic error
 		return new OneDriveError(`HTTP ${status}: ${body}`, undefined, status);
@@ -204,7 +216,9 @@ function extractStatusCode(error: Error): number | undefined {
  */
 export function getRetryDelay(error: Error): number | undefined {
 	if (error instanceof RateLimitError) {
-		return (error.retryAfter || 60) * 1000; // Convert to milliseconds
+		return (
+			(parsePositiveRetryAfterSeconds(error.retryAfter) ?? DEFAULT_RETRY_AFTER_SECONDS) * 1000
+		);
 	}
 	return undefined;
 }
