@@ -1,0 +1,104 @@
+name: Postmortem PR Guard
+
+# Postmortem hardening PRs (opened by the Copilot coding agent via
+# postmortem.yml) have repeatedly gotten "stuck": left titled "[WIP]", pushed
+# with an empty branch (no committed work), or missing the 5-Whys writeup — all
+# while showing a green build, so nothing signalled that they were undeliverable.
+#
+# This guard turns each of those failure modes into a hard, visible red check so
+# a stuck postmortem PR can never be silently merged (or silently ignored):
+#   1. title still contains "[WIP]"
+#   2. PR is still a draft
+#   3. the branch has NO file changes (agent never committed its work)
+#   4. the body is missing a non-empty `postmortem-writeup` block
+#   5. the body has no `Fixes/Closes #<issue>` tracking reference
+#
+# Uses `pull_request_target` (like postmortem-publish.yml) so it is NOT subject
+# to the manual "approve workflows" gate applied to Copilot-authored PRs, and so
+# it runs the trusted workflow definition from the base branch. It only READS PR
+# metadata via the API and never checks out PR head code.
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Postmortem PR number to validate'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  guard:
+    # Only postmortem hardening PRs (agent branches or the documented convention).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.pull_request.head.ref, 'postmortem/') ||
+      startsWith(github.event.pull_request.head.ref, 'copilot/postmortem')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate postmortem PR is deliverable
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // ---- Resolve the PR (event payload or dispatch input) ----
+            let pr;
+            if (context.eventName === 'workflow_dispatch') {
+              const num = parseInt('${{ inputs.pr_number }}', 10);
+              ({ data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: num }));
+            } else {
+              pr = context.payload.pull_request;
+            }
+            const body = pr.body || '';
+            const title = pr.title || '';
+            const problems = [];
+
+            // 1) WIP title
+            if (/\[wip\]/i.test(title)) {
+              problems.push('Title still contains `[WIP]` — clear it once the work is ready.');
+            }
+
+            // 2) Draft PR
+            if (pr.draft) {
+              problems.push('PR is still a draft — mark it "Ready for review".');
+            }
+
+            // 3) Empty branch (the agent never committed its work)
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: pr.number, per_page: 100,
+            });
+            if (files.length === 0) {
+              problems.push('Branch has **no file changes** — the hardening work was never committed/pushed.');
+            }
+
+            // 4) Non-empty 5-Whys writeup between the markers
+            const m = body.match(
+              /<!--\s*postmortem-writeup:start\s*-->\s*([\s\S]*?)\s*<!--\s*postmortem-writeup:end\s*-->/i
+            );
+            const writeup = m ? m[1].trim() : '';
+            if (!m) {
+              problems.push('Missing `<!-- postmortem-writeup:start -->` / `:end` markers in the PR body.');
+            } else if (writeup.length < 80 || !/why/i.test(writeup)) {
+              problems.push('Writeup between the markers is empty or too thin — include a real 5-Whys analysis.');
+            }
+
+            // 5) Tracking issue reference
+            if (!/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i.test(body)) {
+              problems.push('No `Fixes #<issue>` / `Closes #<issue>` reference to the postmortem tracking issue.');
+            }
+
+            if (problems.length > 0) {
+              core.setFailed(
+                `Postmortem PR #${pr.number} is not deliverable:\n` +
+                problems.map(p => `  - ${p}`).join('\n')
+              );
+              return;
+            }
+            core.info(`Postmortem PR #${pr.number} passes all guard checks.`);
