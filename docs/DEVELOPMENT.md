@@ -106,3 +106,9 @@ If there's a merge conflict, the workflow fails with a clear error — resolve t
 - Write tests for new features
 - Update documentation as needed
 - Use conventional commit messages
+
+## Automated Postmortems
+
+When a bug-fix PR is merged, an automated 5-Whys postmortem + hardening pipeline
+runs. See [Postmortem Process](POSTMORTEM.md) for how it works and the guardrails
+that keep the agent-authored PRs honest.

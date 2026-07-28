@@ -6,7 +6,9 @@ name: Postmortem PR Guard
 # while showing a green build, so nothing signalled that they were undeliverable.
 #
 # This guard turns each of those failure modes into a hard, visible red check so
-# a stuck postmortem PR can never be silently merged (or silently ignored):
+# a stuck postmortem PR can never be silently merged (or silently ignored). It
+# also posts/updates an actionable checklist comment on the PR so the failure is
+# visible as a to-do list rather than just a red X:
 #   1. title still contains "[WIP]"
 #   2. PR is still a draft
 #   3. the branch has NO file changes (agent never committed its work)
@@ -30,6 +32,7 @@ on:
 
 permissions:
   contents: read
+  issues: write        # to post/update the actionable guard comment
   pull-requests: read
 
 jobs:
@@ -99,6 +102,46 @@ jobs:
                 `Postmortem PR #${pr.number} is not deliverable:\n` +
                 problems.map(p => `  - ${p}`).join('\n')
               );
-              return;
+            } else {
+              core.info(`Postmortem PR #${pr.number} passes all guard checks.`);
             }
-            core.info(`Postmortem PR #${pr.number} passes all guard checks.`);
+
+            // ---- Post/update an actionable comment so the failure isn't silent ----
+            // A stuck postmortem PR otherwise shows only a red X; this turns it
+            // into a visible checklist the agent (or a maintainer) can act on.
+            const marker = `<!-- postmortem-guard:pr-${pr.number} -->`;
+            const commentBody = problems.length > 0
+              ? [
+                  marker,
+                  `### 🚫 Postmortem guard: this PR isn't deliverable yet`,
+                  ``,
+                  `Fix the following, then push / edit the PR to re-run the check:`,
+                  ``,
+                  ...problems.map(p => `- [ ] ${p}`),
+                  ``,
+                  `_Enforced by \`.github/workflows/postmortem-guard.yml\`. Process: \`docs/POSTMORTEM.md\`._`,
+                ].join('\n')
+              : [
+                  marker,
+                  `### ✅ Postmortem guard: all checks pass`,
+                  ``,
+                  `Committed changes, ready (non-\`[WIP]\`) title, a non-empty 5-Whys writeup, and a \`Closes #<issue>\` reference are all present.`,
+                  ``,
+                  `_Enforced by \`.github/workflows/postmortem-guard.yml\`._`,
+                ].join('\n');
+
+            try {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: pr.number, per_page: 100,
+              });
+              const existing = comments.find(c => (c.body || '').includes(marker));
+              if (existing) {
+                if ((existing.body || '').trim() !== commentBody.trim()) {
+                  await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: commentBody });
+                }
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: commentBody });
+              }
+            } catch (e) {
+              core.warning(`Could not post guard comment on PR #${pr.number}: ${e.message}`);
+            }
