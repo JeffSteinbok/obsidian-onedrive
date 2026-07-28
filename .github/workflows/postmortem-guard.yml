@@ -37,11 +37,9 @@ permissions:
 
 jobs:
   guard:
-    # Only postmortem hardening PRs (agent branches or the documented convention).
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      startsWith(github.event.pull_request.head.ref, 'postmortem/') ||
-      startsWith(github.event.pull_request.head.ref, 'copilot/postmortem')
+    # Runs on every PR so the required status check always reports a conclusive
+    # result (a *skipped* required check can leave unrelated PRs stuck "waiting
+    # for status"). Non-postmortem PRs return success immediately below.
     runs-on: ubuntu-latest
     steps:
       - name: Validate postmortem PR is deliverable
@@ -58,6 +56,13 @@ jobs:
               ({ data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: num }));
             } else {
               pr = context.payload.pull_request;
+              // Only postmortem hardening PRs are gated; everything else passes
+              // immediately so this required check never blocks unrelated PRs.
+              const ref = pr.head.ref || '';
+              if (!ref.startsWith('postmortem/') && !ref.startsWith('copilot/postmortem')) {
+                core.info(`PR #${pr.number} (${ref}) is not a postmortem branch — guard not applicable.`);
+                return;
+              }
             }
             const body = pr.body || '';
             const title = pr.title || '';
