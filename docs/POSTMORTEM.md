@@ -118,3 +118,5 @@ gh workflow run postmortem.yml -f pr_number=<PR>
 
 Or, in the Copilot CLI inside the repo, ask it to *"run the postmortem skill for
 PR #N"* and follow [`SKILL.md`](../.github/skills/postmortem/SKILL.md).
+
+<!-- postmortem automation docs: see .github/workflows/postmortem-*.yml -->
