@@ -1178,31 +1178,43 @@ export class SyncEngine {
 					};
 					const resolution = this.conflictResolver.resolveConflict(conflictInfo);
 					const remoteState = this.itemToFileState(remoteItem);
-					if (resolution.newPath) {
-						// CREATE_DUPLICATE: preserve the remote version under a new
-						// dated name, then converge the base path by uploading the
-						// local version. Without this converging upload the base
-						// file keeps its stale tracked hash, so it is re-detected as
-						// a conflict on every subsequent sync and a fresh dated copy
-						// is spawned each cycle — the runaway duplication in #128.
-						operations.push({
-							path: resolution.newPath,
-							direction: SyncDirection.DOWNLOAD,
-							remoteState,
-						});
-						operations.push({
-							path: change.path,
-							direction: SyncDirection.UPLOAD,
-							localState: knownState,
-							remoteState,
-						});
-					} else {
-						operations.push({
-							path: change.path,
-							direction: resolution.direction,
-							localState: knownState,
-							remoteState,
-						});
+					switch (resolution.kind) {
+						case 'duplicate':
+							// CREATE_DUPLICATE: preserve the remote version under a
+							// new dated name, then converge the base path by
+							// uploading the local version. Without this converging
+							// upload the base file keeps its stale tracked hash, so
+							// it is re-detected as a conflict on every subsequent
+							// sync and a fresh dated copy is spawned each cycle —
+							// the runaway duplication in #128.
+							operations.push({
+								path: resolution.duplicatePath,
+								direction: SyncDirection.DOWNLOAD,
+								remoteState,
+							});
+							operations.push({
+								path: change.path,
+								direction: SyncDirection.UPLOAD,
+								localState: knownState,
+								remoteState,
+							});
+							break;
+						case 'converge':
+							operations.push({
+								path: change.path,
+								direction: resolution.direction,
+								localState: knownState,
+								remoteState,
+							});
+							break;
+						case 'manual':
+							operations.push({
+								path: change.path,
+								direction: SyncDirection.CONFLICT,
+								localState: knownState,
+								remoteState,
+							});
+							break;
 					}
 				} else {
 					// No known state, upload local
