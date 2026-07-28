@@ -8,7 +8,7 @@
 
 Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobile-friendly, battery-efficient.
 
-📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Advanced Usage](docs/ADVANCED.md) · [Development](docs/DEVELOPMENT.md)
+📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Advanced Usage](docs/ADVANCED.md) · [Development](docs/DEVELOPMENT.md) · [Postmortem Process](docs/POSTMORTEM.md)
 
 > [!TIP]
 > **🦞 OpenClaw Users** - This pairs well with the [🦞🐚📝 Carapace Obsidian](https://github.com/JeffSteinbok/carapace-obsidian) toolset when integrating these vaults with OpenClaw, so synced vault content can plug directly into your broader tool-driven workflow.
