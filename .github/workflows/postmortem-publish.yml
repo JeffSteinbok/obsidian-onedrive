@@ -68,6 +68,14 @@ jobs:
               core.warning(`PR #${pr.number} writeup markers are empty. Skipping.`);
               return;
             }
+            // Guard against mirroring junk (an earlier bug published a comment
+            // that literally read "` and >    `"). Require a substantive 5-Whys.
+            if (writeup.length < 80 || !/why/i.test(writeup)) {
+              core.warning(
+                `PR #${pr.number} writeup is too thin (len=${writeup.length}, has "why"=${/why/i.test(writeup)}). Skipping to avoid publishing junk.`
+              );
+              return;
+            }
 
             // ---- Find the tracking issue this PR closes ----
             const closesMatch = body.match(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i);

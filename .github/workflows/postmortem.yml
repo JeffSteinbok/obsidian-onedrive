@@ -121,6 +121,11 @@ jobs:
               `   \`postmortem-publish.yml\` workflow mirrors it here as a comment`,
               `   automatically. Do **not** comment here yourself and do **not** merge.`,
               ``,
+              `   The \`postmortem-guard.yml\` check enforces this: the PR must have`,
+              `   committed changes, a non-\`[WIP]\` ready-for-review title, a`,
+              `   non-empty 5-Whys writeup between the markers, and this \`Closes #\``,
+              `   reference — or the check fails.`,
+              ``,
               `_Automated by \`.github/workflows/postmortem.yml\`._`,
             ].join('\n');
 
