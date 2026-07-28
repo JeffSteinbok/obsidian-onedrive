@@ -43,6 +43,23 @@ import { logger } from '../utils/logger';
 import { createConflictFileName } from '../utils/pathUtils';
 
 /**
+ * Outcome of resolving a conflict, modelled as a discriminated union so that
+ * illegal states are unrepresentable:
+ *
+ * - `converge` — a single-file resolution: upload local or download remote onto
+ *   the SAME path. Always carries a concrete UPLOAD/DOWNLOAD direction.
+ * - `duplicate` — keep both versions: the remote copy is written to
+ *   `duplicatePath` and the local version converges the base path. `duplicatePath`
+ *   is required by the type, so a duplicate result can never be missing its path
+ *   (the pre-#128 `{ direction, newPath? }` shape allowed exactly that mistake).
+ * - `manual` — defer to the user; the caller queues the conflict.
+ */
+export type ConflictResolutionResult =
+	| { kind: 'converge'; direction: SyncDirection.UPLOAD | SyncDirection.DOWNLOAD }
+	| { kind: 'duplicate'; duplicatePath: string }
+	| { kind: 'manual' };
+
+/**
  * Resolves sync conflicts
  */
 export class ConflictResolver {
@@ -59,10 +76,7 @@ export class ConflictResolver {
 	/**
 	 * Resolve a conflict based on strategy
 	 */
-	resolveConflict(conflictInfo: ConflictInfo): {
-		direction: SyncDirection;
-		newPath?: string;
-	} {
+	resolveConflict(conflictInfo: ConflictInfo): ConflictResolutionResult {
 		logger.debug('Resolving conflict:', conflictInfo);
 
 		switch (this.strategy) {
@@ -73,7 +87,7 @@ export class ConflictResolver {
 				return this.resolveCreateDuplicate(conflictInfo);
 
 			case ConflictResolutionStrategy.MANUAL:
-				return { direction: SyncDirection.CONFLICT };
+				return { kind: 'manual' };
 
 			default:
 				logger.warn('Unknown conflict resolution strategy, using last-write-wins');
@@ -81,28 +95,23 @@ export class ConflictResolver {
 		}
 	}
 
-	private resolveLastWriteWins(conflictInfo: ConflictInfo): {
-		direction: SyncDirection;
-	} {
+	private resolveLastWriteWins(conflictInfo: ConflictInfo): ConflictResolutionResult {
 		if (conflictInfo.localModifiedTime > conflictInfo.remoteModifiedTime) {
 			logger.debug('Local file is newer, will upload');
-			return { direction: SyncDirection.UPLOAD };
+			return { kind: 'converge', direction: SyncDirection.UPLOAD };
 		} else {
 			logger.debug('Remote file is newer, will download');
-			return { direction: SyncDirection.DOWNLOAD };
+			return { kind: 'converge', direction: SyncDirection.DOWNLOAD };
 		}
 	}
 
-	private resolveCreateDuplicate(conflictInfo: ConflictInfo): {
-		direction: SyncDirection;
-		newPath: string;
-	} {
+	private resolveCreateDuplicate(conflictInfo: ConflictInfo): ConflictResolutionResult {
 		const conflictPath = createConflictFileName(conflictInfo.path);
 		logger.debug('Creating duplicate file for conflict:', conflictPath);
 
 		return {
-			direction: SyncDirection.DOWNLOAD,
-			newPath: conflictPath,
+			kind: 'duplicate',
+			duplicatePath: conflictPath,
 		};
 	}
 }
