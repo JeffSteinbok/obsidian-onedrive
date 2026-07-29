@@ -318,6 +318,42 @@ describe('SyncEngine', () => {
 		expect(stateManager.getFileState('new.md')).toBeDefined();
 	});
 
+	it('does not re-download the old path when the delta echoes the pre-rename item (issue #138)', async () => {
+		// Repro: a freshly-created "Untitled.md" was uploaded on a prior sync.
+		// The user renames it before the next sync. That sync sees both a local
+		// RENAME (old.md → new.md) AND a delta that still reports the OLD path as
+		// changed — an echo of our own upload carrying the SAME OneDrive ID.
+		// The old path must NOT be pulled back down as a phantom file linked to
+		// the same remote item.
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState('old.md', {
+			path: 'old.md',
+			localMtime: 1,
+			remoteHash: 'old-hash',
+			size: 10,
+			remoteModifiedTime: 2,
+			oneDriveId: 'shared-remote-id',
+		});
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'new.md', type: LocalChangeType.RENAME, oldPath: 'old.md' },
+		]);
+		// Delta still reports old.md as a live change, sharing the moved item's ID.
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('old.md', { id: 'shared-remote-id' })],
+			deltaLink: 'delta-link-echo',
+		});
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('new.md', 10, Date.now()));
+
+		await syncEngine.performSync();
+
+		// Atomic move should still happen for the rename...
+		expect(mockFileOps.moveFile).toHaveBeenCalledWith('shared-remote-id', '/remote/root/new.md');
+		// ...but the stale echo of the old path must NOT be downloaded.
+		expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
+		expect(mockApp.vault.adapter.writeBinary).not.toHaveBeenCalled();
+		expect(stateManager.getFileState('old.md')).toBeUndefined();
+	});
+
 	it('downloads remote changes', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		const downloadedFile = makeTFile('notes/remote.md', 10, Date.now());

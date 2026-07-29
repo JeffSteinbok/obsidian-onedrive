@@ -1098,6 +1098,28 @@ export class SyncEngine {
 				logger.info(`Processing rename: ${change.oldPath} → ${change.path}`);
 				const oldState = this.stateManager.getFileState(change.oldPath);
 
+				// The delta may still report the pre-rename item at the OLD path —
+				// an echo of our own earlier upload that carries the SAME OneDrive
+				// ID we're about to move/re-upload. It isn't matched by any local
+				// change (the local change is keyed to the NEW path), so the remote
+				// pass below would plan a download and recreate a phantom file
+				// linked to the same remote item. Deleting that phantom then deletes
+				// the renamed file from OneDrive too (issue #138). Drop the stale
+				// echo from the remote worklist when the IDs match.
+				const staleOldRemote = remoteByPath.get(change.oldPath);
+				if (
+					staleOldRemote &&
+					!staleOldRemote.deleted &&
+					oldState?.oneDriveId &&
+					staleOldRemote.id === oldState.oneDriveId
+				) {
+					logger.debug(
+						`Rename: dropping stale remote echo of ${change.oldPath} ` +
+						`(same OneDrive ID ${oldState.oneDriveId})`
+					);
+					remoteByPath.delete(change.oldPath);
+				}
+
 				if (this.useAtomicMoves && oldState?.oneDriveId) {
 					// Use atomic move via OneDrive PATCH API — more efficient (no re-upload)
 					// and avoids duplicate files if something goes wrong
