@@ -26,6 +26,24 @@ import type { SyncStatusInfo } from '../main';
 import { SyncStatus } from './statusBar';
 import { t } from '../i18n';
 
+const CONFLICT_RESOLUTION_VALUES = Object.values(ConflictResolutionStrategy);
+const NOTIFICATION_LEVEL_VALUES: readonly PluginSettings['notificationLevel'][] = [
+	'all',
+	'errors',
+	'off',
+];
+const LOG_LEVEL_VALUES: readonly PluginSettings['logLevel'][] = [
+	'off',
+	'error',
+	'warn',
+	'info',
+	'debug',
+];
+
+function isOneOf<T extends string>(value: unknown, options: readonly T[]): value is T {
+	return typeof value === 'string' && options.some((option) => option === value);
+}
+
 // Forward declaration for the plugin type
 interface OneDrivePlugin extends Plugin {
 	settings: PluginSettings;
@@ -339,8 +357,14 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 	override getControlValue(key: string): unknown {
 		switch (key) {
+			case 'syncOnFileChange':
+				return this.plugin.settings.syncOnFileChange;
 			case 'startupSyncDelay':
 				return String(this.plugin.settings.startupSyncDelay);
+			case 'conflictResolution':
+				return this.plugin.settings.conflictResolution;
+			case 'notificationLevel':
+				return this.plugin.settings.notificationLevel;
 			case 'appSettings':
 				return this.plugin.settings.syncAppSettings;
 			case 'pluginManifests':
@@ -349,6 +373,10 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				return this.plugin.settings.syncCssSnippets;
 			case 'bookmarks':
 				return this.plugin.settings.syncBookmarks;
+			case 'logLevel':
+				return this.plugin.settings.logLevel;
+			case 'useCustomClientId':
+				return this.plugin.settings.useCustomClientId;
 			case 'experimental.skipFolderChecks':
 				return this.plugin.getExperimentalSetting('skipFolderChecks');
 			case 'experimental.maxConcurrentOperations':
@@ -358,12 +386,16 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			case 'experimental.pullOnlyMode':
 				return this.plugin.getExperimentalSetting('pullOnlyMode');
 			default:
-				return super.getControlValue(key);
+				throw new Error(`Unknown settings control: ${key}`);
 		}
 	}
 
 	override async setControlValue(key: string, value: unknown): Promise<void> {
 		switch (key) {
+			case 'syncOnFileChange':
+				this.plugin.settings.syncOnFileChange = Boolean(value);
+				await this.plugin.saveSettings();
+				return;
 			case 'startupSyncDelay': {
 				const parsed = Number.parseInt(String(value), 10);
 				if (!Number.isNaN(parsed)) {
@@ -372,6 +404,18 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				}
 				return;
 			}
+			case 'conflictResolution':
+				if (isOneOf(value, CONFLICT_RESOLUTION_VALUES)) {
+					this.plugin.settings.conflictResolution = value;
+					await this.plugin.saveSettings();
+				}
+				return;
+			case 'notificationLevel':
+				if (isOneOf(value, NOTIFICATION_LEVEL_VALUES)) {
+					this.plugin.settings.notificationLevel = value;
+					await this.plugin.saveSettings();
+				}
+				return;
 			case 'appSettings':
 				await this.plugin.onAppSettingsSyncChanged(Boolean(value));
 				return;
@@ -383,6 +427,12 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				return;
 			case 'bookmarks':
 				await this.plugin.onBookmarkSyncChanged(Boolean(value));
+				return;
+			case 'logLevel':
+				if (isOneOf(value, LOG_LEVEL_VALUES)) {
+					this.plugin.settings.logLevel = value;
+					await this.plugin.saveSettings();
+				}
 				return;
 			case 'useCustomClientId':
 				this.plugin.settings.useCustomClientId = Boolean(value);
@@ -399,7 +449,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				await this.saveExperimentalSetting('pullOnlyMode', Boolean(value));
 				return;
 			default:
-				await super.setControlValue(key, value);
+				throw new Error(`Unknown settings control: ${key}`);
 		}
 	}
 
@@ -427,7 +477,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 	private refreshSettingsUi(): void {
 		if (this.supportsDeclarativeSettings()) {
-			this.update();
+			(this as { update(): void }).update();
 			return;
 		}
 
