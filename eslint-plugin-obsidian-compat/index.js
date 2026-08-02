@@ -2,13 +2,16 @@
  * Local ESLint plugin replicating key Obsidian plugin-review lint rules.
  *
  * Rules:
- *   obsidian-compat/no-global-document        – use activeDocument
- *   obsidian-compat/no-global-this            – use window or activeWindow
- *   obsidian-compat/no-bare-timers            – use window.setTimeout etc.
- *   obsidian-compat/no-static-styles          – use CSS classes, not element.style
- *   obsidian-compat/no-deprecated-display     – display() is deprecated since 1.13
- *   obsidian-compat/no-deprecated-slider-api  – setDynamicTooltip() removed; value
- *                                               is always shown next to the slider
+ *   obsidian-compat/no-global-document              – use activeDocument
+ *   obsidian-compat/no-global-this                  – use window or activeWindow
+ *   obsidian-compat/no-bare-timers                  – use window.setTimeout etc.
+ *   obsidian-compat/no-static-styles                – use CSS classes, not element.style
+ *   obsidian-compat/no-deprecated-display           – display() is deprecated since 1.13
+ *   obsidian-compat/no-deprecated-slider-api        – setDynamicTooltip() removed; value
+ *                                                     is always shown next to the slider
+ *   obsidian-compat/no-missing-getSettingDefinitions – PluginSettingTab subclasses should
+ *                                                     implement getSettingDefinitions() for
+ *                                                     Obsidian 1.13.0+ settings search
  */
 
 "use strict";
@@ -180,6 +183,54 @@ module.exports = {
 							node,
 							message: `'${prop.name}()' is deprecated and removed from Obsidian's SliderComponent. Remove the call — the slider value is always displayed next to the slider.`,
 						});
+					},
+				};
+			},
+		},
+
+		// ── no-missing-getSettingDefinitions ────────────────────────────
+		// Flags PluginSettingTab subclasses that do not override
+		// getSettingDefinitions(). Since Obsidian 1.13.0, implementing this
+		// method enables settings-search indexing; classes that omit it fall
+		// back to the imperative display() path and their settings will not
+		// appear in the search results.
+		"no-missing-getSettingDefinitions": {
+			meta: {
+				type: "suggestion",
+				docs: {
+					description:
+						"PluginSettingTab subclasses should implement getSettingDefinitions() " +
+						"for Obsidian 1.13.0+ settings search support.",
+				},
+				schema: [],
+			},
+			create(context) {
+				return {
+					ClassDeclaration(node) {
+						if (!node.superClass) return;
+						// Match direct `extends PluginSettingTab`
+						const superName =
+							node.superClass.type === "Identifier"
+								? node.superClass.name
+								: null;
+						if (superName !== "PluginSettingTab") return;
+
+						const hasMethod = node.body.body.some(
+							(member) =>
+								member.type === "MethodDefinition" &&
+								member.key.type === "Identifier" &&
+								member.key.name === "getSettingDefinitions"
+						);
+
+						if (!hasMethod) {
+							context.report({
+								node,
+								message:
+									"This PluginSettingTab does not implement getSettingDefinitions(); " +
+									"its settings will not appear in Obsidian's settings search for " +
+									"users on 1.13.0 or later. Consider adopting the declarative settings API.",
+							});
+						}
 					},
 				};
 			},
