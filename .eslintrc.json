@@ -1,10 +1,9 @@
 {
-	"extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended-type-checked"],
+	"extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
 	"parser": "@typescript-eslint/parser",
 	"parserOptions": {
 		"ecmaVersion": 2020,
-		"sourceType": "module",
-		"project": "./tsconfig.json"
+		"sourceType": "module"
 	},
 	"plugins": ["@typescript-eslint", "obsidian-compat"],
 	"rules": {

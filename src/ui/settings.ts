@@ -26,7 +26,7 @@ import { SyncStatus } from './statusBar';
 import { t } from '../i18n';
 
 // Forward declaration for the plugin type
-interface OneDrivePlugin {
+interface OneDrivePlugin extends Plugin {
 	settings: PluginSettings;
 	manifest: PluginManifest;
 	saveSettings(): Promise<void>;
@@ -59,7 +59,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	plugin: OneDrivePlugin;
 
 	constructor(app: App, plugin: OneDrivePlugin) {
-		super(app, plugin as unknown as Plugin);
+		super(app, plugin);
 		this.plugin = plugin;
 	}
 
