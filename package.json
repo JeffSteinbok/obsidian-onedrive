@@ -39,7 +39,7 @@
 		"eslint-plugin-obsidian-compat": "file:eslint-plugin-obsidian-compat",
 		"eslint-plugin-obsidianmd": "^0.4.1",
 		"husky": "^9.0.0",
-		"obsidian": "latest",
+		"obsidian": "1.13.1",
 		"prettier": "^3.2.0",
 		"tslib": "^2.6.2",
 		"typescript": "^5.3.3",
