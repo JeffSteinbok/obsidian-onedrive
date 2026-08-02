@@ -8,7 +8,6 @@ import {
 	Setting,
 	Notice,
 	type PluginManifest,
-	type SettingDefinitionItem,
 } from 'obsidian';
 import {
 	PluginSettings,
@@ -62,181 +61,12 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	// Obsidian still calls display() for imperative setting tabs; we keep the
-	// override for rendering while getSettingDefinitions() powers settings search.
+	// display() is the imperative rendering entry point, called by Obsidian
+	// when the settings tab is opened. Obsidian 1.13.0+ will call display()
+	// because we do not override getSettingDefinitions() (the base class
+	// returns an empty array, so the imperative path is used on all versions).
 	display(): void {
 		this.renderSettings();
-	}
-
-	getSettingDefinitions(): SettingDefinitionItem[] {
-		const isConnected = !!this.plugin.settings.connectedUser;
-		const accessMode = this.plugin.settings.accessMode;
-		const currentPath = this.plugin.settings.remotePath || t('settings.syncFolder.notSelected');
-		const syncStatus = this.plugin.getSyncStatusInfo();
-		const statusText = this.getSyncStatusText(syncStatus.status);
-		const lastSyncText = syncStatus.lastSyncTime
-			? new Date(syncStatus.lastSyncTime).toLocaleString()
-			: t('settings.sync.status.notSyncedYet');
-		const progressText =
-			syncStatus.status === SyncStatus.SYNCING
-				? syncStatus.progressMessage || t('settings.sync.status.starting')
-				: t('settings.sync.status.noProgress');
-		const conflictText =
-			syncStatus.conflictCount > 0
-				? t('settings.sync.status.conflictsPending', { count: syncStatus.conflictCount })
-				: t('settings.sync.status.noConflicts');
-		const appFolderPath =
-			this.plugin.settings.appFolderSubpath || t('settings.syncFolder.appFolderRoot');
-		const { configDir } = this.app.vault;
-
-		return [
-			{
-				type: 'group',
-				heading: t('settings.auth.heading'),
-				items: [
-					{
-						name: t('settings.auth.accessMode.name'),
-						desc:
-							accessMode === OneDriveAccessMode.FULL_ACCESS
-								? t('settings.auth.accessMode.fullAccessDesc')
-								: t('settings.auth.accessMode.appFolderDesc'),
-					},
-					{
-						name: t('settings.auth.connectionStatus.name'),
-						desc: this.plugin.settings.connectedUser
-							? t('settings.auth.connectionStatus.connectedAs', {
-									displayName: this.plugin.settings.connectedUser.displayName,
-									userPrincipalName: this.plugin.settings.connectedUser.userPrincipalName,
-								})
-							: t('settings.auth.connectionStatus.notConnected'),
-					},
-				],
-			},
-			{
-				type: 'group',
-				heading: t('settings.syncFolder.heading'),
-				visible: isConnected,
-				items: [
-					{
-						name: t('settings.syncFolder.remoteFolder'),
-						desc: this.plugin.settings.remoteDriveId
-							? t('settings.syncFolder.sharedFolder', { path: currentPath })
-							: currentPath,
-						visible: accessMode === OneDriveAccessMode.FULL_ACCESS,
-					},
-					{
-						name: t('settings.syncFolder.vaultSubfolder'),
-						desc: t('settings.syncFolder.vaultSubfolderDesc', { path: appFolderPath }),
-						visible: accessMode === OneDriveAccessMode.APP_FOLDER,
-					},
-					{
-						name: t('settings.sync.status.name'),
-						desc: t('settings.sync.status.desc', {
-							status: statusText,
-							lastSync: lastSyncText,
-							progress: progressText,
-							conflicts: conflictText,
-						}),
-					},
-				],
-			},
-			{
-				type: 'group',
-				heading: t('settings.sync.heading'),
-				items: [
-					{
-						name: t('settings.sync.automaticInterval.name'),
-						desc: t('settings.sync.automaticInterval.desc'),
-					},
-					{
-						name: t('settings.sync.syncOnFileChange.name'),
-						desc: t('settings.sync.syncOnFileChange.desc'),
-					},
-					{
-						name: t('settings.sync.startupDelay.name'),
-						desc: t('settings.sync.startupDelay.desc'),
-					},
-					{
-						name: t('settings.sync.conflictResolution.name'),
-						desc: t('settings.sync.conflictResolution.desc'),
-					},
-					{
-						name: t('settings.sync.appSettings.name'),
-						desc: t('settings.sync.appSettings.desc', { configDir }),
-					},
-					{
-						name: t('settings.sync.plugins.name'),
-						desc: t('settings.sync.plugins.desc', { configDir }),
-					},
-					{
-						name: t('settings.sync.cssSnippets.name'),
-						desc: t('settings.sync.cssSnippets.desc', { configDir }),
-					},
-					{
-						name: t('settings.sync.bookmarks.name'),
-						desc: t('settings.sync.bookmarks.desc', { configDir }),
-					},
-				],
-			},
-			{
-				type: 'group',
-				heading: t('settings.advanced.heading'),
-				items: [
-					{
-						name: t('settings.advanced.logLevel.name'),
-						desc: t('settings.advanced.logLevel.desc'),
-					},
-					{
-						name: t('settings.advanced.largeDeleteThreshold.name'),
-						desc: t('settings.advanced.largeDeleteThreshold.desc'),
-					},
-					{
-						name: t('settings.advanced.remotePath.name'),
-						desc: t('settings.advanced.remotePath.desc'),
-						visible: accessMode === OneDriveAccessMode.APP_FOLDER,
-					},
-					{
-						name: t('settings.advanced.resetSyncToken.name'),
-						desc: t('settings.advanced.resetSyncToken.desc'),
-					},
-					{
-						name: t('settings.advanced.reconcileFromCloud.name'),
-						desc: t('settings.advanced.reconcileFromCloud.desc'),
-					},
-					{
-						name: t('settings.advanced.customClientId.toggleName'),
-						desc: t('settings.advanced.customClientId.toggleDesc'),
-					},
-					{
-						name: t('settings.advanced.customClientId.name'),
-						desc: t('settings.advanced.customClientId.desc'),
-						visible: this.plugin.settings.useCustomClientId,
-					},
-				],
-			},
-			{
-				type: 'group',
-				heading: t('settings.experimental.heading'),
-				items: [
-					{
-						name: t('settings.experimental.skipFolderChecks.name'),
-						desc: t('settings.experimental.skipFolderChecks.desc'),
-					},
-					{
-						name: t('settings.experimental.maxConcurrentOperations.name'),
-						desc: t('settings.experimental.maxConcurrentOperations.desc'),
-					},
-					{
-						name: t('settings.experimental.useAtomicMoves.name'),
-						desc: t('settings.experimental.useAtomicMoves.desc'),
-					},
-					{
-						name: t('settings.experimental.pullOnlyMode.name'),
-						desc: t('settings.experimental.pullOnlyMode.desc'),
-					},
-				],
-			},
-		];
 	}
 
 	private renderSettings(): void {
