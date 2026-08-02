@@ -99,13 +99,13 @@ class Logger {
 
 		switch (level) {
 			case LogLevel.DEBUG:
-				return consoleApi.debug.bind(consoleApi);
+				return consoleApi.debug.bind(consoleApi) as ConsoleMethod;
 			case LogLevel.INFO:
-				return consoleApi.info.bind(consoleApi);
+				return consoleApi.info.bind(consoleApi) as ConsoleMethod;
 			case LogLevel.WARN:
-				return consoleApi.warn.bind(consoleApi);
+				return consoleApi.warn.bind(consoleApi) as ConsoleMethod;
 			case LogLevel.ERROR:
-				return consoleApi.error.bind(consoleApi);
+				return consoleApi.error.bind(consoleApi) as ConsoleMethod;
 			default:
 				return null;
 		}

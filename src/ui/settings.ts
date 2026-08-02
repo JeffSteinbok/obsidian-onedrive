@@ -4,10 +4,12 @@
 
 import {
 	App,
+	Plugin,
 	PluginSettingTab,
 	Setting,
 	Notice,
 	type PluginManifest,
+	type SettingDefinitionItem,
 } from 'obsidian';
 import {
 	PluginSettings,
@@ -57,14 +59,20 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	plugin: OneDrivePlugin;
 
 	constructor(app: App, plugin: OneDrivePlugin) {
-		super(app, plugin as never);
+		super(app, plugin as unknown as Plugin);
 		this.plugin = plugin;
 	}
 
+	// getSettingDefinitions() returns [] here, which tells Obsidian to call
+	// display() via the imperative path (works on all versions, including 1.13.0+).
+	// The declarative API would enable settings-search indexing in 1.13.0+; that
+	// migration can be done in a follow-up once the API is stable.
+	override getSettingDefinitions(): SettingDefinitionItem[] {
+		return [];
+	}
+
 	// display() is the imperative rendering entry point, called by Obsidian
-	// when the settings tab is opened. Obsidian 1.13.0+ will call display()
-	// because we do not override getSettingDefinitions() (the base class
-	// returns an empty array, so the imperative path is used on all versions).
+	// when the settings tab is opened.
 	display(): void {
 		this.renderSettings();
 	}

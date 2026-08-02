@@ -121,7 +121,7 @@ export class ConflictQueue {
 
 		switch (resolution) {
 			case ConflictResolution.ACCEPT_CURRENT:
-				await this.applyCurrent(entry);
+				this.applyCurrent(entry);
 				break;
 			case ConflictResolution.ACCEPT_INCOMING:
 				await this.applyIncoming(entry);
@@ -178,7 +178,7 @@ export class ConflictQueue {
 	/**
 	 * Accept Current Change — keep local version, mark dirty for upload
 	 */
-	private async applyCurrent(entry: ConflictEntry): Promise<void> {
+	private applyCurrent(entry: ConflictEntry): void {
 		// Local file is already in the vault — just mark it dirty so next sync uploads it
 		this.eventManager.addDirtyFile(entry.path, 'modify');
 		logger.debug(`Accepted current for ${entry.path} — marked dirty for upload`);

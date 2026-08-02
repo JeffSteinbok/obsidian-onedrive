@@ -1,9 +1,10 @@
 {
-	"extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
+	"extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended-type-checked"],
 	"parser": "@typescript-eslint/parser",
 	"parserOptions": {
 		"ecmaVersion": 2020,
-		"sourceType": "module"
+		"sourceType": "module",
+		"project": "./tsconfig.json"
 	},
 	"plugins": ["@typescript-eslint", "obsidian-compat"],
 	"rules": {
@@ -22,7 +23,8 @@
 		"obsidian-compat/no-bare-timers": "warn",
 		"obsidian-compat/no-static-styles": "warn",
 		"obsidian-compat/no-deprecated-display": "warn",
-		"obsidian-compat/no-deprecated-slider-api": "error"
+		"obsidian-compat/no-deprecated-slider-api": "error",
+		"obsidian-compat/no-missing-getSettingDefinitions": "warn"
 	},
 	"env": {
 		"node": true,

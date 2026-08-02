@@ -72,7 +72,50 @@ tester.run('no-deprecated-display', plugin.rules['no-deprecated-display'], {
 	],
 });
 
-// ── no-bare-timers (sibling rule — same "forbidden API" class) ────────────────
+// ── no-missing-getSettingDefinitions ─────────────────────────────────────────
+// Flags PluginSettingTab subclasses that do not override getSettingDefinitions().
+tester.run(
+	'no-missing-getSettingDefinitions',
+	plugin.rules['no-missing-getSettingDefinitions'],
+	{
+		valid: [
+			// Implements getSettingDefinitions — no warning.
+			{
+				code: `class MyTab extends PluginSettingTab {
+					getSettingDefinitions() { return []; }
+					display() {}
+				}`,
+			},
+			// Not a PluginSettingTab subclass — should not be flagged.
+			{
+				code: `class MyOtherClass extends SomeBase {
+					display() {}
+				}`,
+			},
+			// Plain class — not flagged.
+			{
+				code: `class MyClass { someMethod() {} }`,
+			},
+		],
+		invalid: [
+			// Missing getSettingDefinitions — should be flagged.
+			{
+				code: `class MyTab extends PluginSettingTab {
+					display() {}
+				}`,
+				errors: [{ message: /getSettingDefinitions/ as unknown as string }],
+			},
+			// Subclass with other methods but still missing getSettingDefinitions.
+			{
+				code: `class OneDriveSettingTab extends PluginSettingTab {
+					constructor(app, plugin) { super(app, plugin); }
+					display() { this.renderSettings(); }
+				}`,
+				errors: [{ message: /getSettingDefinitions/ as unknown as string }],
+			},
+		],
+	}
+);
 tester.run('no-bare-timers', plugin.rules['no-bare-timers'], {
 	valid: [{ code: `window.setTimeout(() => {}, 1000);` }, { code: `window.setInterval(() => {}, 1000);` }],
 	invalid: [
