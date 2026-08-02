@@ -18,3 +18,5 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx vitest run --coverage
+      - name: Run Obsidian community validator
+        run: npm run validate-obsidian
