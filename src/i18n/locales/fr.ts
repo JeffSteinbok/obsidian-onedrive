@@ -207,7 +207,7 @@ export const fr = {
 			connectFirst: 'Connectez-vous d\'abord à OneDrive, puis sélectionnez un dossier de synchronisation.',
 			vaultSubfolder: 'Sous-dossier du coffre',
 			vaultSubfolderDesc: 'Actuel: {{path}}. Utilisez un sous-dossier pour isoler ce coffre des autres.',
-			appFolderRoot: '(racine du dossier d\'application)',
+			appFolderRoot: '/Apps/ObsidianOneDrive/ (racine du dossier d\'application)',
 			appFolderLabel: 'Dossier d\'application',
 			useAppFolderRoot: 'Utiliser la racine du dossier d\'application',
 		},

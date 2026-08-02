@@ -206,7 +206,7 @@ export const zhCn = {
 			connectFirst: '请先连接 OneDrive，再选择同步文件夹。',
 			vaultSubfolder: '仓库子文件夹',
 			vaultSubfolderDesc: '当前：{{path}}。使用子文件夹将此仓库与其他仓库隔离。',
-			appFolderRoot: '（应用文件夹根目录）',
+			appFolderRoot: '/Apps/ObsidianOneDrive/（应用文件夹根目录）',
 			appFolderLabel: '应用文件夹',
 			useAppFolderRoot: '使用应用文件夹根目录',
 		},

@@ -207,7 +207,7 @@ export const ja = {
 			connectFirst: '先にOneDriveに接続してから、同期フォルダを選択してください。',
 			vaultSubfolder: '保管庫サブフォルダ',
 			vaultSubfolderDesc: '現在: {{path}}。サブフォルダを使用してこの保管庫を他から分離します。',
-			appFolderRoot: '（アプリフォルダルート）',
+			appFolderRoot: '/Apps/ObsidianOneDrive/（アプリフォルダルート）',
 			appFolderLabel: 'アプリフォルダ',
 			useAppFolderRoot: 'アプリフォルダルートを使用',
 		},

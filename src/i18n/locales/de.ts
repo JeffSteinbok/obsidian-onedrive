@@ -207,7 +207,7 @@ export const de = {
 			connectFirst: 'Erst mit OneDrive verbinden, dann einen Synchronisierungsordner auswählen.',
 			vaultSubfolder: 'Tresor-Unterordner',
 			vaultSubfolderDesc: 'Aktuell: {{path}}. Verwenden Sie einen Unterordner, um diesen Tresor von anderen zu isolieren.',
-			appFolderRoot: '(App-Ordner-Stamm)',
+			appFolderRoot: '/Apps/ObsidianOneDrive/ (App-Ordner-Stamm)',
 			appFolderLabel: 'App-Ordner',
 			useAppFolderRoot: 'App-Ordner-Stamm verwenden',
 		},
