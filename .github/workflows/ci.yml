@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, upgrade-eslint-obsidian-validator]
   pull_request:
     branches: [main]
 
@@ -17,4 +17,5 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run build
+      - run: npm run lint
       - run: npx vitest run --coverage

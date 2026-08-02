@@ -6,7 +6,7 @@
 import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
 import { ConflictEntry, ConflictResolution } from '../types';
 import { ConflictQueue } from '../sync/conflictQueue';
-import { diffLines } from 'diff';
+import { diffLines, type Change } from 'diff';
 import { t } from '../i18n';
 
 export const CONFLICT_VIEW_TYPE = 'onedrive-conflict-view';
@@ -205,7 +205,7 @@ export class ConflictView extends ItemView {
 			const localText = decoder.decode(localBuf);
 			const remoteText = decoder.decode(remoteBuf);
 
-			const diffResult = diffLines(localText, remoteText);
+			const diffResult: Change[] = diffLines(localText, remoteText);
 
 			const diffContainer = container.createDiv({ cls: 'onedrive-sync-conflict-diff' });
 			const pre = diffContainer.createEl('pre');

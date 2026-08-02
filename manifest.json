@@ -3,7 +3,7 @@
 	"name": "OneDrive Sync",
 	"version": "1.5.4",
 	"minAppVersion": "1.12.0",
-	"description": "Sync your vault with OneDrive Personal/Consumer.",
+	"description": "Sync your vault with OneDrive for personal and consumer accounts.",
 	"author": "Jeff Steinbok",
 	"authorUrl": "https://github.com/jeffsteinbok",
 	"isDesktopOnly": false

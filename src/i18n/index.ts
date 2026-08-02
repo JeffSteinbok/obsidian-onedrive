@@ -52,7 +52,7 @@ function getLocale(): LocaleStrings {
 		language = 'en';
 	}
 
-	return locales[language] || locales[language.split('-')[0]] || (en as LocaleStrings);
+	return locales[language] || locales[language.split('-')[0]] || (en);
 }
 
 function interpolate(template: string, params?: TranslationParams): string {

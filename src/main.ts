@@ -84,7 +84,7 @@ function isVaultLogAdapter(adapter: unknown): adapter is VaultLogAdapter {
  * Main plugin class
  */
 export default class OneDriveSyncPlugin extends Plugin {
-	settings: PluginSettings;
+	declare settings: PluginSettings;
 
 	// Core components
 	private tokenStorage: TokenStorage;
