@@ -47,7 +47,7 @@ export class TokenStorage {
 	 * contract (callers await this) and allows a seamless transition if Obsidian's
 	 * SecretStorage ever becomes truly async.
 	 */
-	// eslint-disable-next-line @typescript-eslint/require-await
+	// eslint-disable-next-line @typescript-eslint/require-await -- keep async for API stability while SecretStorage remains synchronous
 	async loadTokens(legacyTokens?: StoredTokens): Promise<boolean> {
 		if (!this.app) {
 			logger.error('App not set on TokenStorage');
