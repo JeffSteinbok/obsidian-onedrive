@@ -14,7 +14,7 @@ const { RuleTester } = require('eslint');
 const plugin = require('../../../eslint-plugin-obsidian-compat/index.js');
 
 const tester = new RuleTester({
-	parserOptions: { ecmaVersion: 2020, sourceType: 'module' },
+	languageOptions: { ecmaVersion: 2020, sourceType: 'module' },
 });
 
 // ── no-deprecated-slider-api ──────────────────────────────────────────────────

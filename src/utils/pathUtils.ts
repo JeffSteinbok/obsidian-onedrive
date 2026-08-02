@@ -67,7 +67,6 @@ export function isAbsolutePath(path: string): boolean {
  */
 export function sanitizeFileName(name: string): string {
 	// Remove or replace characters that are invalid in Windows/OneDrive filenames
-	// eslint-disable-next-line no-control-regex -- Matching control characters that are invalid in Windows/OneDrive filenames
 	const invalidChars = /[<>:"|?*\x00-\x1F]/g;
 	const reserved = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
 
