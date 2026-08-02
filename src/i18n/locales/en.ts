@@ -207,7 +207,7 @@ export const en = {
 			connectFirst: 'Connect to OneDrive first, then select a sync folder.',
 			vaultSubfolder: 'Vault subfolder',
 			vaultSubfolderDesc: 'Current: {{path}}. Use a subfolder to isolate this vault from others.',
-			appFolderRoot: '(app folder root)',
+			appFolderRoot: '/Apps/ObsidianOneDrive/ (app folder root)',
 			appFolderLabel: 'App Folder',
 			useAppFolderRoot: 'Use app folder root',
 		},

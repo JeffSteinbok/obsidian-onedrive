@@ -207,7 +207,7 @@ export const pt = {
 			connectFirst: 'Conecte ao OneDrive primeiro, depois selecione uma pasta de sincronização.',
 			vaultSubfolder: 'Subpasta do cofre',
 			vaultSubfolderDesc: 'Atual: {{path}}. Use uma subpasta para isolar este cofre de outros.',
-			appFolderRoot: '(raiz da pasta do aplicativo)',
+			appFolderRoot: '/Apps/ObsidianOneDrive/ (raiz da pasta do aplicativo)',
 			appFolderLabel: 'Pasta do aplicativo',
 			useAppFolderRoot: 'Usar raiz da pasta do aplicativo',
 		},

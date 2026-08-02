@@ -207,7 +207,7 @@ export const es = {
 			connectFirst: 'Conecta a OneDrive primero, luego selecciona una carpeta de sincronización.',
 			vaultSubfolder: 'Subcarpeta de bóveda',
 			vaultSubfolderDesc: 'Actual: {{path}}. Usa una subcarpeta para aislar esta bóveda de otras.',
-			appFolderRoot: '(raíz de carpeta de aplicación)',
+			appFolderRoot: '/Apps/ObsidianOneDrive/ (raíz de carpeta de aplicación)',
 			appFolderLabel: 'Carpeta de aplicación',
 			useAppFolderRoot: 'Usar raíz de carpeta de aplicación',
 		},
