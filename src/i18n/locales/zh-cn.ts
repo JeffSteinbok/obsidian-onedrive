@@ -181,7 +181,7 @@ export const zhCn = {
 				name: 'OneDrive 访问模式',
 				appFolder: '应用文件夹（推荐）',
 				fullAccess: '完整访问权限（高级）',
-				appFolderDesc: '同步到 OneDrive 中独立的应用文件夹，无需额外配置。',
+				appFolderDesc: '同步到 OneDrive 中独立的应用文件夹（/Apps/ObsidianOneDrive/ 或您选择的子文件夹），无需额外配置。',
 				fullAccessDesc: '可同步到任意文件夹，也可与他人共享，需要更多权限。',
 				reconnectRequired: ' 更改模式可能需要重新认证。',
 			},
@@ -205,7 +205,7 @@ export const zhCn = {
 			browse: '浏览...',
 			connectFirst: '请先连接 OneDrive，再选择同步文件夹。',
 			vaultSubfolder: '仓库子文件夹',
-			vaultSubfolderDesc: '当前：{{path}}。使用子文件夹将此仓库与其他仓库隔离。',
+			vaultSubfolderDesc: '基础文件夹：/Apps/ObsidianOneDrive/。当前子文件夹：{{path}}。同步多个仓库时，使用子文件夹将此仓库与其他仓库隔离。',
 			appFolderRoot: '（应用文件夹根目录）',
 			appFolderLabel: '应用文件夹',
 			useAppFolderRoot: '使用应用文件夹根目录',
@@ -296,7 +296,7 @@ export const zhCn = {
 			},
 			remotePath: {
 				name: '远程路径',
-				desc: '文件会同步到 OneDrive/Apps/ 中独立的应用文件夹。',
+				desc: '文件会同步到 OneDrive 中的 /Apps/ObsidianOneDrive/（由应用管理）。',
 			},
 			resetSyncToken: {
 				name: '重置同步令牌',

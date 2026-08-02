@@ -182,7 +182,7 @@ export const en = {
 				name: 'OneDrive access mode',
 				appFolder: 'App Folder (Recommended)',
 				fullAccess: 'Full Access (Advanced)',
-				appFolderDesc: 'Secure isolated app folder in OneDrive. No configuration needed.',
+				appFolderDesc: 'Secure isolated app folder in OneDrive. Files sync to /Apps/ObsidianOneDrive/ (or a subfolder you choose). No configuration needed.',
 				fullAccessDesc: 'Sync to any folder, share with others. Requires more permissions.',
 				reconnectRequired: ' Changing modes may require re-authentication.',
 			},
@@ -206,7 +206,7 @@ export const en = {
 			browse: 'Browse...',
 			connectFirst: 'Connect to OneDrive first, then select a sync folder.',
 			vaultSubfolder: 'Vault subfolder',
-			vaultSubfolderDesc: 'Current: {{path}}. Use a subfolder to isolate this vault from others.',
+			vaultSubfolderDesc: 'Base folder: /Apps/ObsidianOneDrive/. Current subfolder: {{path}}. Use a subfolder to isolate this vault from others when syncing multiple vaults.',
 			appFolderRoot: '(app folder root)',
 			appFolderLabel: 'App Folder',
 			useAppFolderRoot: 'Use app folder root',
@@ -297,7 +297,7 @@ export const en = {
 			},
 			remotePath: {
 				name: 'Remote path',
-				desc: 'Files sync to a dedicated app folder in OneDrive/Apps/',
+				desc: 'Files sync to /Apps/ObsidianOneDrive/ in your OneDrive (managed by the app).',
 			},
 			resetSyncToken: {
 				name: 'Reset sync token',
