@@ -79,14 +79,25 @@ jobs:
               return;
             }
 
-            // ---- Ensure the 'postmortem' label exists ----
-            try {
-              await github.rest.issues.getLabel({ owner, repo, name: 'postmortem' });
-            } catch {
-              await github.rest.issues.createLabel({
-                owner, repo, name: 'postmortem', color: '5319e7',
+            // ---- Ensure process labels exist ----
+            const processLabels = [
+              {
+                name: 'postmortem',
+                color: '5319e7',
                 description: 'Automated 5-Whys postmortem for a merged bug fix',
-              });
+              },
+              {
+                name: 'puppets:no-auto',
+                color: '000000',
+                description: 'Hard opt-out: Puppets automation must never touch this item.',
+              },
+            ];
+            for (const label of processLabels) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: label.name });
+              } catch {
+                await github.rest.issues.createLabel({ owner, repo, ...label });
+              }
             }
 
             // ---- Find a linked issue this PR fixed (best effort) ----
@@ -133,7 +144,7 @@ jobs:
               owner, repo,
               title: `Postmortem: PR #${pr.number} — ${pr.title}`,
               body: issueBody,
-              labels: ['postmortem'],
+              labels: ['postmortem', 'puppets:no-auto'],
             });
             core.info(`Created postmortem issue #${issue.number}.`);
 
