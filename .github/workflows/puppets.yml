@@ -18,15 +18,15 @@ concurrency:
 permissions:
   actions: write
   contents: read
+  id-token: write
   issues: write
   pull-requests: write
   copilot-requests: write
 
 jobs:
   reconcile:
-    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@74799e6bf165504e864ef1d5346d06e86be8f705
+    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@084dde59cecbb4dd59519e491377ac8cf5b34ad2
     with:
-      framework_ref: 74799e6bf165504e864ef1d5346d06e86be8f705
       dry_run: ${{ inputs.dry_run || false }}
       caller_workflow: puppets.yml
     secrets:

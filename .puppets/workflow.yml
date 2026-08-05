@@ -1,0 +1,14 @@
+spec:
+  profiles:
+    - name: postmortem
+      default: false
+      priority: 100
+      selector:
+        allLabels:
+          - postmortem
+      routes:
+        approved: claim
+      implementation:
+        prompt: postmortem
+        guidance: null
+        heading: Puppets postmortem instructions

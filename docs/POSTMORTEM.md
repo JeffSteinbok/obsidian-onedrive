@@ -17,7 +17,7 @@ users.
         │
         ▼
  postmortem.yml ───────────► opens a tracking issue (label: postmortem)
- (on: pull_request closed)    and assigns the Copilot coding agent
+ (on: pull_request closed)    for maintainer approval
         │
         ▼
  Copilot coding agent ──────► follows .github/skills/postmortem/SKILL.md:
@@ -36,7 +36,8 @@ users.
 
 | File | Trigger | Responsibility |
 | --- | --- | --- |
-| [`.github/workflows/postmortem.yml`](../.github/workflows/postmortem.yml) | a bug-fix PR is merged (or manual dispatch) | Opens the tracking issue and assigns the Copilot coding agent. |
+| [`.github/workflows/postmortem.yml`](../.github/workflows/postmortem.yml) | a bug-fix PR is merged (or manual dispatch) | Opens the tracking issue for approval. |
+| [`.puppets/workflow.yml`](../.puppets/workflow.yml) | Puppets reconciles an approved postmortem issue | Selects the postmortem prompt and routes directly to assignment. |
 | [`.github/skills/postmortem/SKILL.md`](../.github/skills/postmortem/SKILL.md) | read by the coding agent | The step-by-step 5-Whys + hardening process the agent follows. |
 | [`.github/workflows/postmortem-guard.yml`](../.github/workflows/postmortem-guard.yml) | the hardening PR opens/updates | Fails the check (and comments) if the PR isn't deliverable. |
 | [`.github/workflows/postmortem-publish.yml`](../.github/workflows/postmortem-publish.yml) | the hardening PR opens/updates | Mirrors the 5-Whys writeup from the PR body to the tracking issue. |
@@ -103,10 +104,10 @@ the API and never check out PR head code, so the elevated-trust context is safe.
 
 ## Tokens
 
-`postmortem.yml` and `postmortem-publish.yml` prefer a `PAT_TOKEN` secret
-(falling back to `GITHUB_TOKEN`). The PAT is needed to **assign the Copilot
-coding agent** (the default `GITHUB_TOKEN` cannot) and to comment on the separate
-tracking issue.
+`postmortem.yml` uses the repository `GITHUB_TOKEN` to open the tracking issue.
+Puppets uses its normal caller token policy when the approved issue is ready for
+coding-agent assignment. `postmortem-publish.yml` retains its existing token
+requirements for mirroring the writeup to the separate tracking issue.
 
 ## Running it manually
 

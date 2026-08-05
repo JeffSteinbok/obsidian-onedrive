@@ -30,9 +30,9 @@ Then reload the plugin in Obsidian.
 ## Postmortems
 
 When a bug-fix PR is merged, `.github/workflows/postmortem.yml` opens a tracking
-issue and assigns the Copilot coding agent to run the postmortem skill at
+issue. After a trusted maintainer applies `puppets:approved`, the Puppets
+postmortem profile assigns the coding agent to run
 `.github/skills/postmortem/SKILL.md`: a **5 Whys** root-cause analysis plus a
 **hardening PR** that prevents the whole bug *class* (types/guards/invariants +
 regression and sibling-case tests). To run one by hand, ask Copilot to
 "run the postmortem skill for PR #N". Never merge the hardening PR automatically.
-

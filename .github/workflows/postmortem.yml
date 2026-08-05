@@ -1,8 +1,7 @@
 name: Bug-Fix Postmortem
 
-# When a bug-fix PR is merged, open a tracking issue and assign the Copilot
-# coding agent to run the postmortem skill (.github/skills/postmortem/SKILL.md):
-# a 5-Whys root-cause analysis plus a hardening PR that prevents the bug class.
+# When a bug-fix PR is merged, open a tracking issue for the Puppets postmortem profile.
+# A trusted maintainer approves the issue before Puppets assigns the coding agent.
 #
 # Can also be dispatched manually for a specific PR (backfill / re-run).
 
@@ -32,13 +31,10 @@ jobs:
        !contains(github.event.pull_request.labels.*.name, 'postmortem'))
     runs-on: ubuntu-latest
     steps:
-      - name: Open postmortem issue and assign Copilot
+      - name: Open postmortem issue
         uses: actions/github-script@v7
         with:
-          # A user PAT with Issues/PR write assigns the Copilot coding agent
-          # (GITHUB_TOKEN cannot). Falls back to GITHUB_TOKEN, which still opens
-          # the tracking issue but leaves assignment to a maintainer.
-          github-token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -86,11 +82,6 @@ jobs:
                 color: '5319e7',
                 description: 'Automated 5-Whys postmortem for a merged bug fix',
               },
-              {
-                name: 'puppets:no-auto',
-                color: '000000',
-                description: 'Hard opt-out: Puppets automation must never touch this item.',
-              },
             ];
             for (const label of processLabels) {
               try {
@@ -115,27 +106,8 @@ jobs:
               ``,
               `---`,
               ``,
-              `@copilot Please follow the process defined in the repo file`,
-              `\`.github/skills/postmortem/SKILL.md\` for **PR #${pr.number}**:`,
-              ``,
-              `1. Reconstruct the bug from the PR diff and linked issue.`,
-              `2. Blame the introducing commit; classify regression vs. latent gap.`,
-              `3. Write a genuine **5 Whys** causal chain.`,
-              `4. Make **surgical hardening changes** (types/guards/invariants) plus a`,
-              `   regression test and generalized sibling-case tests that prevent this`,
-              `   *class* of bug — not just this instance.`,
-              `5. Validate with \`npm run build\` and \`npx vitest run\`.`,
-              `6. **Open a hardening PR** (\`postmortem/${pr.number}-<slug>\` branch)`,
-              `   that \`Closes #<this issue>\`. Put the full 5-Whys writeup in the PR`,
-              `   body between \`<!-- postmortem-writeup:start -->\` and`,
-              `   \`<!-- postmortem-writeup:end -->\` markers; the`,
-              `   \`postmortem-publish.yml\` workflow mirrors it here as a comment`,
-              `   automatically. Do **not** comment here yourself and do **not** merge.`,
-              ``,
-              `   The \`postmortem-guard.yml\` check enforces this: the PR must have`,
-              `   committed changes, a non-\`[WIP]\` ready-for-review title, a`,
-              `   non-empty 5-Whys writeup between the markers, and this \`Closes #\``,
-              `   reference — or the check fails.`,
+              `Apply \`puppets:approved\` after reviewing this tracking issue. Puppets will`,
+              `then assign the coding agent using \`.puppets/prompts/postmortem.md\`.`,
               ``,
               `_Automated by \`.github/workflows/postmortem.yml\`._`,
             ].join('\n');
@@ -144,46 +116,14 @@ jobs:
               owner, repo,
               title: `Postmortem: PR #${pr.number} — ${pr.title}`,
               body: issueBody,
-              labels: ['postmortem', 'puppets:no-auto'],
+              labels: ['postmortem'],
             });
             core.info(`Created postmortem issue #${issue.number}.`);
 
-            // ---- Assign the Copilot coding agent via GraphQL ----
-            // REST addAssignees with login "Copilot" silently no-ops; the coding
-            // agent must be assigned with replaceActorsForAssignable using the
-            // copilot-swe-agent bot node id from suggestedActors(CAN_BE_ASSIGNED).
-            let assigned = false;
-            try {
-              const suggested = await github.graphql(`
-                query($owner:String!,$repo:String!){
-                  repository(owner:$owner,name:$repo){
-                    suggestedActors(capabilities:[CAN_BE_ASSIGNED], first:100){
-                      nodes{ login __typename ... on Bot { id } ... on User { id } }
-                    }
-                  }
-                }`, { owner, repo });
-              const bot = suggested.repository.suggestedActors.nodes
-                .find(n => n.login === 'copilot-swe-agent' || n.login.toLowerCase() === 'copilot');
-              if (bot && bot.id) {
-                await github.graphql(`
-                  mutation($assignableId:ID!,$actorIds:[ID!]!){
-                    replaceActorsForAssignable(input:{assignableId:$assignableId, actorIds:$actorIds}){
-                      assignable { ... on Issue { number } }
-                    }
-                  }`, { assignableId: issue.node_id, actorIds: [bot.id] });
-                assigned = true;
-                core.info('Assigned Copilot coding agent to the postmortem issue.');
-              } else {
-                core.warning('Copilot coding agent not available as an assignee for this repo.');
-              }
-            } catch (e) {
-              core.warning(`Could not assign Copilot automatically: ${e.message}`);
-            }
-
             // ---- Link back from the PR (best-effort; don't fail the job) ----
-            const note = assigned
-              ? `🔬 Opened postmortem #${issue.number} and assigned the Copilot coding agent to run a 5-Whys analysis and propose hardening changes.`
-              : `🔬 Opened postmortem #${issue.number}. Assign it to the Copilot coding agent (or run the postmortem skill manually) to generate the 5-Whys analysis and hardening PR.`;
+            const note =
+              `🔬 Opened postmortem #${issue.number}. Review it and apply ` +
+              `\`puppets:approved\` to start the 5-Whys analysis and hardening work.`;
             try {
               await github.rest.issues.createComment({
                 owner, repo, issue_number: pr.number, body: note,
