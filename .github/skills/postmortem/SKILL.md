@@ -12,8 +12,9 @@ A fix removes one bug. A good postmortem removes the conditions that let it exis
 
 - **Automatically:** `.github/workflows/postmortem.yml` triggers on merge of a PR
   that is a bug fix (has the `bug` label, or has `- [x] Bug fix` checked in the
-  PR's *Type of Change* section). It opens a tracking issue and assigns the
-  Copilot coding agent to follow this skill.
+  PR's *Type of Change* section). It opens a tracking issue. After a trusted
+  maintainer applies `puppets:approved`, the repository's Puppets postmortem
+  profile assigns the Copilot coding agent to follow this skill.
 - **Manually:** Run the Copilot CLI in the repo and ask it to
   "run the postmortem skill for PR #N". Provide the PR number.
 

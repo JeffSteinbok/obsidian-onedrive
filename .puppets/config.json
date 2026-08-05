@@ -9,9 +9,6 @@
   "conflictRetries": 2,
   "reviewRetries": 2,
   "copilotModel": "auto",
-  "enableCuration": true,
   "staleHours": 72,
-  "ignoreLabels": [
-    "postmortem"
-  ]
+  "ignoreLabels": []
 }
