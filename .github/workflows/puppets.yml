@@ -24,9 +24,9 @@ permissions:
 
 jobs:
   reconcile:
-    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@1788658a6c8c7aabb136194519985e4ce1d6968f
+    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@74799e6bf165504e864ef1d5346d06e86be8f705
     with:
-      framework_ref: 1788658a6c8c7aabb136194519985e4ce1d6968f
+      framework_ref: 74799e6bf165504e864ef1d5346d06e86be8f705
       dry_run: ${{ inputs.dry_run || false }}
       caller_workflow: puppets.yml
     secrets:
