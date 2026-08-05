@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "approvalActors": [
+    "JeffSteinbok",
+    "jeffsteinbok-openclaw"
+  ],
+  "maxNewIssues": 1,
+  "maxInFlight": 2,
+  "conflictRetries": 2,
+  "reviewRetries": 2,
+  "copilotModel": "auto",
+  "enableCuration": true,
+  "staleHours": 72,
+  "ignoreLabels": [
+    "postmortem"
+  ]
+}
