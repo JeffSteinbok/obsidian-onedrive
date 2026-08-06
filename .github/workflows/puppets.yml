@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   reconcile:
-    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@effd17addc5c86839c1bde58289e9939a1ea762a
+    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@1f2c72b7e5a52c4c4a70bb88ad548e0fdcc579bd
     with:
       dry_run: ${{ inputs.dry_run || false }}
       caller_workflow: puppets.yml
