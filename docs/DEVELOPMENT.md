@@ -107,6 +107,10 @@ If there's a merge conflict, the workflow fails with a clear error — resolve t
 - Update documentation as needed
 - Use conventional commit messages
 
+## Automated Issue Implementation
+
+Maintainer-approved issues may be implemented by repository automation; any generated pull request must still pass normal CI and human review before it can be merged.
+
 ## Automated Postmortems
 
 When a bug-fix PR is merged, an automated 5-Whys postmortem + hardening pipeline
