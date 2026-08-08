@@ -30,4 +30,4 @@ jobs:
       dry_run: ${{ inputs.dry_run || false }}
       caller_workflow: puppets.yml
     secrets:
-      token: ${{ secrets.PAT_TOKEN }}
+      token: ${{ secrets.PUPPETS_TOKEN }}
