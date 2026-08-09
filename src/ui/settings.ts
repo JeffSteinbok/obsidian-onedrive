@@ -111,6 +111,17 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						// Required for work and school accounts, so it belongs with the
+						// identity settings rather than under Advanced, where an
+						// optional personal-account override lives.
+						name: t('settings.advanced.customClientId.name'),
+						desc: t('settings.advanced.customClientId.desc'),
+						visible: () => this.plugin.settings.accountType !== 'personal',
+						render: (setting) => {
+							this.renderCustomClientIdSetting(setting);
+						},
+					},
+					{
 						name: t('settings.auth.accessMode.name'),
 						desc: t('settings.auth.accessMode.fullAccessDesc'),
 						render: (setting) => {
@@ -327,8 +338,11 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					{
 						name: t('settings.advanced.customClientId.name'),
 						desc: t('settings.advanced.customClientId.desc'),
+						// Personal accounts only — work and school accounts render this
+						// field in the Authentication group, where it is required.
 						visible: () =>
-							this.plugin.settings.useCustomClientId || this.plugin.settings.accountType !== 'personal',
+							this.plugin.settings.accountType === 'personal' &&
+							this.plugin.settings.useCustomClientId,
 						render: (setting) => {
 							this.renderCustomClientIdSetting(setting);
 						},
@@ -919,6 +933,12 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			this.renderTenantIdSetting(new Setting(containerEl));
 		}
 
+		// Client ID — required for work and school accounts, so it sits with the
+		// identity settings instead of under Advanced
+		if (this.plugin.settings.accountType !== 'personal') {
+			this.renderCustomClientIdSetting(new Setting(containerEl));
+		}
+
 		// Access mode
 		this.renderAccessModeSetting(new Setting(containerEl));
 
@@ -1322,8 +1342,9 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				})
 			);
 
-		// Toggle is personal-only; org accounts always need a custom client ID,
-		// so the field below renders unconditionally for them
+		// Personal accounts only: an optional override behind a toggle. Work and
+		// school accounts require a client ID and render it in the Authentication
+		// section instead.
 		if (this.plugin.settings.accountType === 'personal') {
 			new Setting(containerEl)
 				.setName(t('settings.advanced.customClientId.toggleName'))
@@ -1335,10 +1356,10 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						this.renderSettings();
 					})
 				);
-		}
 
-		if (this.plugin.settings.useCustomClientId || this.plugin.settings.accountType !== 'personal') {
-			this.renderCustomClientIdSetting(new Setting(containerEl));
+			if (this.plugin.settings.useCustomClientId) {
+				this.renderCustomClientIdSetting(new Setting(containerEl));
+			}
 		}
 	}
 
