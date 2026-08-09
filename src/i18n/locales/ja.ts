@@ -56,6 +56,19 @@ export const ja = {
 			connectSuccess: 'OneDriveに正常に接続しました',
 			connectFailed: 'OneDriveへの接続に失敗しました: {{message}}',
 			disconnectSuccess: 'OneDriveから切断しました',
+			customClientIdRequired:
+				'職場または学校アカウントにはカスタムクライアントIDが必要です。独自のアプリケーションを登録する方法はセットアップドキュメントを参照してください。',
+			tenantIdRequired: 'テナントアカウントタイプにはテナントIDが必要です。',
+			reconnectRequiredIdentityChanged: 'アカウント設定が変更されました。OneDriveに再接続してください。',
+			accessModeSwitchedToFullAccess:
+				'アプリフォルダーモードは職場または学校アカウントでは利用できません。アクセスモードはフルアクセスに切り替わりました。',
+			entra: {
+				conditionalAccessBlocked:
+					'組織のポリシーによりこのサインイン方法はブロックされています。管理者に連絡するか、別のデバイスをお試しください。',
+				appNotAuthorized: 'このアプリケーションは組織でまだ承認されていません。管理者にアプリ登録の承認を依頼してください。',
+				accountTypeMismatch:
+					'サインインしたアカウントが設定されたアカウントタイプと一致しません。設定でアカウントタイプを確認してください。',
+			},
 		},
 		sync: {
 			stateCleared: '同期状態がクリアされました。完全同期を実行中...',
@@ -178,6 +191,18 @@ export const ja = {
 	settings: {
 		auth: {
 			heading: '認証',
+			accountType: {
+				name: 'アカウントの種類',
+				desc: '接続するMicrosoftアカウントの種類を選択してください。',
+				personal: '個人 (Microsoftアカウント)',
+				workSchool: '職場または学校 (任意の組織)',
+				tenant: '職場または学校 (特定の組織)',
+				tenantIdName: 'テナントID',
+				tenantIdDesc: 'サインイン先のEntra IDテナント (ディレクトリ) ID。',
+				tenantIdPlaceholder: '例: 11111111-1111-1111-1111-111111111111',
+				appFolderUnavailable: 'アプリフォルダーモードは職場または学校アカウントでは利用できません。',
+				reconnectRequired: ' この変更には再接続が必要です。',
+			},
 			accessMode: {
 				name: 'OneDriveアクセスモード',
 				appFolder: 'アプリフォルダ（推奨）',
@@ -312,6 +337,7 @@ export const ja = {
 				name: 'カスタムクライアントID',
 				desc: 'Azure ADアプリケーション（クライアント）ID',
 				helpPrefix: '',
+				requiredNote: ' 職場または学校アカウントでは必須です。',
 				helpLink: 'カスタムクライアントIDセットアップガイド',
 				helpSuffix: 'をREADMEで参照。',
 			},

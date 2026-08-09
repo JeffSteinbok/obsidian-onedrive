@@ -56,6 +56,20 @@ export const en = {
 			connectSuccess: 'Successfully connected to OneDrive',
 			connectFailed: 'Failed to connect to OneDrive: {{message}}',
 			disconnectSuccess: 'Disconnected from OneDrive',
+			customClientIdRequired:
+				'Work and school accounts require a custom client ID. See the setup documentation to register your own application.',
+			tenantIdRequired: 'A tenant ID is required for the tenant account type.',
+			reconnectRequiredIdentityChanged: 'Account settings changed. Please reconnect to OneDrive.',
+			accessModeSwitchedToFullAccess:
+				'App Folder mode is unavailable for work and school accounts. Access mode switched to Full Access.',
+			entra: {
+				conditionalAccessBlocked:
+					"Your organization's policy blocks this sign-in method. Contact your administrator, or try a different device.",
+				appNotAuthorized:
+					'This application is not yet approved in your organization. Ask an administrator to approve the app registration.',
+				accountTypeMismatch:
+					'The signed-in account does not match the configured account type. Check the account type in settings.',
+			},
 		},
 		sync: {
 			stateCleared: 'Sync state cleared. Running full sync...',
@@ -178,6 +192,18 @@ export const en = {
 	settings: {
 		auth: {
 			heading: 'Authentication',
+			accountType: {
+				name: 'Account type',
+				desc: 'Choose which kind of Microsoft account you are connecting with.',
+				personal: 'Personal (Microsoft account)',
+				workSchool: 'Work or school (any organization)',
+				tenant: 'Work or school (specific organization)',
+				tenantIdName: 'Tenant ID',
+				tenantIdDesc: "The Entra ID tenant (directory) ID to sign in against.",
+				tenantIdPlaceholder: 'e.g. 11111111-1111-1111-1111-111111111111',
+				appFolderUnavailable: 'App Folder mode is unavailable for work and school accounts.',
+				reconnectRequired: ' Changing this requires reconnecting.',
+			},
 			accessMode: {
 				name: 'OneDrive access mode',
 				appFolder: 'App Folder (Recommended)',
@@ -315,6 +341,7 @@ export const en = {
 					'Use your own Azure AD app registration. See the README for setup instructions.',
 				name: 'Custom client ID',
 				desc: 'Your Azure AD Application (client) ID',
+				requiredNote: ' Required for work and school accounts.',
 				helpPrefix: 'See ',
 				helpLink: 'Custom Client ID setup guide',
 				helpSuffix: ' in the README.',

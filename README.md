@@ -6,7 +6,7 @@
 
 ![Social Preview](socialPreview.png)
 
-Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobile-friendly, battery-efficient.
+Sync your Obsidian vault with **OneDrive**. Zero-config for personal Microsoft accounts; work and school (Entra ID) accounts are also supported with a one-time app registration. Mobile-friendly, battery-efficient.
 
 📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Advanced Usage](docs/ADVANCED.md) · [Development](docs/DEVELOPMENT.md) · [Postmortem Process](docs/POSTMORTEM.md)
 
@@ -18,7 +18,8 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 
 ## ✨ Features
 
-- **Zero-Configuration** — No Azure AD app registration. Just click connect and authenticate.
+- **Zero-Configuration for Personal Accounts** — No Azure AD app registration needed. Just click connect and authenticate.
+- **Work and School Accounts** — Entra ID (Microsoft 365 Business/Enterprise) accounts are supported with your own app registration. See [Advanced Usage](docs/ADVANCED.md#account-types).
 - **Mobile-First** — Device Code Flow works on iOS and Android with no redirects.
 - **Event-Driven Sync** — Syncs on file changes, not polling. Great for battery life.
 - **Bidirectional** — Automatic two-way sync with configurable conflict resolution.
@@ -62,6 +63,9 @@ Sync your Obsidian vault with **OneDrive Personal** accounts. Zero-config, mobil
 2. Enter the displayed code at [microsoft.com/devicelogin](https://microsoft.com/devicelogin)
 3. Sign in and grant permissions
 4. Done — your vault syncs automatically!
+
+> [!NOTE]
+> Signing in with a work or school (Entra ID) account? Set **Account type** in settings first — see [Account Types](docs/ADVANCED.md#account-types) for the one-time app registration these accounts require.
 
 ### Configuration
 

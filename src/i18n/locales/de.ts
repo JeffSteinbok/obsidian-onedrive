@@ -56,6 +56,20 @@ export const de = {
 			connectSuccess: 'Erfolgreich mit OneDrive verbunden',
 			connectFailed: 'Verbindung zu OneDrive fehlgeschlagen: {{message}}',
 			disconnectSuccess: 'Von OneDrive getrennt',
+			customClientIdRequired:
+				'Geschäfts- und Schulkonten benötigen eine benutzerdefinierte Client-ID. In der Einrichtungsdokumentation erfahren Sie, wie Sie Ihre eigene Anwendung registrieren.',
+			tenantIdRequired: 'Für den Kontotyp „Mandant“ ist eine Mandanten-ID erforderlich.',
+			reconnectRequiredIdentityChanged: 'Kontoeinstellungen geändert. Bitte erneut mit OneDrive verbinden.',
+			accessModeSwitchedToFullAccess:
+				'Der App-Ordner-Modus ist für geschäftliche und Schulkonten nicht verfügbar. Der Zugriffsmodus wurde auf Vollzugriff umgestellt.',
+			entra: {
+				conditionalAccessBlocked:
+					'Die Richtlinie Ihrer Organisation blockiert diese Anmeldemethode. Wenden Sie sich an Ihren Administrator oder verwenden Sie ein anderes Gerät.',
+				appNotAuthorized:
+					'Diese Anwendung ist in Ihrer Organisation noch nicht genehmigt. Bitten Sie einen Administrator, die App-Registrierung zu genehmigen.',
+				accountTypeMismatch:
+					'Das angemeldete Konto stimmt nicht mit dem konfigurierten Kontotyp überein. Überprüfen Sie den Kontotyp in den Einstellungen.',
+			},
 		},
 		sync: {
 			stateCleared: 'Synchronisierungsstatus gelöscht. Vollständige Synchronisierung wird ausgeführt...',
@@ -178,6 +192,18 @@ export const de = {
 	settings: {
 		auth: {
 			heading: 'Authentifizierung',
+			accountType: {
+				name: 'Kontotyp',
+				desc: 'Wählen Sie, mit welcher Art von Microsoft-Konto Sie sich verbinden.',
+				personal: 'Privat (Microsoft-Konto)',
+				workSchool: 'Geschäftlich oder Schule (beliebige Organisation)',
+				tenant: 'Geschäftlich oder Schule (bestimmte Organisation)',
+				tenantIdName: 'Mandanten-ID',
+				tenantIdDesc: 'Die Entra ID-Mandanten-ID (Verzeichnis-ID), gegen die angemeldet wird.',
+				tenantIdPlaceholder: 'z. B. 11111111-1111-1111-1111-111111111111',
+				appFolderUnavailable: 'Der App-Ordner-Modus ist für geschäftliche und Schulkonten nicht verfügbar.',
+				reconnectRequired: ' Diese Änderung erfordert eine erneute Verbindung.',
+			},
 			accessMode: {
 				name: 'OneDrive-Zugriffsmodus',
 				appFolder: 'App-Ordner (Empfohlen)',
@@ -312,6 +338,7 @@ export const de = {
 				name: 'Benutzerdefinierte Client-ID',
 				desc: 'Ihre Azure AD-Anwendungs-(Client-)ID',
 				helpPrefix: 'Siehe ',
+				requiredNote: ' Für Geschäfts- und Schulkonten erforderlich.',
 				helpLink: 'Anleitung zur Einrichtung einer benutzerdefinierten Client-ID',
 				helpSuffix: ' im README.',
 			},

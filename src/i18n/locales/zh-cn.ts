@@ -58,6 +58,15 @@ export const zhCn = {
 			connectSuccess: '已连接到 OneDrive',
 			connectFailed: '连接 OneDrive 失败：{{message}}',
 			disconnectSuccess: '已断开 OneDrive 连接',
+			customClientIdRequired: '工作或学校账户需要自定义客户端 ID。请参阅设置文档以注册您自己的应用程序。',
+			tenantIdRequired: '租户账户类型需要租户 ID。',
+			reconnectRequiredIdentityChanged: '账户设置已更改，请重新连接 OneDrive。',
+			accessModeSwitchedToFullAccess: '工作或学校账户不支持应用文件夹模式，访问模式已切换为完全访问。',
+			entra: {
+				conditionalAccessBlocked: '您组织的策略阻止了此登录方式。请联系管理员，或尝试其他设备。',
+				appNotAuthorized: '该应用程序尚未在您的组织中获得批准。请让管理员批准该应用注册。',
+				accountTypeMismatch: '登录的账户与配置的账户类型不匹配，请检查设置中的账户类型。',
+			},
 		},
 		sync: {
 			stateCleared: '同步状态已清除，正在执行完整同步...',
@@ -177,6 +186,18 @@ export const zhCn = {
 	settings: {
 		auth: {
 			heading: '授权',
+			accountType: {
+				name: '账户类型',
+				desc: '选择要连接的 Microsoft 账户类型。',
+				personal: '个人（Microsoft 账户）',
+				workSchool: '工作或学校（任意组织）',
+				tenant: '工作或学校（指定组织）',
+				tenantIdName: '租户 ID',
+				tenantIdDesc: '要登录的 Entra ID 租户（目录）ID。',
+				tenantIdPlaceholder: '例如：11111111-1111-1111-1111-111111111111',
+				appFolderUnavailable: '工作或学校账户不支持应用文件夹模式。',
+				reconnectRequired: ' 更改此项需要重新连接。',
+			},
 			accessMode: {
 				name: 'OneDrive 访问模式',
 				appFolder: '应用文件夹（推荐）',
@@ -312,6 +333,7 @@ export const zhCn = {
 				toggleName: '使用自定义客户端 ID',
 				toggleDesc: '使用你自己的 Azure AD 应用注册信息。设置方法见 README。',
 				name: '自定义客户端 ID',
+				requiredNote: '（工作或学校账户为必填项）',
 				desc: '你的 Azure AD Application (client) ID',
 				helpPrefix: '查看 README 中的 ',
 				helpLink: '自定义客户端 ID 设置指南',

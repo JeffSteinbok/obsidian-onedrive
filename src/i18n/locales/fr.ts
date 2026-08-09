@@ -56,6 +56,20 @@ export const fr = {
 			connectSuccess: 'Connecté avec succès à OneDrive',
 			connectFailed: 'Échec de la connexion à OneDrive: {{message}}',
 			disconnectSuccess: 'Déconnecté de OneDrive',
+			customClientIdRequired:
+				"Les comptes professionnels ou scolaires nécessitent un ID client personnalisé. Consultez la documentation de configuration pour enregistrer votre propre application.",
+			tenantIdRequired: 'Un ID de locataire est requis pour le type de compte locataire.',
+			reconnectRequiredIdentityChanged: 'Paramètres du compte modifiés. Veuillez vous reconnecter à OneDrive.',
+			accessModeSwitchedToFullAccess:
+				"Le mode Dossier d'application n'est pas disponible pour les comptes professionnels ou scolaires. Le mode d'accès est passé à Accès complet.",
+			entra: {
+				conditionalAccessBlocked:
+					'La politique de votre organisation bloque cette méthode de connexion. Contactez votre administrateur ou essayez un autre appareil.',
+				appNotAuthorized:
+					"Cette application n'est pas encore approuvée dans votre organisation. Demandez à un administrateur d'approuver l'enregistrement de l'application.",
+				accountTypeMismatch:
+					'Le compte connecté ne correspond pas au type de compte configuré. Vérifiez le type de compte dans les paramètres.',
+			},
 		},
 		sync: {
 			stateCleared: 'État de synchronisation effacé. Exécution d\'une synchronisation complète...',
@@ -178,6 +192,18 @@ export const fr = {
 	settings: {
 		auth: {
 			heading: 'Authentification',
+			accountType: {
+				name: 'Type de compte',
+				desc: 'Choisissez le type de compte Microsoft avec lequel vous vous connectez.',
+				personal: 'Personnel (compte Microsoft)',
+				workSchool: 'Professionnel ou scolaire (toute organisation)',
+				tenant: 'Professionnel ou scolaire (organisation spécifique)',
+				tenantIdName: 'ID de locataire',
+				tenantIdDesc: "L'ID de locataire (répertoire) Entra ID auquel se connecter.",
+				tenantIdPlaceholder: 'ex. 11111111-1111-1111-1111-111111111111',
+				appFolderUnavailable: "Le mode Dossier d'application n'est pas disponible pour les comptes professionnels ou scolaires.",
+				reconnectRequired: ' Cette modification nécessite une reconnexion.',
+			},
 			accessMode: {
 				name: 'Mode d\'accès OneDrive',
 				appFolder: 'Dossier d\'application (Recommandé)',
@@ -312,6 +338,7 @@ export const fr = {
 				name: 'ID client personnalisé',
 				desc: 'Votre ID d\'Application (client) Azure AD',
 				helpPrefix: 'Voir ',
+				requiredNote: ' Requis pour les comptes professionnels ou scolaires.',
 				helpLink: 'Guide de configuration d\'ID client personnalisé',
 				helpSuffix: ' dans le README.',
 			},

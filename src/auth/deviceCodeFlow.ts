@@ -30,22 +30,12 @@
  */
 
 import { requestUrl } from 'obsidian';
-import {
-	DeviceCodeResponse,
-	TokenResponse,
-	AuthenticationError,
-	OneDriveError,
-	OneDriveAccessMode,
-} from '../types';
-import {
-	OAUTH_ENDPOINTS,
-	OAUTH_SCOPES_APP_FOLDER,
-	OAUTH_SCOPES_FULL_ACCESS,
-	DEFAULT_ONEDRIVE_CLIENT_ID,
-} from '../constants';
+import { DeviceCodeResponse, TokenResponse, AuthenticationError, OneDriveError } from '../types';
+import { OAuthEndpointSet, OAUTH_ENDPOINTS, OAUTH_SCOPES_APP_FOLDER, DEFAULT_ONEDRIVE_CLIENT_ID } from '../constants';
 import { logger } from '../utils/logger';
 import { parseHttpError } from '../utils/errors';
 import { sleep } from '../utils/retry';
+import { mapEntraAuthError } from './entraErrors';
 
 interface OAuthErrorResponse {
 	error?: string;
@@ -56,8 +46,9 @@ export class DeviceCodeFlowClient {
 	private cancelled = false;
 
 	constructor(
-		private clientId: string = DEFAULT_ONEDRIVE_CLIENT_ID,
-		private accessMode: OneDriveAccessMode = OneDriveAccessMode.APP_FOLDER
+		private endpoints: OAuthEndpointSet = OAUTH_ENDPOINTS,
+		private scopes: string[] = OAUTH_SCOPES_APP_FOLDER,
+		private clientId: string = DEFAULT_ONEDRIVE_CLIENT_ID
 	) {}
 
 	/**
@@ -72,27 +63,32 @@ export class DeviceCodeFlowClient {
 	 * Returns the device code and user code for the user to enter
 	 */
 	async requestDeviceCode(): Promise<DeviceCodeResponse> {
-		const scopes =
-			this.accessMode === OneDriveAccessMode.FULL_ACCESS
-				? OAUTH_SCOPES_FULL_ACCESS
-				: OAUTH_SCOPES_APP_FOLDER;
-
-		logger.debug('Requesting device code with scopes:', scopes);
+		logger.debug('Requesting device code with scopes:', this.scopes);
 
 		try {
 			const response = await requestUrl({
-				url: OAUTH_ENDPOINTS.DEVICE_CODE,
+				url: this.endpoints.DEVICE_CODE,
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/x-www-form-urlencoded',
 				},
 				body: new URLSearchParams({
 					client_id: this.clientId,
-					scope: scopes.join(' '),
+					scope: this.scopes.join(' '),
 				}).toString(),
+				// Without this, requestUrl throws on 4xx before we can read the
+				// body — and the body is where Entra puts the AADSTS code that
+				// explains work/school failures (unapproved app, tenant policy,
+				// wrong account type).
+				throw: false,
 			});
 
 			if (response.status !== 200) {
+				const errorData = this.parseErrorResponse(response);
+				const mappedMessage = mapEntraAuthError(errorData.error, errorData.error_description);
+				if (mappedMessage) {
+					throw new AuthenticationError(mappedMessage, errorData.error);
+				}
 				throw parseHttpError(response.status, response.text);
 			}
 
@@ -103,9 +99,26 @@ export class DeviceCodeFlowClient {
 			return data;
 		} catch (error) {
 			logger.error('Failed to request device code:', error);
+			if (error instanceof AuthenticationError) {
+				// Already actionable (a mapped Entra rejection) — don't bury it
+				// behind a generic prefix.
+				throw error;
+			}
 			throw new AuthenticationError(
 				`Failed to request device code: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
+		}
+	}
+
+	/**
+	 * Read an OAuth error body defensively: a non-JSON or empty response makes
+	 * `requestUrl`'s `json` getter throw or yield null.
+	 */
+	private parseErrorResponse(response: { json: unknown }): OAuthErrorResponse {
+		try {
+			return (response.json as OAuthErrorResponse) ?? {};
+		} catch {
+			return {};
 		}
 	}
 
@@ -138,7 +151,7 @@ export class DeviceCodeFlowClient {
 
 			try {
 				const response = await requestUrl({
-					url: OAUTH_ENDPOINTS.TOKEN,
+					url: this.endpoints.TOKEN,
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/x-www-form-urlencoded',
@@ -161,8 +174,15 @@ export class DeviceCodeFlowClient {
 				consecutiveNetworkErrors = 0;
 
 				// Handle error responses (including 400s from Obsidian's requestUrl)
-				const errorData = response.json as unknown as OAuthErrorResponse;
+				const errorData = this.parseErrorResponse(response);
 				const errorCode = errorData.error;
+
+				const mappedMessage = mapEntraAuthError(errorCode, errorData.error_description);
+				if (mappedMessage) {
+					// Stop polling — a rejection Entra names (tenant policy, unapproved
+					// app, wrong account type) will not resolve on retry.
+					throw new AuthenticationError(mappedMessage, errorCode);
+				}
 
 				if (errorCode === 'authorization_pending') {
 					// User hasn't completed auth yet, continue polling
@@ -212,7 +232,7 @@ export class DeviceCodeFlowClient {
 
 		try {
 			const response = await requestUrl({
-				url: OAUTH_ENDPOINTS.TOKEN,
+				url: this.endpoints.TOKEN,
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/x-www-form-urlencoded',

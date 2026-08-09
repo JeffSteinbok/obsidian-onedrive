@@ -284,6 +284,14 @@ export enum OneDriveAccessMode {
 	FULL_ACCESS = 'full-access', // Access to all OneDrive files
 }
 
+/**
+ * Which Microsoft identity authority to sign in against.
+ * - `personal`: consumer Microsoft account (`/consumers/`)
+ * - `work-school`: any Entra ID work or school account (`/organizations/`)
+ * - `tenant`: one named Entra ID tenant (`/{tenantId}/`)
+ */
+export type AccountType = 'personal' | 'work-school' | 'tenant';
+
 /** Experimental settings — performance tuning and unstable features */
 export interface ExperimentalSettings {
 	skipFolderChecks: boolean; // Skip folder existence checks before uploads (OneDrive auto-creates)
@@ -301,6 +309,8 @@ export const DEFAULT_EXPERIMENTAL_SETTINGS: ExperimentalSettings = {
 
 export interface PluginSettings {
 	// Authentication
+	accountType: AccountType;
+	tenantId?: string; // Required when accountType is 'tenant'
 	useCustomClientId: boolean;
 	customClientId?: string;
 	tokens?: StoredTokens;
@@ -345,6 +355,8 @@ export interface PluginSettings {
 
 export const DEFAULT_SETTINGS: PluginSettings = {
 	// Authentication
+	accountType: 'personal',
+	tenantId: undefined,
 	useCustomClientId: false,
 	customClientId: undefined,
 	tokens: undefined,
