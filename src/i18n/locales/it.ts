@@ -56,6 +56,20 @@ export const it = {
 			connectSuccess: 'Connesso con successo a OneDrive',
 			connectFailed: 'Connessione a OneDrive fallita: {{message}}',
 			disconnectSuccess: 'Disconnesso da OneDrive',
+			customClientIdRequired:
+				'Gli account di lavoro o scuola richiedono un ID client personalizzato. Consulta la documentazione di configurazione per registrare la tua applicazione.',
+			tenantIdRequired: 'È richiesto un ID tenant per il tipo di account tenant.',
+			reconnectRequiredIdentityChanged: 'Impostazioni account modificate. Riconnettiti a OneDrive.',
+			accessModeSwitchedToFullAccess:
+				'La modalità Cartella app non è disponibile per account di lavoro o scuola. Modalità di accesso cambiata in Accesso completo.',
+			entra: {
+				conditionalAccessBlocked:
+					'La policy della tua organizzazione blocca questo metodo di accesso. Contatta il tuo amministratore o prova un altro dispositivo.',
+				appNotAuthorized:
+					"Questa applicazione non è ancora approvata nella tua organizzazione. Chiedi a un amministratore di approvare la registrazione dell'app.",
+				accountTypeMismatch:
+					"L'account con cui hai effettuato l'accesso non corrisponde al tipo di account configurato. Controlla il tipo di account nelle impostazioni.",
+			},
 		},
 		sync: {
 			stateCleared: 'Stato sincronizzazione cancellato. Esecuzione sincronizzazione completa...',
@@ -178,6 +192,18 @@ export const it = {
 	settings: {
 		auth: {
 			heading: 'Autenticazione',
+			accountType: {
+				name: 'Tipo di account',
+				desc: 'Scegli con quale tipo di account Microsoft ti stai connettendo.',
+				personal: 'Personale (account Microsoft)',
+				workSchool: 'Lavoro o scuola (qualsiasi organizzazione)',
+				tenant: 'Lavoro o scuola (organizzazione specifica)',
+				tenantIdName: 'ID tenant',
+				tenantIdDesc: "L'ID tenant (directory) Entra ID a cui accedere.",
+				tenantIdPlaceholder: 'es. 11111111-1111-1111-1111-111111111111',
+				appFolderUnavailable: 'La modalità Cartella app non è disponibile per account di lavoro o scuola.',
+				reconnectRequired: ' Questa modifica richiede una riconnessione.',
+			},
 			accessMode: {
 				name: 'Modalità accesso OneDrive',
 				appFolder: 'Cartella app (Consigliato)',
@@ -312,6 +338,7 @@ export const it = {
 				name: 'ID client personalizzato',
 				desc: 'Il tuo ID Applicazione (client) Azure AD',
 				helpPrefix: 'Vedi ',
+				requiredNote: ' Richiesto per account di lavoro o scuola.',
 				helpLink: 'Guida configurazione ID client personalizzato',
 				helpSuffix: ' nel README.',
 			},

@@ -304,6 +304,65 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.appFolderSubpathConfirmed).toBe(true);
 	});
 
+	it('loadSettings resolves a missing accountType to personal without touching stored tokens', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			connectedUser: { id: '1', displayName: 'Test User', userPrincipalName: 'test@test.com' },
+		});
+
+		await plugin.loadSettings();
+
+		expect(plugin.settings.accountType).toBe('personal');
+		expect(plugin.settings.connectedUser).toBeDefined();
+		expect(mocks.tokenStorage.clearTokens).not.toHaveBeenCalled();
+	});
+
+	it('loadSettings normalizes a bogus accountType to personal', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({ accountType: null });
+
+		await plugin.loadSettings();
+
+		expect(plugin.settings.accountType).toBe('personal');
+	});
+
+	it('loadSettings forces work/school accounts out of App Folder mode', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accountType: 'work-school',
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+		});
+
+		await plugin.loadSettings();
+
+		expect(plugin.settings.accessMode).toBe(OneDriveAccessMode.FULL_ACCESS);
+	});
+
+	it('loadSettings trims identity fields and drops blank ones', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accountType: 'tenant',
+			tenantId: '  my-tenant\n',
+			customClientId: '   ',
+		});
+
+		await plugin.loadSettings();
+
+		expect(plugin.settings.tenantId).toBe('my-tenant');
+		expect(plugin.settings.customClientId).toBeUndefined();
+	});
+
+	it('onload fails closed when the tenant authority cannot be resolved', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accountType: 'tenant',
+			customClientId: 'a-client-id',
+			tenantId: 'not a valid tenant',
+		});
+
+		await plugin.onload();
+
+		// No auth provider built against a fallback authority
+		expect(mocks.OneDriveAuthProvider).not.toHaveBeenCalled();
+	});
+
 	it('saveSettings persists sync state data (tokens stored in SecretStorage)', async () => {
 		const savedState = { lastSyncTime: 123, fileStates: [['note.md', { path: 'note.md' }]] };
 		mocks.syncStateManager.prepareForSave.mockReturnValue(savedState as any);
@@ -498,6 +557,97 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.remoteRelativePathInShared).toBeUndefined();
 		expect((plugin as any).syncEngine).toBeUndefined();
 		expect((plugin as any).eventManager).toBeUndefined();
+	});
+
+	it('invalidateCredentialsForIdentityChange clears tokens and connection state when identity changes', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			connectedUser: {
+				id: '1',
+				displayName: 'Test User',
+				userPrincipalName: 'test@test.com',
+			},
+		});
+		await plugin.onload();
+
+		await plugin.invalidateCredentialsForIdentityChange();
+
+		expect(mocks.deviceCodeClient.cancelPolling).toHaveBeenCalled();
+		expect(mocks.tokenStorage.clearTokens).toHaveBeenCalled();
+		expect(mocks.eventManager.stopListening).toHaveBeenCalled();
+		expect(plugin.settings.connectedUser).toBeUndefined();
+		expect((plugin as any).authProvider).toBeUndefined();
+		expect((plugin as any).oneDriveClient).toBeUndefined();
+		expect((plugin as any).syncEngine).toBeUndefined();
+		expect((plugin as any).eventManager).toBeUndefined();
+	});
+
+	it('invalidateCredentialsForIdentityChange clears the previous drive pointers and sync state', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			remoteDriveId: 'old-drive',
+			remoteItemId: 'old-item',
+			remoteRootName: 'Old Root',
+			remoteRootPath: '/Old Root',
+			remoteRelativePathInShared: 'Vaults/MyVault',
+			connectedUser: { id: '1', displayName: 'Test User', userPrincipalName: 'test@test.com' },
+		});
+		await plugin.onload();
+
+		await plugin.invalidateCredentialsForIdentityChange();
+
+		expect(plugin.settings.remoteDriveId).toBeUndefined();
+		expect(plugin.settings.remoteItemId).toBeUndefined();
+		expect(plugin.settings.remoteRootName).toBeUndefined();
+		expect(plugin.settings.remoteRootPath).toBeUndefined();
+		expect(plugin.settings.remoteRelativePathInShared).toBeUndefined();
+		expect(mocks.syncStateManager.clearState).toHaveBeenCalled();
+	});
+
+	it('invalidateCredentialsForIdentityChange is a no-op when nothing is connected', async () => {
+		await plugin.onload();
+
+		await plugin.invalidateCredentialsForIdentityChange();
+
+		expect(mocks.tokenStorage.clearTokens).not.toHaveBeenCalled();
+	});
+
+	it('authenticate refuses to start for a work/school account with no custom client ID', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({ accountType: 'work-school' });
+		await plugin.onload();
+
+		await expect(plugin.authenticate()).rejects.toThrow(/custom client id/i);
+		expect(mocks.deviceCodeClient.authenticate).not.toHaveBeenCalled();
+	});
+
+	it('authenticate refuses to start for a tenant account with no tenant ID', async () => {
+		(plugin as any).loadData = vi
+			.fn()
+			.mockResolvedValue({ accountType: 'tenant', customClientId: 'a-client-id' });
+		await plugin.onload();
+
+		await expect(plugin.authenticate()).rejects.toThrow(/tenant id/i);
+		expect(mocks.deviceCodeClient.authenticate).not.toHaveBeenCalled();
+	});
+
+	it('authenticate proceeds for a tenant account once client ID and tenant ID are configured', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accountType: 'tenant',
+			customClientId: 'a-client-id',
+			tenantId: 'my-tenant',
+		});
+		await plugin.onload();
+		mocks.deviceCodeClient.authenticate.mockResolvedValue({
+			access_token: 'at',
+			refresh_token: 'rt',
+			expires_in: 3600,
+			token_type: 'Bearer',
+			scope: 'x',
+		});
+
+		await plugin.authenticate();
+
+		expect(mocks.deviceCodeClient.authenticate).toHaveBeenCalled();
 	});
 
 	it('onload prefers the persisted relative path for shared folders', async () => {

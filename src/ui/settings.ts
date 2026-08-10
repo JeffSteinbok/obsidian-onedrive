@@ -10,6 +10,7 @@ import {
 	Setting,
 	Notice,
 	type PluginManifest,
+	type TextComponent,
 	type SettingDefinitionItem,
 } from 'obsidian';
 import {
@@ -69,6 +70,8 @@ interface OneDrivePlugin extends Plugin {
 	onAppFolderSubpathChanged(subpath: string): Promise<void>;
 	getSyncStatusInfo(): SyncStatusInfo;
 	getExperimentalSetting<K extends keyof ExperimentalSettings>(key: K): ExperimentalSettings[K];
+	invalidateCredentialsForIdentityChange(): Promise<void>;
+	normalizeIdentitySettings(): void;
 }
 
 /**
@@ -92,6 +95,32 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				type: 'group',
 				heading: t('settings.auth.heading'),
 				items: [
+					{
+						name: t('settings.auth.accountType.name'),
+						desc: t('settings.auth.accountType.desc'),
+						render: (setting) => {
+							this.renderAccountTypeSetting(setting);
+						},
+					},
+					{
+						name: t('settings.auth.accountType.tenantIdName'),
+						desc: t('settings.auth.accountType.tenantIdDesc'),
+						visible: () => this.plugin.settings.accountType === 'tenant',
+						render: (setting) => {
+							this.renderTenantIdSetting(setting);
+						},
+					},
+					{
+						// Required for work and school accounts, so it belongs with the
+						// identity settings rather than under Advanced, where an
+						// optional personal-account override lives.
+						name: t('settings.advanced.customClientId.name'),
+						desc: t('settings.advanced.customClientId.desc'),
+						visible: () => this.plugin.settings.accountType !== 'personal',
+						render: (setting) => {
+							this.renderCustomClientIdSetting(setting);
+						},
+					},
 					{
 						name: t('settings.auth.accessMode.name'),
 						desc: t('settings.auth.accessMode.fullAccessDesc'),
@@ -300,6 +329,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					{
 						name: t('settings.advanced.customClientId.toggleName'),
 						desc: t('settings.advanced.customClientId.toggleDesc'),
+						visible: () => this.plugin.settings.accountType === 'personal',
 						control: {
 							type: 'toggle',
 							key: 'useCustomClientId',
@@ -308,7 +338,11 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					{
 						name: t('settings.advanced.customClientId.name'),
 						desc: t('settings.advanced.customClientId.desc'),
-						visible: () => this.plugin.settings.useCustomClientId,
+						// Personal accounts only — work and school accounts render this
+						// field in the Authentication group, where it is required.
+						visible: () =>
+							this.plugin.settings.accountType === 'personal' &&
+							this.plugin.settings.useCustomClientId,
 						render: (setting) => {
 							this.renderCustomClientIdSetting(setting);
 						},
@@ -496,30 +530,112 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		await this.plugin.saveSettings();
 	}
 
+	private isAppFolderAllowed(): boolean {
+		return this.plugin.settings.accountType === 'personal';
+	}
+
+	private renderAccountTypeSetting(setting: Setting): void {
+		const isConnected = !!this.plugin.settings.connectedUser;
+		const desc = isConnected
+			? t('settings.auth.accountType.desc') + t('settings.auth.accountType.reconnectRequired')
+			: t('settings.auth.accountType.desc');
+
+		setting
+			.setName(t('settings.auth.accountType.name'))
+			.setDesc(desc)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('personal', t('settings.auth.accountType.personal'))
+					.addOption('work-school', t('settings.auth.accountType.workSchool'))
+					.addOption('tenant', t('settings.auth.accountType.tenant'))
+					.setValue(this.plugin.settings.accountType)
+					.onChange(async (value) => {
+						this.plugin.settings.accountType = value as PluginSettings['accountType'];
+						const wasAppFolder = this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER;
+						this.plugin.normalizeIdentitySettings();
+						if (wasAppFolder && this.plugin.settings.accessMode !== OneDriveAccessMode.APP_FOLDER) {
+							new Notice(t('notices.auth.accessModeSwitchedToFullAccess'));
+						}
+						await this.plugin.saveSettings();
+						await this.plugin.invalidateCredentialsForIdentityChange();
+						this.refreshSettingsUi();
+					})
+			);
+	}
+
+	private renderTenantIdSetting(setting: Setting): void {
+		const isConnected = !!this.plugin.settings.connectedUser;
+		const desc = isConnected
+			? t('settings.auth.accountType.tenantIdDesc') + t('settings.auth.accountType.reconnectRequired')
+			: t('settings.auth.accountType.tenantIdDesc');
+
+		setting
+			.setName(t('settings.auth.accountType.tenantIdName'))
+			.setDesc(desc)
+			.addText((text) => {
+				text.setPlaceholder(t('settings.auth.accountType.tenantIdPlaceholder'))
+					.setValue(this.plugin.settings.tenantId || '')
+					.onChange(async (value) => {
+						this.plugin.settings.tenantId = value.trim() || undefined;
+						await this.plugin.saveSettings();
+					});
+				this.invalidateCredentialsOnCommit(text, () => this.plugin.settings.tenantId);
+			});
+	}
+
+	/**
+	 * Discard credentials when an identity field is *finished* being edited.
+	 *
+	 * Obsidian fires onChange per keystroke, so invalidating there would wipe the
+	 * user's tokens on the first character of a one-character correction. Wait
+	 * for the field to lose focus (or Enter), and only act if the committed value
+	 * actually differs from the one the current tokens were issued against.
+	 */
+	private invalidateCredentialsOnCommit(text: TextComponent, read: () => string | undefined): void {
+		let committedValue = read();
+
+		const commit = async () => {
+			const currentValue = read();
+			if (currentValue === committedValue) return;
+			committedValue = currentValue;
+			await this.plugin.invalidateCredentialsForIdentityChange();
+			this.refreshSettingsUi();
+		};
+
+		text.inputEl.addEventListener('blur', () => void commit());
+		text.inputEl.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter') void commit();
+		});
+	}
+
 	private renderAccessModeSetting(setting: Setting): void {
 		const isConnected = !!this.plugin.settings.connectedUser;
+		const appFolderAllowed = this.isAppFolderAllowed();
 		const modeDesc =
 			this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS
 				? t('settings.auth.accessMode.fullAccessDesc')
 				: t('settings.auth.accessMode.appFolderDesc');
-		const descWithWarning = isConnected
-			? modeDesc + t('settings.auth.accessMode.reconnectRequired')
-			: modeDesc;
+		let desc = appFolderAllowed ? modeDesc : `${modeDesc} ${t('settings.auth.accountType.appFolderUnavailable')}`;
+		if (isConnected) {
+			desc += t('settings.auth.accessMode.reconnectRequired');
+		}
 
 		setting
 			.setName(t('settings.auth.accessMode.name'))
-			.setDesc(descWithWarning)
-			.addDropdown((dropdown) =>
+			.setDesc(desc)
+			.addDropdown((dropdown) => {
+				if (appFolderAllowed) {
+					dropdown.addOption(OneDriveAccessMode.APP_FOLDER, t('settings.auth.accessMode.appFolder'));
+				}
 				dropdown
-					.addOption(OneDriveAccessMode.APP_FOLDER, t('settings.auth.accessMode.appFolder'))
 					.addOption(OneDriveAccessMode.FULL_ACCESS, t('settings.auth.accessMode.fullAccess'))
 					.setValue(this.plugin.settings.accessMode)
 					.onChange(async (value) => {
 						this.plugin.settings.accessMode = value as OneDriveAccessMode;
 						await this.plugin.saveSettings();
 						this.refreshSettingsUi();
-					})
-			);
+					});
+			});
 	}
 
 	private renderConnectionStatusSetting(setting: Setting): void {
@@ -761,18 +877,23 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	}
 
 	private renderCustomClientIdSetting(setting: Setting): void {
+		const isRequired = this.plugin.settings.accountType !== 'personal';
+		const desc = isRequired
+			? t('settings.advanced.customClientId.desc') + t('settings.advanced.customClientId.requiredNote')
+			: t('settings.advanced.customClientId.desc');
+
 		setting
 			.setName(t('settings.advanced.customClientId.name'))
-			.setDesc(t('settings.advanced.customClientId.desc'))
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_ONEDRIVE_CLIENT_ID)
+			.setDesc(desc)
+			.addText((text) => {
+				text.setPlaceholder(DEFAULT_ONEDRIVE_CLIENT_ID)
 					.setValue(this.plugin.settings.customClientId || '')
 					.onChange(async (value) => {
-						this.plugin.settings.customClientId = value;
+						this.plugin.settings.customClientId = value.trim() || undefined;
 						await this.plugin.saveSettings();
-					})
-			);
+					});
+				this.invalidateCredentialsOnCommit(text, () => this.plugin.settings.customClientId);
+			});
 
 		setting.descEl.appendText(` ${t('settings.advanced.customClientId.helpPrefix')}`);
 		setting.descEl.createEl('a', {
@@ -805,30 +926,21 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	private displayAuthSection(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName(t('settings.auth.heading')).setHeading();
 
-		// Access mode — first setting in this section
-		const isConnected = !!this.plugin.settings.connectedUser;
-		const modeDesc =
-			this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS
-				? t('settings.auth.accessMode.fullAccessDesc')
-				: t('settings.auth.accessMode.appFolderDesc');
-		const descWithWarning = isConnected
-			? modeDesc + t('settings.auth.accessMode.reconnectRequired')
-			: modeDesc;
+		// Account type — before access mode, which it constrains
+		this.renderAccountTypeSetting(new Setting(containerEl));
 
-		new Setting(containerEl)
-			.setName(t('settings.auth.accessMode.name'))
-			.setDesc(descWithWarning)
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption(OneDriveAccessMode.APP_FOLDER, t('settings.auth.accessMode.appFolder'))
-					.addOption(OneDriveAccessMode.FULL_ACCESS, t('settings.auth.accessMode.fullAccess'))
-					.setValue(this.plugin.settings.accessMode)
-					.onChange(async (value) => {
-						this.plugin.settings.accessMode = value as OneDriveAccessMode;
-						await this.plugin.saveSettings();
-						this.renderSettings();
-					})
-			);
+		if (this.plugin.settings.accountType === 'tenant') {
+			this.renderTenantIdSetting(new Setting(containerEl));
+		}
+
+		// Client ID — required for work and school accounts, so it sits with the
+		// identity settings instead of under Advanced
+		if (this.plugin.settings.accountType !== 'personal') {
+			this.renderCustomClientIdSetting(new Setting(containerEl));
+		}
+
+		// Access mode
+		this.renderAccessModeSetting(new Setting(containerEl));
 
 		// Connection status
 		const statusSetting = new Setting(containerEl).setName(
@@ -1230,42 +1342,24 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				})
 			);
 
-		// Custom client ID toggle
-		new Setting(containerEl)
-			.setName(t('settings.advanced.customClientId.toggleName'))
-			.setDesc(t('settings.advanced.customClientId.toggleDesc'))
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.useCustomClientId).onChange(async (value) => {
-					this.plugin.settings.useCustomClientId = value;
-					await this.plugin.saveSettings();
-					this.renderSettings();
-				})
-			);
-
-		if (this.plugin.settings.useCustomClientId) {
+		// Personal accounts only: an optional override behind a toggle. Work and
+		// school accounts require a client ID and render it in the Authentication
+		// section instead.
+		if (this.plugin.settings.accountType === 'personal') {
 			new Setting(containerEl)
-				.setName(t('settings.advanced.customClientId.name'))
-				.setDesc(t('settings.advanced.customClientId.desc'))
-				.addText((text) =>
-					text
-						.setPlaceholder(DEFAULT_ONEDRIVE_CLIENT_ID)
-						.setValue(this.plugin.settings.customClientId || '')
-						.onChange(async (value) => {
-							this.plugin.settings.customClientId = value;
-							await this.plugin.saveSettings();
-						})
+				.setName(t('settings.advanced.customClientId.toggleName'))
+				.setDesc(t('settings.advanced.customClientId.toggleDesc'))
+				.addToggle((toggle) =>
+					toggle.setValue(this.plugin.settings.useCustomClientId).onChange(async (value) => {
+						this.plugin.settings.useCustomClientId = value;
+						await this.plugin.saveSettings();
+						this.renderSettings();
+					})
 				);
 
-			const helpDiv = containerEl.createDiv({
-				cls: 'setting-item-description onedrive-sync-settings-help',
-			});
-			helpDiv.appendText(t('settings.advanced.customClientId.helpPrefix'));
-			helpDiv.createEl('a', {
-				text: t('settings.advanced.customClientId.helpLink'),
-				href: 'https://github.com/jeffsteinbok/obsidian-onedrive#custom-client-id',
-				attr: { target: '_blank' },
-			});
-			helpDiv.appendText(t('settings.advanced.customClientId.helpSuffix'));
+			if (this.plugin.settings.useCustomClientId) {
+				this.renderCustomClientIdSetting(new Setting(containerEl));
+			}
 		}
 	}
 

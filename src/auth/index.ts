@@ -22,7 +22,7 @@
  * import { DeviceCodeFlowClient, OneDriveAuthProvider, TokenStorage } from './auth';
  *
  * const tokenStorage = new TokenStorage();
- * const deviceCodeClient = new DeviceCodeFlowClient(clientId, accessMode);
+ * const deviceCodeClient = new DeviceCodeFlowClient(endpoints, scopes, clientId);
  * const authProvider = new OneDriveAuthProvider(tokenStorage, deviceCodeClient);
  *
  * // Use authProvider with Microsoft Graph Client

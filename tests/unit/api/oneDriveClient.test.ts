@@ -79,6 +79,21 @@ describe('OneDriveClient', () => {
 			expect(fullAccessClient.buildEndpoint('folder name/file#.md')).toBe(`/me/drive/root:/${encoded}`);
 		});
 
+		it('never emits an app-folder (approot) endpoint in Full Access mode — required for work/school accounts', () => {
+			// Work and school accounts are restricted to Full Access mode (Microsoft
+			// Graph does not offer Files.ReadWrite.AppFolder to them), so
+			// buildEndpoint() must never fall back to the approot shape here.
+			const fullAccessClient = new OneDriveClient(mockAuthProvider as any, OneDriveAccessMode.FULL_ACCESS);
+			const paths = ['', 'Notes', 'folder/sub folder/file#.md'];
+			const suffixes: (string | undefined)[] = [undefined, 'children', 'delta'];
+
+			for (const path of paths) {
+				for (const suffix of suffixes) {
+					expect(fullAccessClient.buildEndpoint(path, suffix)).not.toContain('approot');
+				}
+			}
+		});
+
 		it('builds the shared drive root endpoint without a suffix', () => {
 			client.setRemoteDrive('drive-123', 'item-456', 'Shared');
 			expect(client.buildEndpoint('')).toBe('/drives/drive-123/items/item-456');

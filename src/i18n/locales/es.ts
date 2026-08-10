@@ -56,6 +56,20 @@ export const es = {
 			connectSuccess: 'Conectado exitosamente a OneDrive',
 			connectFailed: 'Error al conectar a OneDrive: {{message}}',
 			disconnectSuccess: 'Desconectado de OneDrive',
+			customClientIdRequired:
+				'Las cuentas de trabajo o escuela requieren un ID de cliente personalizado. Consulta la documentación de configuración para registrar tu propia aplicación.',
+			tenantIdRequired: 'Se requiere un ID de inquilino para el tipo de cuenta de inquilino.',
+			reconnectRequiredIdentityChanged: 'La configuración de la cuenta cambió. Por favor, vuelve a conectarte a OneDrive.',
+			accessModeSwitchedToFullAccess:
+				'El modo de carpeta de la app no está disponible para cuentas de trabajo o escuela. El modo de acceso cambió a Acceso completo.',
+			entra: {
+				conditionalAccessBlocked:
+					'La política de tu organización bloquea este método de inicio de sesión. Contacta a tu administrador o prueba con otro dispositivo.',
+				appNotAuthorized:
+					'Esta aplicación aún no está aprobada en tu organización. Pide a un administrador que apruebe el registro de la aplicación.',
+				accountTypeMismatch:
+					'La cuenta con la que iniciaste sesión no coincide con el tipo de cuenta configurado. Verifica el tipo de cuenta en la configuración.',
+			},
 		},
 		sync: {
 			stateCleared: 'Estado de sincronización limpiado. Ejecutando sincronización completa...',
@@ -178,6 +192,18 @@ export const es = {
 	settings: {
 		auth: {
 			heading: 'Autenticación',
+			accountType: {
+				name: 'Tipo de cuenta',
+				desc: 'Elige con qué tipo de cuenta de Microsoft te estás conectando.',
+				personal: 'Personal (cuenta de Microsoft)',
+				workSchool: 'Trabajo o escuela (cualquier organización)',
+				tenant: 'Trabajo o escuela (organización específica)',
+				tenantIdName: 'ID de inquilino',
+				tenantIdDesc: 'El ID de inquilino (directorio) de Entra ID contra el que iniciar sesión.',
+				tenantIdPlaceholder: 'p. ej. 11111111-1111-1111-1111-111111111111',
+				appFolderUnavailable: 'El modo de carpeta de la app no está disponible para cuentas de trabajo o escuela.',
+				reconnectRequired: ' Cambiar esto requiere reconectar.',
+			},
 			accessMode: {
 				name: 'Modo de acceso a OneDrive',
 				appFolder: 'Carpeta de aplicación (Recomendado)',
@@ -312,6 +338,7 @@ export const es = {
 				name: 'ID de cliente personalizado',
 				desc: 'Tu ID de Aplicación (cliente) de Azure AD',
 				helpPrefix: 'Consulta ',
+				requiredNote: ' Requerido para cuentas de trabajo o escuela.',
 				helpLink: 'Guía de configuración de ID de cliente personalizado',
 				helpSuffix: ' en el README.',
 			},

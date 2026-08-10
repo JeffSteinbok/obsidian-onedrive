@@ -56,6 +56,20 @@ export const pt = {
 			connectSuccess: 'Conectado com sucesso ao OneDrive',
 			connectFailed: 'Falha ao conectar ao OneDrive: {{message}}',
 			disconnectSuccess: 'Desconectado do OneDrive',
+			customClientIdRequired:
+				'Contas de trabalho ou escola exigem um ID de cliente personalizado. Consulte a documentação de configuração para registrar seu próprio aplicativo.',
+			tenantIdRequired: 'Um ID de locatário é necessário para o tipo de conta locatário.',
+			reconnectRequiredIdentityChanged: 'Configurações da conta alteradas. Por favor, reconecte-se ao OneDrive.',
+			accessModeSwitchedToFullAccess:
+				'O modo Pasta do aplicativo não está disponível para contas de trabalho ou escola. O modo de acesso foi alterado para Acesso completo.',
+			entra: {
+				conditionalAccessBlocked:
+					'A política da sua organização bloqueia este método de login. Contate seu administrador ou tente outro dispositivo.',
+				appNotAuthorized:
+					'Este aplicativo ainda não foi aprovado em sua organização. Peça a um administrador para aprovar o registro do aplicativo.',
+				accountTypeMismatch:
+					'A conta conectada não corresponde ao tipo de conta configurado. Verifique o tipo de conta nas configurações.',
+			},
 		},
 		sync: {
 			stateCleared: 'Estado de sincronização limpo. Executando sincronização completa...',
@@ -178,6 +192,18 @@ export const pt = {
 	settings: {
 		auth: {
 			heading: 'Autenticação',
+			accountType: {
+				name: 'Tipo de conta',
+				desc: 'Escolha com qual tipo de conta Microsoft você está se conectando.',
+				personal: 'Pessoal (conta Microsoft)',
+				workSchool: 'Trabalho ou escola (qualquer organização)',
+				tenant: 'Trabalho ou escola (organização específica)',
+				tenantIdName: 'ID do locatário',
+				tenantIdDesc: 'O ID do locatário (diretório) do Entra ID para autenticação.',
+				tenantIdPlaceholder: 'ex. 11111111-1111-1111-1111-111111111111',
+				appFolderUnavailable: 'O modo Pasta do aplicativo não está disponível para contas de trabalho ou escola.',
+				reconnectRequired: ' Esta alteração requer reconexão.',
+			},
 			accessMode: {
 				name: 'Modo de acesso OneDrive',
 				appFolder: 'Pasta do aplicativo (Recomendado)',
@@ -312,6 +338,7 @@ export const pt = {
 				name: 'ID de cliente personalizado',
 				desc: 'Seu ID de Aplicativo (cliente) Azure AD',
 				helpPrefix: 'Veja ',
+				requiredNote: ' Necessário para contas de trabalho ou escola.',
 				helpLink: 'Guia de configuração de ID de cliente personalizado',
 				helpSuffix: ' no README.',
 			},

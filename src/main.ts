@@ -5,6 +5,7 @@
 
 import { Platform, Plugin, Notice, TFile } from 'obsidian';
 import {
+	AccountType,
 	PluginSettings,
 	DEFAULT_SETTINGS,
 	DEFAULT_EXPERIMENTAL_SETTINGS,
@@ -12,7 +13,7 @@ import {
 	OneDriveAccessMode,
 	OneDriveItem,
 } from './types';
-import { DEFAULT_ONEDRIVE_CLIENT_ID } from './constants';
+import { DEFAULT_ONEDRIVE_CLIENT_ID, resolveOAuthEndpoints, resolveOAuthScopes } from './constants';
 import { logger, LogLevel } from './utils/logger';
 import { shouldSyncVaultPath } from './utils/pathUtils';
 import {
@@ -88,7 +89,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 	// Core components
 	private tokenStorage: TokenStorage;
-	private deviceCodeClient: DeviceCodeFlowClient;
+	// Undefined when the configured identity can't be resolved (e.g. tenant
+	// account type with no usable tenant ID). We fail closed rather than fall
+	// back to a different authority.
+	private deviceCodeClient?: DeviceCodeFlowClient;
 	private authProvider?: OneDriveAuthProvider;
 	private oneDriveClient?: OneDriveClient;
 	private fileOps?: FileOperations;
@@ -139,11 +143,18 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 		this.syncStateManager.loadState(this.settings.syncState);
 
-		// Initialize device code client with appropriate client ID and access mode
-		const clientId = this.settings.useCustomClientId
-			? this.settings.customClientId || DEFAULT_ONEDRIVE_CLIENT_ID
-			: DEFAULT_ONEDRIVE_CLIENT_ID;
-		this.deviceCodeClient = new DeviceCodeFlowClient(clientId, this.settings.accessMode);
+		// A misconfigured identity must not stop the plugin from loading — it leaves
+		// the client unset, and the error surfaces when the user connects or syncs.
+		try {
+			this.deviceCodeClient = this.buildDeviceCodeClient();
+		} catch (error) {
+			logger.error('Cannot build an auth client from the current account settings:', error);
+			new Notice(
+				t('notices.auth.connectFailed', {
+					message: error instanceof Error ? error.message : t('notices.common.unknownError'),
+				})
+			);
+		}
 
 		// Initialize authenticated components if we have tokens
 		if (this.tokenStorage.hasTokens()) {
@@ -275,6 +286,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 */
 	private async initializeAuthenticatedComponents() {
 		logger.info(`Initializing authenticated components (mode: ${this.settings.accessMode})`);
+
+		if (!this.deviceCodeClient) {
+			// No usable authority for the configured identity — refreshing a token
+			// against the wrong one would fail with an opaque AADSTS error.
+			logger.error('Cannot initialize authenticated components: no auth client for the current settings');
+			new Notice(t('notices.auth.clientInitFailed'));
+			return;
+		}
 
 		try {
 			// Initialize auth provider
@@ -426,6 +445,74 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 	}
 
+	private buildDeviceCodeClient(): DeviceCodeFlowClient {
+		// accountType is normalized in loadSettings(), so it is always one of the
+		// three known values here.
+		const accountType = this.settings.accountType;
+		// Personal accounts opt into a custom client ID via the toggle; work and
+		// school accounts always require one, since the bundled registration
+		// only serves personal accounts.
+		const effectiveCustomClientId =
+			accountType !== 'personal' || this.settings.useCustomClientId
+				? this.settings.customClientId
+				: undefined;
+		const clientId = effectiveCustomClientId || DEFAULT_ONEDRIVE_CLIENT_ID;
+
+		// Deliberately not caught: presenting an org identity (and its client ID)
+		// to the consumer authority yields an opaque AADSTS failure and a forced
+		// re-auth. Callers surface the real configuration error instead.
+		const endpoints = resolveOAuthEndpoints(accountType, this.settings.tenantId);
+
+		const scopes = resolveOAuthScopes(accountType, this.settings.accessMode);
+
+		return new DeviceCodeFlowClient(endpoints, scopes, clientId);
+	}
+
+	/**
+	 * Discard stored credentials because the configured identity (account type,
+	 * tenant ID, or client ID) changed. Refresh tokens are bound to the
+	 * authority and client that issued them, so a stale token must never be
+	 * presented to a different one.
+	 */
+	async invalidateCredentialsForIdentityChange(): Promise<void> {
+		if (!this.tokenStorage.hasTokens() && !this.settings.connectedUser) {
+			return;
+		}
+
+		logger.info('Identity configuration changed — clearing stored credentials');
+
+		this.deviceCodeClient?.cancelPolling();
+		if (this.eventManager) {
+			this.eventManager.stopListening();
+		}
+
+		this.tokenStorage.clearTokens();
+		this.settings.tokens = undefined;
+		this.settings.connectedUser = undefined;
+
+		// Drive and item IDs are scoped to the previous identity's drive, and the
+		// sync state holds a delta link plus remote item IDs from it. Reusing
+		// either against the new account means 403/404 on every request, or files
+		// skipped as already-uploaded. Clear them like disconnect() does.
+		this.settings.remoteDriveId = undefined;
+		this.settings.remoteItemId = undefined;
+		this.settings.remoteRootName = undefined;
+		this.settings.remoteRootPath = undefined;
+		this.settings.remoteRelativePathInShared = undefined;
+		this.syncStateManager.clearState();
+
+		this.authProvider = undefined;
+		this.oneDriveClient = undefined;
+		this.fileOps = undefined;
+		this.syncEngine = undefined;
+		this.eventManager = undefined;
+
+		await this.saveSettings();
+		this.updateStatusBar();
+
+		new Notice(t('notices.auth.reconnectRequiredIdentityChanged'));
+	}
+
 	/**
 	 * Authenticate with OneDrive using Device Code Flow
 	 */
@@ -433,14 +520,18 @@ export default class OneDriveSyncPlugin extends Plugin {
 		logger.info('Starting authentication flow');
 
 		try {
-			// Cancel any in-progress polling from a previous auth attempt
-			this.deviceCodeClient.cancelPolling();
+			if (this.settings.accountType !== 'personal' && !this.settings.customClientId?.trim()) {
+				throw new Error(t('notices.auth.customClientIdRequired'));
+			}
+			if (this.settings.accountType === 'tenant' && !this.settings.tenantId?.trim()) {
+				throw new Error(t('notices.auth.tenantIdRequired'));
+			}
 
-			// Recreate the device code client so it uses the current access mode
-			const clientId = this.settings.useCustomClientId
-				? this.settings.customClientId || DEFAULT_ONEDRIVE_CLIENT_ID
-				: DEFAULT_ONEDRIVE_CLIENT_ID;
-			this.deviceCodeClient = new DeviceCodeFlowClient(clientId, this.settings.accessMode);
+			// Cancel any in-progress polling from a previous auth attempt
+			this.deviceCodeClient?.cancelPolling();
+
+			// Recreate the client so it picks up the current identity settings
+			this.deviceCodeClient = this.buildDeviceCodeClient();
 			logger.info(`Authenticating with access mode: ${this.settings.accessMode}`);
 
 			let modalClosed = false;
@@ -495,7 +586,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 			if (this.eventManager && this.isSyncConfigured()) {
 				this.eventManager.startListening();
 				this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
-			} else if (this.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
+			} else if (!this.isSyncConfigured()) {
+				// Whatever the access mode, nothing will ever sync until a target
+				// is chosen — say so rather than reporting a bare success.
 				new Notice(t('notices.sync.selectFolderFirst'));
 			}
 
@@ -522,7 +615,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		logger.info('Disconnecting from OneDrive');
 
 		// Cancel any in-progress auth polling
-		this.deviceCodeClient.cancelPolling();
+		this.deviceCodeClient?.cancelPolling();
 
 		// Stop event manager
 		if (this.eventManager) {
@@ -1025,6 +1118,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 			loaded
 		);
 
+		this.normalizeIdentitySettings();
+
 		// Migrate legacy enableDebugLogging boolean → logLevel string
 		const raw = this.settings as unknown as Record<string, unknown>;
 		if ('enableDebugLogging' in raw) {
@@ -1044,6 +1139,34 @@ export default class OneDriveSyncPlugin extends Plugin {
 					this.settings.connectedUser || this.settings.appFolderSubpath
 				);
 			}
+		}
+	}
+
+	/**
+	 * Single owner of the identity-related settings invariants, applied once on
+	 * load so the rest of the plugin can trust the values:
+	 * - accountType is one of the three known values (`Object.assign` copies a
+	 *   null or bogus value straight over the default)
+	 * - tenantId and customClientId are trimmed, or undefined when blank
+	 * - work/school and tenant accounts are never left in App Folder mode, which
+	 *   Entra does not offer them — the dropdown hides the option, so a stored
+	 *   value would otherwise show one thing and request another
+	 */
+	normalizeIdentitySettings(): void {
+		const validAccountTypes: AccountType[] = ['personal', 'work-school', 'tenant'];
+		if (!validAccountTypes.includes(this.settings.accountType)) {
+			this.settings.accountType = DEFAULT_SETTINGS.accountType;
+		}
+
+		this.settings.tenantId = this.settings.tenantId?.trim() || undefined;
+		this.settings.customClientId = this.settings.customClientId?.trim() || undefined;
+
+		if (
+			this.settings.accountType !== 'personal' &&
+			this.settings.accessMode === OneDriveAccessMode.APP_FOLDER
+		) {
+			logger.info('App Folder mode is unavailable for this account type — using Full Access');
+			this.settings.accessMode = OneDriveAccessMode.FULL_ACCESS;
 		}
 	}
 
