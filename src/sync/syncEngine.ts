@@ -1929,13 +1929,14 @@ export class SyncEngine {
 			}
 
 			// Suppress the vault events this rename fires — both for the
-			// folder itself and every tracked descendant file (Obsidian's
-			// vault.rename recursively renames folder contents) — so this
-			// doesn't get queued as a conflicting local change.
+			// folder itself (old and new path) and every tracked descendant
+			// file (Obsidian's vault.rename recursively renames folder
+			// contents) — so this doesn't get queued as a conflicting local
+			// change.
 			const oldPrefix = oldPath.endsWith('/') ? oldPath : `${oldPath}/`;
 			const newPrefix = newPath.endsWith('/') ? newPath : `${newPath}/`;
 			const descendants = this.stateManager.getFileStatesUnderFolder(oldPath);
-			const ownWritePaths = [newPath];
+			const ownWritePaths = [oldPath, newPath];
 			for (const { path } of descendants) {
 				ownWritePaths.push(path, newPrefix + path.slice(oldPrefix.length));
 			}
