@@ -75,6 +75,26 @@ function makeRemoteDelete(vaultPath: string, overrides: Partial<OneDriveItem> = 
 	});
 }
 
+function makeRemoteFolder(
+	vaultPath: string,
+	overrides: Partial<OneDriveItem> & { id?: string } = {}
+): OneDriveItem {
+	const parts = vaultPath.split('/');
+	const name = parts.pop() ?? vaultPath;
+	const parent = parts.join('/');
+
+	return makeRemoteItem({
+		id: overrides.id ?? `${vaultPath}-id`,
+		name,
+		folder: { childCount: 0 },
+		parentReference: overrides.parentReference ?? {
+			id: 'parent-id',
+			path: parent ? `/drive/root:/remote/root/${parent}` : '/drive/root:/remote/root',
+		},
+		...overrides,
+	});
+}
+
 function makeTFolder(path: string): TFolder {
 	const folder = new TFolder();
 	folder.path = path;
@@ -666,5 +686,60 @@ describe('SyncEngine deletion permutations', () => {
 		expect(stateManager.getFileState('downloaded.md')).toMatchObject({ oneDriveId: 'downloaded-id' });
 		expect(stateManager.getFileState('local-only.md')).toBeUndefined();
 		expect(stateManager.getFileState('stale.md')).toBeUndefined();
+	});
+
+	// Regression test for issue #163: reorganizing folders on one device
+	// (e.g. desktop) left other devices (e.g. mobile) with a stale folder
+	// structure, because non-deleted folder delta entries only updated
+	// internal tracked state and never touched the local vault or the
+	// tracked paths of files underneath the moved folder.
+	it('moves the local folder and its tracked files when the remote reports a folder move', async () => {
+		const tree = buildFolderTree(['notes/old-folder'], ['notes/old-folder/child.md']);
+		const oldFolder = tree.getByPath('notes/old-folder') as TFolder;
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setDeltaLink('prev-delta');
+		stateManager.setFolderState('folder-move-id', 'notes/old-folder');
+		stateManager.setFileState('notes/old-folder/child.md', {
+			path: 'notes/old-folder/child.md',
+			localMtime: 1,
+			remoteHash: 'child-hash',
+			size: 10,
+			remoteModifiedTime: 2,
+			oneDriveId: 'child-file-id',
+		});
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFolder('notes/new-folder', { id: 'folder-move-id' })],
+			deltaLink: 'delta-link-next',
+		});
+		mockApp.vault.getRoot.mockReturnValue(tree.root);
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => tree.getByPath(path));
+
+		await createEngine().performSync();
+
+		expect(mockApp.vault.rename).toHaveBeenCalledWith(oldFolder, 'notes/new-folder');
+		expect(mockEventManager.markOwnWrites).toHaveBeenCalledWith(
+			expect.arrayContaining(['notes/new-folder', 'notes/old-folder/child.md', 'notes/new-folder/child.md'])
+		);
+		expect(stateManager.getFolderPathById('folder-move-id')).toBe('notes/new-folder');
+		expect(stateManager.getFileState('notes/old-folder/child.md')).toBeUndefined();
+		expect(stateManager.getFileState('notes/new-folder/child.md')).toMatchObject({
+			oneDriveId: 'child-file-id',
+		});
+	});
+
+	it('does not attempt a local folder move when the moved folder was never synced on this device', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setDeltaLink('prev-delta');
+		stateManager.setFolderState('folder-move-id', 'notes/old-folder');
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFolder('notes/new-folder', { id: 'folder-move-id' })],
+			deltaLink: 'delta-link-next',
+		});
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+
+		await createEngine().performSync();
+
+		expect(mockApp.vault.rename).not.toHaveBeenCalled();
+		expect(stateManager.getFolderPathById('folder-move-id')).toBe('notes/new-folder');
 	});
 });
