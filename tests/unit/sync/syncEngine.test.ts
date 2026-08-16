@@ -2492,6 +2492,129 @@ describe('SyncEngine reconcile from cloud', () => {
 	});
 });
 
+describe('SyncEngine reconcile to cloud', () => {
+	let stateManager: SyncStateManager;
+	let conflictResolver: ConflictResolver;
+	let mockFileOps: any;
+	let mockClient: any;
+	let mockEventManager: any;
+
+	beforeEach(() => {
+		stateManager = new SyncStateManager();
+		conflictResolver = new ConflictResolver(ConflictResolutionStrategy.LAST_WRITE_WINS);
+		mockFileOps = {
+			uploadFile: vi.fn().mockResolvedValue({
+				id: 'uploaded-id',
+				size: 100,
+				lastModifiedDateTime: new Date().toISOString(),
+				file: { hashes: { quickXorHash: 'uploaded-hash' } },
+			}),
+			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi.fn().mockResolvedValue({ id: 'moved-id', size: 100 }),
+		};
+		mockClient = {
+			listAllItems: vi.fn(),
+			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'fresh-delta' }),
+			isSharedDrive: vi.fn().mockReturnValue(false),
+		};
+		mockEventManager = {
+			getDirtyFiles: vi.fn().mockReturnValue([]),
+			clearDirtyFiles: vi.fn(),
+			addDirtyFile: vi.fn(),
+			removeDirtyPaths: vi.fn(),
+			markOwnWrites: vi.fn(),
+			removeOwnWrite: vi.fn(),
+			isOwnWrite: vi.fn().mockReturnValue(false),
+			markInitialSyncDone: vi.fn(),
+		};
+	});
+
+	it('uploads local-only files, deletes remote-only files, refreshes matching files', async () => {
+		// Cloud: A.md (matches local size), B.md (only in cloud, should be deleted), C.md (size mismatch)
+		mockClient.listAllItems.mockResolvedValue([
+			makeRemoteFile('A.md', { size: 10 }),
+			makeRemoteFile('B.md', { size: 20 }),
+			makeRemoteFile('C.md', { size: 30 }),
+		]);
+
+		// Local: A.md (size 10), C.md (size 99 — mismatch), D.md (local-only, should be uploaded)
+		const localFiles = [
+			makeTFile('A.md', 10, Date.now()),
+			makeTFile('C.md', 99, Date.now()),
+			makeTFile('D.md', 5, Date.now()),
+		];
+		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
+			(p: string) => localFiles.find((f) => f.path === p) ?? null
+		);
+
+		const engine = new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'.obsidian',
+			{ remoteRoot: '/remote/root' }
+		);
+
+		await engine.reconcileToCloud();
+
+		// D.md (local-only) and C.md (size-mismatch) should have been uploaded.
+		const uploadedPaths = (mockFileOps.uploadFile as Mock).mock.calls.map((c: any[]) => c[0]);
+		expect(uploadedPaths).toContain('/remote/root/D.md');
+		expect(uploadedPaths).toContain('/remote/root/C.md');
+		expect(uploadedPaths).not.toContain('/remote/root/A.md');
+
+		// B.md (remote-only) should have been deleted from OneDrive.
+		expect(mockFileOps.deleteFile).toHaveBeenCalledWith('B.md-id');
+
+		// A.md (matching size) should have tracked state refreshed without uploading.
+		expect(stateManager.getFileState('A.md')).toBeDefined();
+
+		// Delta cursor should have been advanced.
+		expect(mockClient.getDelta).toHaveBeenCalled();
+		expect(stateManager.getDeltaLink()).toBe('fresh-delta');
+	});
+
+	it('skips destructive remote deletes when user declines large-delete confirmation', async () => {
+		// Cloud has 10 files — all would be deleted since local is empty.
+		mockClient.listAllItems.mockResolvedValue(
+			Array.from({ length: 10 }, (_, i) => makeRemoteFile(`Note${i}.md`))
+		);
+		(mockApp.vault.getFiles as Mock).mockReturnValue([]);
+		(mockApp.vault.getAbstractFileByPath as Mock).mockReturnValue(null);
+
+		const handler = vi.fn().mockResolvedValue('cancel');
+
+		const engine = new SyncEngine(
+			mockApp as any,
+			mockFileOps,
+			mockClient,
+			stateManager,
+			conflictResolver,
+			mockEventManager,
+			'.obsidian',
+			{
+				remoteRoot: '/remote/root',
+				shouldSyncPath: (p) => shouldSyncVaultPath(p, false, false, '.obsidian'),
+				getLargeDeleteThreshold: () => 5, // threshold 5
+				largeDeleteWarningHandler: handler,
+			}
+		);
+
+		await engine.reconcileToCloud();
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		// No deletes should have happened.
+		expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+		// Cursor should NOT have been advanced when user cancelled.
+		expect(mockClient.getDelta).not.toHaveBeenCalled();
+	});
+});
+
 describe('SyncEngine pull-only mode', () => {
 	let stateManager: SyncStateManager;
 	let conflictResolver: ConflictResolver;

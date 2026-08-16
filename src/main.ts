@@ -211,6 +211,14 @@ export default class OneDriveSyncPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'reconcile-to-cloud',
+			name: t('commands.reconcileToCloud'),
+			callback: async () => {
+				await this.reconcileToCloud();
+			},
+		});
+
+		this.addCommand({
 			id: 'show-conflicts',
 			name: t('commands.showConflicts'),
 			callback: () => {
@@ -1269,6 +1277,43 @@ export default class OneDriveSyncPlugin extends Plugin {
 		try {
 			this.setSyncStatus(SyncStatus.SYNCING);
 			await this.syncEngine.reconcileFromCloud();
+			await this.saveSettings();
+			this.setSyncStatus(SyncStatus.IDLE);
+		} catch (error) {
+			this.setSyncStatus(SyncStatus.ERROR);
+			throw error;
+		} finally {
+			this.isSyncing = false;
+		}
+	}
+
+	/**
+	 * Reconcile OneDrive from the local vault. Treats the local vault as
+	 * authoritative — remote-only files are deleted, local files that
+	 * differ are uploaded. Destructive deletes are confirmed via the
+	 * large-delete modal. See issue #165.
+	 */
+	async reconcileToCloud(): Promise<void> {
+		if (!this.tokenStorage.hasTokens()) {
+			new Notice(t('notices.reconcileToCloud.notConnected'));
+			return;
+		}
+		if (!this.isSyncConfigured()) {
+			new Notice(t('notices.reconcileToCloud.selectFolderFirst'));
+			return;
+		}
+		if (!this.syncEngine) {
+			new Notice(t('notices.reconcileToCloud.engineNotInitialized'));
+			return;
+		}
+		if (this.isSyncing || this.eventManager?.isSyncInProgress()) {
+			new Notice(t('notices.reconcileToCloud.alreadyInProgress'));
+			return;
+		}
+		this.isSyncing = true;
+		try {
+			this.setSyncStatus(SyncStatus.SYNCING);
+			await this.syncEngine.reconcileToCloud();
 			await this.saveSettings();
 			this.setSyncStatus(SyncStatus.IDLE);
 		} catch (error) {

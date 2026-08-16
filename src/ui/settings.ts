@@ -56,6 +56,7 @@ interface OneDrivePlugin extends Plugin {
 	onBookmarkSyncChanged(enabled: boolean): Promise<void>;
 	resetSyncToken(): Promise<void>;
 	reconcileFromCloud(): Promise<void>;
+	reconcileToCloud(): Promise<void>;
 	authenticate(): Promise<void>;
 	disconnect(): Promise<void>;
 	triggerManualSync(): Promise<void>;
@@ -324,6 +325,13 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						desc: t('settings.advanced.reconcileFromCloud.desc'),
 						render: (setting) => {
 							this.renderReconcileFromCloudSetting(setting);
+						},
+					},
+					{
+						name: t('settings.advanced.reconcileToCloud.name'),
+						desc: t('settings.advanced.reconcileToCloud.desc'),
+						render: (setting) => {
+							this.renderReconcileToCloudSetting(setting);
 						},
 					},
 					{
@@ -876,6 +884,17 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			);
 	}
 
+	private renderReconcileToCloudSetting(setting: Setting): void {
+		setting
+			.setName(t('settings.advanced.reconcileToCloud.name'))
+			.setDesc(t('settings.advanced.reconcileToCloud.desc'))
+			.addButton((button) =>
+				button.setButtonText(t('settings.advanced.reconcileToCloud.button')).onClick(async () => {
+					await this.plugin.reconcileToCloud();
+				})
+			);
+	}
+
 	private renderCustomClientIdSetting(setting: Setting): void {
 		const isRequired = this.plugin.settings.accountType !== 'personal';
 		const desc = isRequired
@@ -1339,6 +1358,16 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addButton((button) =>
 				button.setButtonText(t('settings.advanced.reconcileFromCloud.button')).onClick(async () => {
 					await this.plugin.reconcileFromCloud();
+				})
+			);
+
+		// Force upload local to cloud (local-as-truth recovery — issue #165)
+		new Setting(containerEl)
+			.setName(t('settings.advanced.reconcileToCloud.name'))
+			.setDesc(t('settings.advanced.reconcileToCloud.desc'))
+			.addButton((button) =>
+				button.setButtonText(t('settings.advanced.reconcileToCloud.button')).onClick(async () => {
+					await this.plugin.reconcileToCloud();
 				})
 			);
 
