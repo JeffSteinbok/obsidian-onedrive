@@ -116,24 +116,37 @@ interface LocalChangesResult {
 }
 
 /**
+ * A folder that was moved/renamed on the remote (another device or the web
+ * UI) and needs its local counterpart relocated to match.
+ */
+interface RemoteFolderMove {
+	oldPath: string;
+	newPath: string;
+}
+
+/**
  * Returned by expandFolderDeletes: synthetic per-file delete items derived
- * from Graph folder-delete entries, plus the folder paths that were deleted.
+ * from Graph folder-delete entries, plus the folder paths that were deleted,
+ * plus any folder moves/renames detected on the remote.
  */
 interface ExpandedFolderDeletesResult {
 	synthesizedDeletes: OneDriveItem[];
 	deletedFolderPaths: string[];
+	folderMoves: RemoteFolderMove[];
 }
 
 /**
  * Returned by fetchAndFilterRemoteChanges: the fully filtered set of remote
  * changes ready for planning, plus the raw delta responses (needed to store
- * delta links after sync) and any deleted folder paths for later pruning.
+ * delta links after sync), any deleted folder paths for later pruning, and
+ * any folder moves/renames that need to be applied locally.
  */
 interface RemoteChangesResult {
 	remoteChanges: OneDriveItem[];
 	deltaResponse: DeltaResponse;
 	obsidianDeltaResponse?: DeltaResponse;
 	deletedFolderPaths: string[];
+	folderMoves: RemoteFolderMove[];
 }
 
 /**
@@ -272,8 +285,16 @@ export class SyncEngine {
 
 			// Phase 2: Fetch remote delta changes from OneDrive, expand folder
 			// deletes into per-file deletes, and filter by sync scope
-			const { remoteChanges, deltaResponse, obsidianDeltaResponse, deletedFolderPaths } =
+			const { remoteChanges, deltaResponse, obsidianDeltaResponse, deletedFolderPaths, folderMoves } =
 				await this.fetchAndFilterRemoteChanges(ignoreMatchers, progress);
+
+			// Apply any folder moves/renames detected on the remote (e.g. a
+			// folder reorganized on another device) before planning, so
+			// descendant files are already relocated and won't be treated as
+			// new downloads or left stranded in stale folders (issue #163).
+			if (folderMoves.length > 0) {
+				await this.applyRemoteFolderMoves(folderMoves);
+			}
 
 			// Phase 3: Diff local vs remote to produce upload/download/conflict ops
 			const operations = await this.planOperations(localChanges, remoteChanges, isFirstSync);
@@ -740,7 +761,7 @@ export class SyncEngine {
 			);
 		}
 
-		const { synthesizedDeletes, deletedFolderPaths } = this.expandFolderDeletes([
+		const { synthesizedDeletes, deletedFolderPaths, folderMoves } = this.expandFolderDeletes([
 			...deltaResponse.items,
 			...(obsidianDeltaResponse?.items || []),
 		]);
@@ -773,6 +794,7 @@ export class SyncEngine {
 			deltaResponse,
 			obsidianDeltaResponse,
 			deletedFolderPaths,
+			folderMoves,
 		};
 	}
 
@@ -787,6 +809,7 @@ export class SyncEngine {
 	private expandFolderDeletes(allDeltaItems: OneDriveItem[]): ExpandedFolderDeletesResult {
 		const synthesizedDeletes: OneDriveItem[] = [];
 		const deletedFolderPaths: string[] = [];
+		const folderMoves: RemoteFolderMove[] = [];
 
 		for (const item of allDeltaItems) {
 			if (!item.folder) continue;
@@ -820,12 +843,17 @@ export class SyncEngine {
 			} else {
 				const folderPath = this.remotePathToVaultPath(item);
 				if (item.id && folderPath) {
+					const previousPath = this.stateManager.getFolderPathById(item.id);
+					if (previousPath && previousPath !== folderPath) {
+						logger.info(`Folder move detected: ${previousPath} → ${folderPath} (id=${item.id})`);
+						folderMoves.push({ oldPath: previousPath, newPath: folderPath });
+					}
 					this.stateManager.setFolderState(item.id, folderPath);
 				}
 			}
 		}
 
-		return { synthesizedDeletes, deletedFolderPaths };
+		return { synthesizedDeletes, deletedFolderPaths, folderMoves };
 	}
 
 	/**
@@ -1870,6 +1898,61 @@ export class SyncEngine {
 						`Could not delete remote folder by path ${change.path}: ${error instanceof Error ? error.message : error}`
 					);
 				}
+			}
+		}
+	}
+
+	/**
+	 * Apply folder moves/renames detected on the remote (delta reported a
+	 * folder at a new path we already had tracked under an old one) to the
+	 * local vault, so other devices' local folder structure stays in sync
+	 * without waiting for a full reconcile (issue #163).
+	 *
+	 * Processed shallowest-first so a parent move happens before any nested
+	 * child move that landed in the same delta batch.
+	 */
+	private async applyRemoteFolderMoves(folderMoves: RemoteFolderMove[]): Promise<void> {
+		const sorted = [...folderMoves].sort(
+			(a, b) => a.oldPath.split('/').length - b.oldPath.split('/').length
+		);
+
+		for (const { oldPath, newPath } of sorted) {
+			if (!oldPath || !newPath || oldPath === newPath) continue;
+
+			const folder = this.app.vault.getAbstractFileByPath(oldPath);
+			if (!(folder instanceof TFolder)) {
+				// Nothing locally to move (e.g. this device never synced the
+				// old folder) — the descendant files will simply be
+				// downloaded to their new locations as normal remote changes.
+				logger.debug(`Remote folder move ${oldPath} → ${newPath}: no local folder to move`);
+				continue;
+			}
+
+			// Suppress the vault events this rename fires — both for the
+			// folder itself (old and new path) and every tracked descendant
+			// file (Obsidian's vault.rename recursively renames folder
+			// contents) — so this doesn't get queued as a conflicting local
+			// change.
+			const oldPrefix = oldPath.endsWith('/') ? oldPath : `${oldPath}/`;
+			const newPrefix = newPath.endsWith('/') ? newPath : `${newPath}/`;
+			const descendants = this.stateManager.getFileStatesUnderFolder(oldPath);
+			const ownWritePaths = [oldPath, newPath];
+			for (const { path } of descendants) {
+				ownWritePaths.push(path, newPrefix + path.slice(oldPrefix.length));
+			}
+			this.eventManager.markOwnWrites(ownWritePaths);
+
+			try {
+				await this.app.vault.rename(folder, newPath);
+				this.updateChildPathsAfterFolderRename(oldPath, newPath);
+				logger.info(`Applied remote folder move locally: ${oldPath} → ${newPath}`);
+			} catch (error) {
+				for (const path of ownWritePaths) {
+					this.eventManager.removeOwnWrite(path);
+				}
+				logger.warn(
+					`Failed to apply remote folder move ${oldPath} → ${newPath}: ${error instanceof Error ? error.message : error}`
+				);
 			}
 		}
 	}
