@@ -7,6 +7,7 @@ export const zhCn = {
 		disconnect: '断开 OneDrive 连接',
 		forceFullSync: '强制完整同步（重新下载全部内容）',
 		reconcileFromCloud: '从云端校准（以云端为准恢复）',
+		reconcileToCloud: '强制上传本地到云端（覆盖 OneDrive 中的全部内容）',
 		showConflicts: '显示同步冲突',
 		devCreateTestConflict: '开发：创建测试冲突（测试冲突界面）',
 	},
@@ -104,6 +105,17 @@ export const zhCn = {
 			alreadyInSync: '从云端校准：本地已与云端一致。',
 			complete: '从云端校准完成：已下载 {{downloaded}}，已删除 {{deleted}}，已刷新 {{refreshed}}。',
 			failed: '从云端校准失败：{{message}}',
+		},
+		reconcileToCloud: {
+			notConnected: '强制上传本地：尚未连接 OneDrive。',
+			selectFolderFirst: '强制上传本地：请先在设置中选择同步文件夹。',
+			engineNotInitialized: '强制上传本地：同步引擎尚未初始化。',
+			alreadyInProgress: '强制上传本地：同步正在进行。',
+			listing: '强制上传本地：正在列出 OneDrive 文件...',
+			cancelled: '已取消强制上传本地。',
+			alreadyInSync: '强制上传本地：云端已与本地一致。',
+			complete: '强制上传本地完成：已上传 {{uploaded}}，已删除 {{deleted}}，已刷新 {{refreshed}}。',
+			failed: '强制上传本地失败：{{message}}',
 		},
 		dev: {
 			noFileFound: 'OneDrive 开发：未找到可用于创建测试冲突的文件',
@@ -328,6 +340,11 @@ export const zhCn = {
 				name: '从云端校准',
 				desc: '以云端为准，删除 OneDrive 中已不存在的本地文件，并下载本地缺失的文件。Reset Sync Token 未清除本地旧文件时使用。可能删除文件，大量删除前会要求确认。',
 				button: '从云端校准',
+			},
+			reconcileToCloud: {
+				name: '强制上传本地到云端',
+				desc: '以本地为准，上传与 OneDrive 不同的本地文件，并删除本地已不存在的远程文件。用于从云端损坏或同步失败中恢复。可能删除文件，大量删除前会要求确认。',
+				button: '强制上传本地到云端',
 			},
 			customClientId: {
 				toggleName: '使用自定义客户端 ID',

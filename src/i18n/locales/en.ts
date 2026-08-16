@@ -5,6 +5,7 @@ export const en = {
 		disconnect: 'Disconnect from OneDrive',
 		forceFullSync: 'Force full sync (re-download everything)',
 		reconcileFromCloud: 'Reconcile from cloud (cloud-as-truth recovery)',
+		reconcileToCloud: 'Force upload local to cloud (overwrite everything on OneDrive)',
 		showConflicts: 'Show sync conflicts',
 		devCreateTestConflict: 'DEV: Create test conflict (for testing conflict UI)',
 	},
@@ -109,6 +110,18 @@ export const en = {
 			complete:
 				'Reconcile from cloud complete: {{downloaded}} downloaded, {{deleted}} deleted, {{refreshed}} refreshed.',
 			failed: 'Reconcile from cloud failed: {{message}}',
+		},
+		reconcileToCloud: {
+			notConnected: 'Force upload local: not connected to OneDrive.',
+			selectFolderFirst: 'Force upload local: select a sync folder in settings first.',
+			engineNotInitialized: 'Force upload local: sync engine not initialized.',
+			alreadyInProgress: 'Force upload local: a sync is already in progress.',
+			listing: 'Force upload local: listing OneDrive...',
+			cancelled: 'Force upload local cancelled.',
+			alreadyInSync: 'Force upload local: already in sync.',
+			complete:
+				'Force upload local complete: {{uploaded}} uploaded, {{deleted}} deleted, {{refreshed}} refreshed.',
+			failed: 'Force upload local failed: {{message}}',
 		},
 		dev: {
 			noFileFound: 'OneDrive DEV: No file found to create a test conflict',
@@ -334,6 +347,11 @@ export const en = {
 				name: 'Reconcile from cloud',
 				desc: 'Treat cloud as authoritative. Deletes local files that no longer exist in OneDrive and downloads anything missing. Use when Reset Sync Token has not cleared stale local files. Destructive — confirmation required for large deletes.',
 				button: 'Reconcile from cloud',
+			},
+			reconcileToCloud: {
+				name: 'Force upload local to cloud',
+				desc: 'Treat the local vault as authoritative. Uploads local files that differ from OneDrive and deletes remote files that no longer exist locally. Use to recover from cloud-side corruption or a bad sync. Destructive — confirmation required for large deletes.',
+				button: 'Force upload local to cloud',
 			},
 			customClientId: {
 				toggleName: 'Use custom client ID',

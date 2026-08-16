@@ -2340,4 +2340,223 @@ export class SyncEngine {
 			throw error;
 		}
 	}
+
+	/**
+	 * Reconcile OneDrive from the local vault. Treats the local vault as
+	 * authoritative: any cloud file not present locally is deleted; any
+	 * local file not present in the cloud is uploaded; size mismatches are
+	 * re-uploaded (local wins). This is the inverse of reconcileFromCloud —
+	 * use it to recover from cloud-side corruption/drift, a bad sync, or
+	 * after restoring a local backup that should overwrite what's on
+	 * OneDrive. See issue #165.
+	 *
+	 * Destructive deletes (on the cloud side) are gated by the same
+	 * large-delete confirmation modal used by normal sync.
+	 */
+	async reconcileToCloud(): Promise<void> {
+		logger.info('Starting reconcile-to-cloud operation');
+		const progress = (msg: string | undefined) => {
+			try {
+				this.onProgress?.(msg);
+			} catch {
+				// progress reporting must never break sync
+			}
+		};
+
+		try {
+			progress(t('progress.listingCloud'));
+			new Notice(t('notices.reconcileToCloud.listing'), 6000);
+			const ignoreMatchers = await this.loadIgnoreMatchers();
+
+			// 1. Enumerate the entire remote vault. listAllItems recurses
+			// /children — it returns files AND folders. We only want files
+			// for diffing.
+			const allRemoteItems = await this.oneDriveClient.listAllItems(this.remoteRoot);
+			logger.info(`Reconcile-to-cloud: enumerated ${allRemoteItems.length} remote items`);
+
+			// 2. Build vaultPath -> OneDriveItem map for everything we'd sync.
+			const remoteFiles = new Map<string, OneDriveItem>();
+			for (const item of allRemoteItems) {
+				const vaultPath = this.remotePathToVaultPath(item);
+				if (!vaultPath) continue;
+				if (item.folder) continue;
+				if (!this.shouldSyncPath(vaultPath)) continue;
+				if (this.shouldIgnorePath(vaultPath, ignoreMatchers)) continue;
+				remoteFiles.set(vaultPath, item);
+			}
+
+			// 3. Snapshot local files we'd sync.
+			const localFiles = this.app.vault
+				.getFiles()
+				.filter((f) => this.shouldSyncPath(f.path))
+				.filter((f) => !this.shouldIgnorePath(f.path, ignoreMatchers));
+			const localByPath = new Map<string, { path: string; size: number }>(
+				localFiles.map((f) => [f.path, { path: f.path, size: f.stat.size }])
+			);
+
+			// Config files aren't in vault.getFiles() — add them via adapter
+			const adapter = this.app.vault.adapter;
+			const configPaths = await getAllSyncableConfigPaths(
+				this.configDir,
+				adapter,
+				(path) => this.shouldSyncPath(path)
+			);
+			for (const path of configPaths) {
+				if (localByPath.has(path)) continue;
+				if (!this.shouldSyncPath(path)) continue;
+				if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
+				try {
+					const stat = await adapter.stat(path);
+					if (stat && stat.type === 'file') {
+						localByPath.set(path, { path, size: stat.size });
+					}
+				} catch {
+					// file doesn't exist, skip
+				}
+			}
+
+			// 4. Wipe tracked file states so ghosts from previously-deleted
+			//    files don't survive the reconcile. Fresh state is rebuilt
+			//    below from the local listing + operation execution.
+			this.stateManager.clearFileStates();
+
+			// 5. Plan operations.
+			const operations: SyncOperation[] = [];
+			const localOnly: string[] = [];
+			const remoteOnly: string[] = [];
+			const sizeMismatch: string[] = [];
+
+			for (const [path] of localByPath) {
+				if (!remoteFiles.has(path)) {
+					localOnly.push(path);
+					// Local-only file — upload it.
+					operations.push({
+						path,
+						direction: SyncDirection.UPLOAD,
+					});
+				}
+			}
+
+			for (const [path, item] of remoteFiles) {
+				const local = localByPath.get(path);
+				if (!local) {
+					remoteOnly.push(path);
+					// Remote-only file — delete it from the cloud.
+					operations.push({
+						path,
+						direction: SyncDirection.UPLOAD,
+						remoteState: this.itemToFileState(item),
+					});
+				} else {
+					const remoteSize = item.size || 0;
+					// Same-size files are verified via sha1 when the remote item
+					// carries a hash; without one we assume same content.
+					const contentMatches =
+						local.size === remoteSize
+							? await this.localContentMatchesRemote(path, item)
+							: false;
+					if (contentMatches === false) {
+						sizeMismatch.push(path);
+						operations.push({
+							path,
+							direction: SyncDirection.UPLOAD,
+						});
+					} else {
+						// Content matches (or no hash to compare) — refresh tracked state.
+						this.stateManager.setFileState(path, this.itemToFileState(item));
+					}
+				}
+			}
+
+			logger.info(
+				`Reconcile-to-cloud plan: ${operations.length} operations ` +
+					`(localOnly=${localOnly.length} uploads, remoteOnly=${remoteOnly.length} deletes, sizeMismatch=${sizeMismatch.length} re-uploads)`
+			);
+
+			// 5. Large-delete confirmation for the destructive side (remote deletes).
+			const threshold = this.getLargeDeleteThreshold();
+			if (threshold > 0 && remoteOnly.length >= threshold && this.largeDeleteWarningHandler) {
+				logger.warn(
+					`Reconcile-to-cloud would delete ${remoteOnly.length} remote files (threshold ${threshold}). Asking user.`
+				);
+				const decision = await this.largeDeleteWarningHandler({
+					localDeleteCount: 0,
+					remoteDeleteCount: remoteOnly.length,
+					threshold,
+					sampleLocalDeletes: [],
+					sampleRemoteDeletes: remoteOnly.slice(0, 10),
+				});
+				if (decision !== 'proceed') {
+					logger.info(`Reconcile-to-cloud cancelled by user (${operations.length} ops aborted)`);
+					new Notice(t('notices.reconcileToCloud.cancelled'));
+					return;
+				}
+			}
+
+			if (operations.length === 0) {
+				logger.info('Reconcile-to-cloud: nothing to do — cloud already matches local');
+				new Notice(t('notices.reconcileToCloud.alreadyInSync'));
+				return;
+			}
+
+			// 6. Execute.
+			let completed = 0;
+			progress(t('progress.files', { completed: 0, total: operations.length }));
+			const progressNotice = new ProgressNotice(t('progress.reconciling'), operations.length);
+			const failures = await this.executeOperations(operations, () => {
+				completed++;
+				const label = t('progress.files', { completed, total: operations.length });
+				progress(label);
+				progressNotice.update(completed, t('progress.reconciling'));
+			});
+			progressNotice.hide();
+			progress(undefined);
+			if (failures.length > 0) {
+				throw new Error(`Reconcile-to-cloud failed for ${failures.length} operation(s)`);
+			}
+
+			// 7. Local file event listeners may have queued dirty entries while
+			// we were uploading. Clear them — we just authoritatively synced
+			// to cloud, anything pending is stale.
+			this.eventManager.clearDirtyFiles();
+
+			// 8. Advance delta cursors so the next normal sync starts clean.
+			progress(t('progress.advancingDeltaCursor'));
+			try {
+				const shouldSyncObsidianScope =
+					this.shouldSyncPath(`${this.configDir}/community-plugins.json`) ||
+					this.shouldSyncPath(`${this.configDir}/app.json`);
+				// The two delta streams are independent — fetch them in parallel
+				const [newDelta, newObs] = await Promise.all([
+					this.oneDriveClient.getDelta(undefined, this.remoteRoot),
+					shouldSyncObsidianScope
+						? this.oneDriveClient.getDelta(undefined, this.remoteRoot, this.configDir)
+						: Promise.resolve(undefined),
+				]);
+				this.stateManager.setDeltaLink(newDelta.deltaLink, true);
+				if (newObs) {
+					this.stateManager.setObsidianDeltaLink(newObs.deltaLink);
+				}
+			} catch (error) {
+				logger.warn(
+					'Reconcile-to-cloud: failed to advance delta cursor; next sync will re-enumerate via delta:',
+					error
+				);
+			}
+
+			this.stateManager.setLastSyncTime(Date.now());
+			logger.info(`Reconcile to cloud complete: ${operations.length} operations executed`);
+			new Notice(
+				t('notices.reconcileToCloud.complete', {
+					uploaded: localOnly.length,
+					deleted: remoteOnly.length,
+					refreshed: sizeMismatch.length,
+				})
+			);
+		} catch (error) {
+			logger.error('Reconcile to cloud failed:', error);
+			new Notice(t('notices.reconcileToCloud.failed', { message: String(error) }));
+			throw error;
+		}
+	}
 }
