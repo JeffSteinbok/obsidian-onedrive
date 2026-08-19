@@ -1,6 +1,6 @@
 {
 	"name": "onedrive-sync",
-	"version": "2.0.0",
+	"version": "2.0.1",
 	"description": "Sync your Obsidian vault with OneDrive Personal/Consumer",
 	"main": "main.js",
 	"scripts": {
