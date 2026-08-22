@@ -63,10 +63,6 @@ describe('resolveOAuthScopes', () => {
 		expect(resolveOAuthScopes('personal', OneDriveAccessMode.APP_FOLDER)).toEqual(OAUTH_SCOPES_APP_FOLDER);
 	});
 
-	it('includes the read scope required by the delta API in App Folder mode', () => {
-		expect(resolveOAuthScopes('personal', OneDriveAccessMode.APP_FOLDER)).toContain('Files.Read.All');
-	});
-
 	it('requests the full access scope for personal accounts in Full Access mode', () => {
 		expect(resolveOAuthScopes('personal', OneDriveAccessMode.FULL_ACCESS)).toEqual(OAUTH_SCOPES_FULL_ACCESS);
 	});

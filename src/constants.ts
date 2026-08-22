@@ -62,7 +62,6 @@ export const GRAPH_API_ENDPOINT = 'https://graph.microsoft.com/v1.0';
 export const OAUTH_SCOPES_APP_FOLDER = [
 	'User.Read', // Read user profile
 	'Files.ReadWrite.AppFolder', // Read/write app-specific folder only
-	'Files.Read.All', // Required to query the app folder's delta feed
 	'offline_access', // Enable refresh tokens
 ];
 

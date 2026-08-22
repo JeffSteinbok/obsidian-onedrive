@@ -17,7 +17,7 @@ export const mockTokenResponse: TokenResponse = {
 	access_token: 'mock_access_token_67890',
 	token_type: 'Bearer',
 	expires_in: 3600, // 1 hour
-	scope: 'User.Read Files.ReadWrite.AppFolder Files.Read.All offline_access',
+	scope: 'User.Read Files.ReadWrite.AppFolder offline_access',
 	refresh_token: 'mock_refresh_token_11111',
 };
 
