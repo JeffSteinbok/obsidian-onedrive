@@ -377,6 +377,16 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.syncState).toEqual(savedState);
 	});
 
+	it('does not rewrite settings when their serialized content is unchanged', async () => {
+		await plugin.onload();
+		(plugin as any).saveData.mockClear();
+
+		await plugin.saveSettings();
+		await plugin.saveSettings();
+
+		expect((plugin as any).saveData).toHaveBeenCalledTimes(1);
+	});
+
 	it('onPluginManifestSyncChanged skips save when unchanged and saves when changed', async () => {
 		await plugin.onload();
 		expect(plugin.settings.syncPluginManifests).toBe(false);
