@@ -73,6 +73,7 @@ interface OneDrivePlugin extends Plugin {
 	getExperimentalSetting<K extends keyof ExperimentalSettings>(key: K): ExperimentalSettings[K];
 	invalidateCredentialsForIdentityChange(): Promise<void>;
 	normalizeIdentitySettings(): void;
+	loadConnectedUser(): Promise<boolean>;
 }
 
 /**
@@ -498,6 +499,16 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	// display() is the imperative rendering entry point, called by Obsidian
 	// when the settings tab is opened on versions before 1.13.
 	display(): void {
+		// If the display name hasn't been loaded yet (it's fetched in the
+		// background after startup via loadConnectedUser()), kick it off and
+		// re-render once it arrives so the user sees their account.
+		if (this.plugin.settings.connectedUser === undefined) {
+			void this.plugin.loadConnectedUser().then((updated: boolean) => {
+				if (updated) {
+					this.renderSettings();
+				}
+			});
+		}
 		this.renderSettings();
 	}
 

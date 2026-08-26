@@ -74,6 +74,7 @@ export const zhCn = {
 			notConnected: '尚未连接 OneDrive。请先在设置中连接。',
 			selectFolderFirst: '请先在设置中选择同步文件夹。',
 			engineNotInitialized: '同步引擎尚未初始化，请重新连接。',
+			initializing: '同步功能初始化中，请稍后再试。',
 			alreadyInProgress: '同步正在进行',
 			failed: '同步失败：{{message}}',
 			folderSet: '同步文件夹已设为：{{path}}',

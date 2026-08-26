@@ -76,6 +76,7 @@ export const pt = {
 			notConnected: 'Não conectado ao OneDrive. Por favor, conecte nas configurações.',
 			selectFolderFirst: 'Por favor, selecione uma pasta de sincronização nas configurações primeiro.',
 			engineNotInitialized: 'Motor de sincronização não inicializado. Por favor, reconecte.',
+			initializing: 'A sincronização ainda está inicializando. Tente novamente em instantes.',
 			alreadyInProgress: 'Sincronização já em andamento',
 			failed: 'Sincronização falhou: {{message}}',
 			folderSet: 'Pasta de sincronização definida como: {{path}}',
