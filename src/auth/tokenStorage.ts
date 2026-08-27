@@ -57,11 +57,18 @@ export class TokenStorage {
 		const expiresInStr = this.app.secretStorage.getSecret(SECRET_KEYS.EXPIRES_IN);
 
 		if (accessToken && refreshToken && expiresAtStr) {
+			const expiresAt = Number(expiresAtStr);
+			const expiresIn = Number(expiresInStr);
 			this.tokens = {
 				accessToken,
 				refreshToken,
-				expiresAt: Number(expiresAtStr),
-				expiresIn: expiresInStr ? Number(expiresInStr) : 3600,
+				// Guard against NaN (comparisons always false). For expiry: 0 = immediately expired,
+				// and only positive expiresIn values are accepted; otherwise safe defaults apply.
+				expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
+				expiresIn:
+					(expiresInStr && Number.isFinite(expiresIn) && expiresIn > 0)
+						? expiresIn
+						: 3600,
 			};
 			logger.debug('Tokens loaded from SecretStorage');
 			return false; // No migration needed

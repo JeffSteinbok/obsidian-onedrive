@@ -75,6 +75,20 @@ describe('TokenStorage', () => {
 			expect(newStorage.getRefreshToken()).toBe('stored-refresh');
 		});
 
+		it('should sanitize a corrupt (non-numeric) expiry into an expired token', async () => {
+			mockApp.secretStorage.setSecret('access-token', 'access');
+			mockApp.secretStorage.setSecret('refresh-token', 'refresh');
+			mockApp.secretStorage.setSecret('token-expires-at', 'not-a-number');
+
+			await storage.loadTokens();
+
+			// NaN comparisons always return false, which would make a broken
+			// token appear never-expiring; the loader must coerce it to 0
+			// (already expired) so the refresh path runs.
+			expect(storage.hasTokens()).toBe(true);
+			expect(storage.isAccessTokenExpired()).toBe(true);
+		});
+
 		it('should migrate legacy obfuscated tokens from data.json', async () => {
 			// Create obfuscated tokens in legacy format
 			const accessToken = 'test_access_token_12345';
