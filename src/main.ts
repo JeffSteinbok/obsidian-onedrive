@@ -110,6 +110,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private currentSyncStatus: SyncStatus = SyncStatus.DISCONNECTED;
 	private currentProgressMessage?: string;
 	private mobileProgressNotice?: Notice;
+	private lastSavedSettings?: string;
 
 	async onload() {
 		logger.info('Loading OneDrive Sync plugin');
@@ -1352,7 +1353,13 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.applyLogLevel();
 		this.applyVaultLogHook();
 
+		const serializedSettings = JSON.stringify(this.settings);
+		if (serializedSettings === this.lastSavedSettings) {
+			return;
+		}
+
 		await this.saveData(this.settings);
+		this.lastSavedSettings = serializedSettings;
 	}
 
 	private static readonly LOG_LEVEL_MAP: Record<string, LogLevel> = {
