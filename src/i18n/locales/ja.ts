@@ -75,6 +75,7 @@ export const ja = {
 			notConnected: 'OneDriveに接続されていません。設定で接続してください。',
 			selectFolderFirst: '設定で同期フォルダを先に選択してください。',
 			engineNotInitialized: '同期エンジンが初期化されていません。再接続してください。',
+			initializing: '同期はまだ初期化中です。しばらくしてから再度お試しください。',
 			alreadyInProgress: '同期は既に進行中です',
 			failed: '同期に失敗しました: {{message}}',
 			folderSet: '同期フォルダを設定しました: {{path}}',

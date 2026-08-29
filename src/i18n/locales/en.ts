@@ -77,6 +77,7 @@ export const en = {
 			notConnected: 'Not connected to OneDrive. Please connect in settings.',
 			selectFolderFirst: 'Please select a sync folder in settings first.',
 			engineNotInitialized: 'Sync engine not initialized. Please reconnect.',
+			initializing: 'Sync is still initializing. Please try again in a moment.',
 			alreadyInProgress: 'Sync already in progress',
 			failed: 'Sync failed: {{message}}',
 			folderSet: 'Sync folder set to: {{path}}',

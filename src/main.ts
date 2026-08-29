@@ -105,6 +105,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 	// Sync state
 	private isSyncing = false;
 
+	// True while authenticated components are being initialized off the load
+	// path (network calls, sync-engine construction). Used to give a friendlier
+	// message when a manual sync is requested before initialization completes.
+	private isInitializing = false;
+
 	// UI components
 	private statusBarManager?: StatusBarManager;
 	private currentSyncStatus: SyncStatus = SyncStatus.DISCONNECTED;
@@ -157,9 +162,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 			);
 		}
 
-		// Initialize authenticated components if we have tokens
+		// Kick off authenticated initialization (API clients, event listeners,
+		// periodic/startup sync). This involves network calls (e.g. app-folder
+		// resolution) that should NOT block Obsidian's startup, so it
+		// runs asynchronously after onload returns.
 		if (this.tokenStorage.hasTokens()) {
-			await this.initializeAuthenticatedComponents();
+			void this.initializeAfterLoad();
 		}
 
 		// Add ribbon icon for manual sync
@@ -256,26 +264,41 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Add settings tab
 		this.addSettingTab(new OneDriveSettingTab(this.app, this));
 
-		// Start event listeners and periodic sync only if sync target is configured
-		if (this.tokenStorage.hasTokens() && this.eventManager && this.isSyncConfigured()) {
-			this.eventManager.startListening();
-			this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
-		}
-
-		// Perform startup sync if configured and sync target is set
-		if (
-			this.tokenStorage.hasTokens() &&
-			this.settings.startupSyncDelay > 0 &&
-			this.isSyncConfigured()
-		) {
-			logger.info(`Startup sync scheduled: will run in ${this.settings.startupSyncDelay}s`);
-			timerApi.setTimeout(() => {
-				logger.info('Startup sync delay elapsed — triggering sync');
-				void this.triggerManualSync();
-			}, this.settings.startupSyncDelay * 1000);
-		}
-
 		logger.info('OneDrive Sync plugin loaded successfully');
+	}
+
+	/**
+	 * Finish authenticated initialization off the load path.
+	 *
+	 * `onload()` awaits only local work so Obsidian can finish starting up;
+	 * everything that needs the network (app-folder resolution, user info) or
+	 * depends on it (event listeners, periodic/startup sync) runs here, async,
+	 * after the plugin is already usable.
+	 */
+	private async initializeAfterLoad(): Promise<void> {
+		this.isInitializing = true;
+		try {
+			await this.initializeAuthenticatedComponents();
+
+			// The above set up `eventManager`; now start listening + periodic sync,
+			// and schedule the deferred startup sync.
+			if (this.eventManager && this.isSyncConfigured()) {
+				this.eventManager.startListening();
+				this.eventManager.startPeriodicSync(this.settings.syncInterval || 0);
+			}
+
+			if (this.settings.startupSyncDelay > 0 && this.isSyncConfigured()) {
+				logger.info(`Startup sync scheduled: will run in ${this.settings.startupSyncDelay}s`);
+				timerApi.setTimeout(() => {
+					logger.info('Startup sync delay elapsed — triggering sync');
+					void this.triggerManualSync();
+				}, this.settings.startupSyncDelay * 1000);
+			}
+
+			logger.info('Authenticated initialization completed; event listeners and startup sync scheduled');
+		} finally {
+			this.isInitializing = false;
+		}
 	}
 
 	onunload() {
@@ -440,18 +463,43 @@ export default class OneDriveSyncPlugin extends Plugin {
 				}
 			);
 
-			// Get user info to display in settings
+			// Get user info to display in settings. This is display-only and must
+			// not block initialization (and thus event listeners / startup sync),
+			// so fetch it in the background and persist when it arrives.
 			if (!this.settings.connectedUser) {
-				const userInfo = await this.oneDriveClient.getUserInfo();
-				this.settings.connectedUser = userInfo;
-				await this.saveSettings();
+				void this.loadConnectedUser();
 			}
 
 			logger.info('Authenticated components initialized');
 		} catch (error) {
 			logger.error('Failed to initialize authenticated components:', error);
 			new Notice(t('notices.auth.clientInitFailed'));
+			return;
 		}
+	}
+
+	/**
+	 * Fetch and cache the connected user's display info for the settings UI.
+	 * Fire-and-forget: never blocks initialization or sync.
+	 * @returns true if the cached user info was updated.
+	 */
+	async loadConnectedUser(): Promise<boolean> {
+		if (!this.oneDriveClient || this.settings.connectedUser) {
+			return false;
+		}
+
+		try {
+			const userInfo = await this.oneDriveClient.getUserInfo();
+			// Re-check: a disconnect/reconnect may have happened meanwhile.
+			if (!this.settings.connectedUser) {
+				this.settings.connectedUser = userInfo;
+				await this.saveSettings();
+				return true;
+			}
+		} catch (error) {
+			logger.warn('Failed to load connected user info:', error);
+		}
+		return false;
 	}
 
 	private buildDeviceCodeClient(): DeviceCodeFlowClient {
@@ -687,7 +735,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		if (!this.syncEngine) {
-			new Notice(t('notices.sync.engineNotInitialized'));
+			new Notice(t(this.isInitializing ? 'notices.sync.initializing' : 'notices.sync.engineNotInitialized'));
 			return;
 		}
 
@@ -1267,7 +1315,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return;
 		}
 		if (!this.syncEngine) {
-			new Notice(t('notices.reconcile.engineNotInitialized'));
+			new Notice(t(this.isInitializing ? 'notices.sync.initializing' : 'notices.reconcile.engineNotInitialized'));
 			return;
 		}
 		if (this.isSyncing || this.eventManager?.isSyncInProgress()) {
@@ -1304,7 +1352,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return;
 		}
 		if (!this.syncEngine) {
-			new Notice(t('notices.reconcileToCloud.engineNotInitialized'));
+			new Notice(t(this.isInitializing ? 'notices.sync.initializing' : 'notices.reconcileToCloud.engineNotInitialized'));
 			return;
 		}
 		if (this.isSyncing || this.eventManager?.isSyncInProgress()) {

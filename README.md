@@ -72,7 +72,7 @@ Sync your Obsidian vault with **OneDrive**. Zero-config for personal Microsoft a
 | Setting                  | Description                                                                                                                                                               |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Sync Interval**        | Set to 0 for manual-only sync (recommended for battery)                                                                                                                   |
-| **Startup Sync Delay**   | Delay before first sync after launch (0 = disabled, 10s recommended)                                                                                                      |
+| **Startup Sync Delay**   | Delay before the first sync after the plugin finishes initializing (0 = disabled, 10s recommended)                                                                                                      |
 | **Conflict Resolution**  | Last write wins (default), create duplicate, or manual                                                                                                                    |
 | **Sync App Settings**    | Optional — sync `.obsidian/app.json`, `.obsidian/appearance.json`, and `.obsidian/hotkeys.json` to keep appearance and hotkeys consistent across devices                  |
 | **Sync Plugins**         | Optional — sync plugin lists, manifests, and binaries (`main.js`, `styles.css`). Does **not** sync plugin data files (`data.json`)                                        |
