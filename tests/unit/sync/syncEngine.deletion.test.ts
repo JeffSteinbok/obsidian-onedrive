@@ -163,7 +163,7 @@ function buildFolderTree(folderPaths: string[], filePaths: string[]) {
 describe('SyncEngine deletion permutations', () => {
 	let stateManager: SyncStateManager;
 	let conflictResolver: ConflictResolver;
-	let mockFileOps: { uploadFile: Mock; downloadFile: Mock; deleteFile: Mock };
+	let mockFileOps: { uploadFile: Mock; downloadFile: Mock; deleteFile: Mock; moveFile: Mock };
 	let mockClient: { getDelta: Mock; listAllItems: Mock; isSharedDrive: Mock };
 	let mockEventManager: {
 		getDirtyFiles: Mock;
@@ -211,6 +211,9 @@ describe('SyncEngine deletion permutations', () => {
 			uploadFile: vi.fn().mockResolvedValue(makeRemoteFile('uploaded.md', { id: 'uploaded-id' })),
 			downloadFile: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
 			deleteFile: vi.fn().mockResolvedValue(undefined),
+			moveFile: vi
+				.fn()
+				.mockImplementation((id: string) => Promise.resolve(makeRemoteFile('moved.md', { id }))),
 		};
 		mockClient = {
 			getDelta: vi.fn().mockResolvedValue({ items: [], deltaLink: 'delta-link-next' }),
@@ -724,6 +727,188 @@ describe('SyncEngine deletion permutations', () => {
 		expect(stateManager.getFileState('notes/old-folder/child.md')).toBeUndefined();
 		expect(stateManager.getFileState('notes/new-folder/child.md')).toMatchObject({
 			oneDriveId: 'child-file-id',
+		});
+	});
+
+	// Regression tests for issue #50: a file renamed on one device (atomic
+	// PATCH move — the OneDrive id survives, so delta reports the item only
+	// at its new path with no delete for the old one) left every other device
+	// holding both the old and the new name.
+	describe('remote file moves (issue #50)', () => {
+		const trackFile = (path: string, id: string, hash: string) => {
+			stateManager.setFileState(path, {
+				path,
+				localMtime: 1,
+				remoteHash: hash,
+				size: 100,
+				remoteModifiedTime: 2,
+				oneDriveId: id,
+			});
+		};
+
+		it('renames the local file instead of leaving a duplicate behind', async () => {
+			const localFile = makeTFile('Test Sync.md', 100, 1);
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+			trackFile('Test Sync.md', 'stable-id', 'Test Sync 111.md-hash');
+			mockClient.getDelta.mockResolvedValue({
+				items: [makeRemoteFile('Test Sync 111.md', { id: 'stable-id' })],
+				deltaLink: 'delta-link-next',
+			});
+			mockApp.vault.adapter.exists.mockResolvedValue(false);
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+				path === 'Test Sync.md' ? localFile : null
+			);
+
+			await createEngine().performSync();
+
+			expect(mockApp.vault.rename).toHaveBeenCalledWith(localFile, 'Test Sync 111.md');
+			expect(mockEventManager.markOwnWrites).toHaveBeenCalledWith([
+				'Test Sync.md',
+				'Test Sync 111.md',
+			]);
+			expect(stateManager.getFileState('Test Sync.md')).toBeUndefined();
+			expect(stateManager.getFileState('Test Sync 111.md')).toMatchObject({
+				oneDriveId: 'stable-id',
+			});
+			// Pure rename — the tracked hash moved with the state, so there is
+			// nothing left to download.
+			expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
+		});
+
+		it('still downloads the new path when the remote move also changed content', async () => {
+			const localFile = makeTFile('notes/a.md', 100, 1);
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+			trackFile('notes/a.md', 'stable-id', 'stale-hash');
+			mockClient.getDelta.mockResolvedValue({
+				items: [makeRemoteFile('notes/b.md', { id: 'stable-id' })],
+				deltaLink: 'delta-link-next',
+			});
+			mockApp.vault.adapter.exists.mockResolvedValue(false);
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+				path === 'notes/a.md' ? localFile : null
+			);
+
+			await createEngine().performSync();
+
+			expect(mockApp.vault.rename).toHaveBeenCalledWith(localFile, 'notes/b.md');
+			expect(mockFileOps.downloadFile).toHaveBeenCalledWith('stable-id');
+		});
+
+		it('trashes the stale old copy when the new path already exists locally', async () => {
+			const oldFile = makeTFile('notes/a.md', 100, 1);
+			const newFile = makeTFile('notes/b.md', 100, 1);
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+			trackFile('notes/a.md', 'stable-id', 'notes/b.md-hash');
+			mockClient.getDelta.mockResolvedValue({
+				items: [makeRemoteFile('notes/b.md', { id: 'stable-id' })],
+				deltaLink: 'delta-link-next',
+			});
+			mockApp.vault.adapter.exists.mockResolvedValue(false);
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => {
+				if (path === 'notes/a.md') return oldFile;
+				if (path === 'notes/b.md') return newFile;
+				return null;
+			});
+
+			await createEngine().performSync();
+
+			expect(mockApp.vault.rename).not.toHaveBeenCalled();
+			expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(oldFile);
+			expect(stateManager.getFileState('notes/a.md')).toBeUndefined();
+		});
+
+		it('drops stale tracking and downloads when the old path was never present locally', async () => {
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+			trackFile('notes/a.md', 'stable-id', 'notes/b.md-hash');
+			mockClient.getDelta.mockResolvedValue({
+				items: [makeRemoteFile('notes/b.md', { id: 'stable-id' })],
+				deltaLink: 'delta-link-next',
+			});
+			mockApp.vault.adapter.exists.mockResolvedValue(false);
+			mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+
+			await createEngine().performSync();
+
+			expect(mockApp.vault.rename).not.toHaveBeenCalled();
+			expect(stateManager.getFileState('notes/a.md')).toBeUndefined();
+			expect(mockFileOps.downloadFile).toHaveBeenCalledWith('stable-id');
+			expect(stateManager.getFileState('notes/b.md')).toMatchObject({
+				oneDriveId: 'stable-id',
+			});
+		});
+
+		it('moves a config file via the adapter, since it is not in the vault index', async () => {
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+			trackFile('.obsidian/snippets/a.css', 'stable-id', '.obsidian/snippets/b.css-hash');
+			mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: 'delta-link-next' });
+			mockClient.getDelta.mockResolvedValueOnce({ items: [], deltaLink: 'delta-link-next' });
+			mockClient.getDelta.mockResolvedValueOnce({
+				items: [makeRemoteFile('.obsidian/snippets/b.css', { id: 'stable-id' })],
+				deltaLink: 'obsidian-delta-next',
+			});
+			mockApp.vault.adapter.exists.mockImplementation((path: string) =>
+				Promise.resolve(path === '.obsidian/snippets/a.css')
+			);
+			mockApp.vault.getAbstractFileByPath.mockReturnValue(null);
+
+			await createEngine().performSync();
+
+			expect(mockApp.vault.adapter.rename).toHaveBeenCalledWith(
+				'.obsidian/snippets/a.css',
+				'.obsidian/snippets/b.css'
+			);
+			expect(stateManager.getFileState('.obsidian/snippets/a.css')).toBeUndefined();
+			expect(stateManager.getFileState('.obsidian/snippets/b.css')).toMatchObject({
+				oneDriveId: 'stable-id',
+			});
+			expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
+		});
+
+		it('leaves the file alone when the same path has a pending local change', async () => {
+			const localFile = makeTFile('notes/a.md', 100, 1);
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+			trackFile('notes/a.md', 'stable-id', 'old-hash');
+			mockEventManager.getDirtyFiles.mockReturnValue([
+				{ path: 'notes/a.md', type: LocalChangeType.MODIFY },
+			]);
+			mockClient.getDelta.mockResolvedValue({
+				items: [makeRemoteFile('notes/b.md', { id: 'stable-id' })],
+				deltaLink: 'delta-link-next',
+			});
+			mockApp.vault.adapter.exists.mockResolvedValue(false);
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+				path === 'notes/a.md' ? localFile : null
+			);
+
+			await createEngine().performSync();
+
+			expect(mockApp.vault.rename).not.toHaveBeenCalled();
+		});
+
+		it('does not treat a locally-initiated atomic move as a remote move', async () => {
+			const localFile = makeTFile('notes/b.md', 100, 1);
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+			trackFile('notes/a.md', 'stable-id', 'old-hash');
+			mockEventManager.getDirtyFiles.mockReturnValue([
+				{ path: 'notes/b.md', oldPath: 'notes/a.md', type: LocalChangeType.RENAME },
+			]);
+			mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: 'delta-link-next' });
+			mockApp.vault.adapter.exists.mockResolvedValue(false);
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+				path === 'notes/b.md' ? localFile : null
+			);
+
+			await createEngine().performSync();
+
+			expect(mockApp.vault.rename).not.toHaveBeenCalled();
+			expect(mockFileOps.moveFile).toHaveBeenCalledWith('stable-id', '/remote/root/notes/b.md');
 		});
 	});
 

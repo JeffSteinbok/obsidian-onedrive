@@ -125,6 +125,18 @@ interface RemoteFolderMove {
 }
 
 /**
+ * A file that was moved/renamed on the remote. Detected by the delta
+ * reporting a OneDrive item id we already track under a different vault
+ * path — the signature of an atomic PATCH move performed by another device
+ * (the id survives the move, so no delete/create pair is emitted).
+ */
+interface RemoteFileMove {
+	oldPath: string;
+	newPath: string;
+	item: OneDriveItem;
+}
+
+/**
  * Returned by expandFolderDeletes: synthetic per-file delete items derived
  * from Graph folder-delete entries, plus the folder paths that were deleted,
  * plus any folder moves/renames detected on the remote.
@@ -294,6 +306,17 @@ export class SyncEngine {
 			// new downloads or left stranded in stale folders (issue #163).
 			if (folderMoves.length > 0) {
 				await this.applyRemoteFolderMoves(folderMoves);
+			}
+
+			// Apply any file moves/renames detected on the remote (a file
+			// renamed on another device via an atomic PATCH move keeps its
+			// OneDrive id, so the delta reports it only at its new path —
+			// with no delete for the old one). Runs after folder moves so
+			// descendants relocated above are already tracked at their new
+			// paths and aren't mistaken for individual file moves (issue #50).
+			const fileMoves = this.detectRemoteFileMoves(remoteChanges, localChanges);
+			if (fileMoves.length > 0) {
+				await this.applyRemoteFileMoves(fileMoves);
 			}
 
 			// Phase 3: Diff local vs remote to produce upload/download/conflict ops
@@ -1954,6 +1977,155 @@ export class SyncEngine {
 					`Failed to apply remote folder move ${oldPath} → ${newPath}: ${error instanceof Error ? error.message : error}`
 				);
 			}
+		}
+	}
+
+	/**
+	 * Detect files that were renamed/moved on the remote.
+	 *
+	 * When another device performs an atomic move (OneDrive PATCH), the item
+	 * keeps its id and Graph delta reports it once, at its NEW path — there
+	 * is no delete entry for the old path. Without this pass the planner sees
+	 * only "a file we don't track at this path" and downloads it, leaving the
+	 * old local copy behind forever: the duplicate reported in issue #50.
+	 *
+	 * A tracked id resolving to a different vault path than the one the delta
+	 * reports is the fingerprint of that move.
+	 */
+	private detectRemoteFileMoves(
+		remoteChanges: OneDriveItem[],
+		localChanges: LocalChange[]
+	): RemoteFileMove[] {
+		// Paths the local pass owns this cycle. Relocating underneath it would
+		// race with an upload/conflict decision, so leave those alone.
+		const locallyTouched = new Set<string>();
+		for (const change of localChanges) {
+			locallyTouched.add(change.path);
+			if (change.oldPath) locallyTouched.add(change.oldPath);
+		}
+
+		const moves: RemoteFileMove[] = [];
+		for (const item of remoteChanges) {
+			if (item.deleted || !item.file || !item.id) continue;
+			const newPath = this.remotePathToVaultPath(item);
+			if (!newPath) continue;
+			const oldPath = this.stateManager.getPathByOneDriveId(item.id);
+			if (!oldPath || oldPath === newPath) continue;
+			if (locallyTouched.has(oldPath) || locallyTouched.has(newPath)) {
+				logger.debug(
+					`Remote file move ${oldPath} → ${newPath}: skipped, path has a pending local change`
+				);
+				continue;
+			}
+			if (this.conflictQueue?.hasConflict(oldPath) || this.conflictQueue?.hasConflict(newPath)) {
+				logger.debug(`Remote file move ${oldPath} → ${newPath}: skipped, pending conflict`);
+				continue;
+			}
+			logger.info(`Remote file move detected: ${oldPath} → ${newPath} (id=${item.id})`);
+			moves.push({ oldPath, newPath, item });
+		}
+		return moves;
+	}
+
+	/**
+	 * Apply remote file moves to the local vault so the old path doesn't
+	 * survive as a duplicate alongside the newly downloaded copy.
+	 *
+	 * Renaming in place (rather than deleting + re-downloading) keeps the
+	 * local content and lets the remote pass skip the download entirely when
+	 * the move was a pure rename — the tracked hash moves with the state and
+	 * still matches the delta item.
+	 */
+	private async applyRemoteFileMoves(fileMoves: RemoteFileMove[]): Promise<void> {
+		const adapter = this.app.vault.adapter;
+
+		for (const { oldPath, newPath } of fileMoves) {
+			const trackedState = this.stateManager.getFileState(oldPath);
+			const oldFile = this.app.vault.getAbstractFileByPath(oldPath);
+			const oldExists = oldFile instanceof TFile || (await adapter.exists(oldPath));
+
+			if (!oldExists) {
+				// Nothing local to relocate (never downloaded here, or already
+				// removed). Drop the stale tracking so the remote pass treats
+				// the new path as a fresh download instead of a no-op.
+				logger.debug(`Remote file move ${oldPath} → ${newPath}: no local file to move`);
+				this.stateManager.removeFileState(oldPath);
+				continue;
+			}
+
+			// If the new path is already populated locally, the old path is a
+			// stale duplicate of the same remote item — trash it rather than
+			// renaming onto an existing file (which would throw).
+			const destOccupied =
+				this.app.vault.getAbstractFileByPath(newPath) !== null || (await adapter.exists(newPath));
+			if (destOccupied) {
+				logger.info(
+					`Remote file move ${oldPath} → ${newPath}: destination already exists locally, ` +
+						`removing the stale copy at the old path`
+				);
+				try {
+					await this.deleteLocalFile(oldPath);
+				} catch (error) {
+					logger.warn(
+						`Failed to remove stale local copy ${oldPath}: ${error instanceof Error ? error.message : error}`
+					);
+					this.stateManager.removeFileState(oldPath);
+				}
+				continue;
+			}
+
+			const isVaultFile = oldFile instanceof TFile;
+			this.eventManager.markOwnWrites([oldPath, newPath]);
+			try {
+				await this.ensureVaultFolders(newPath);
+				if (isVaultFile) {
+					await this.app.vault.rename(oldFile, newPath);
+					// The rename event fires against the new path and consumes
+					// that marker; the old-path one has nothing left to
+					// suppress, so drop it rather than letting it swallow a
+					// future event for a file the user recreates there.
+					this.eventManager.removeOwnWrite(oldPath);
+				} else {
+					// Config files aren't in the vault index — move via adapter.
+					// No vault events fire for these, so neither marker would
+					// ever be consumed; the tracked state we write below is
+					// what keeps the mtime scan from seeing a phantom change.
+					await adapter.rename(oldPath, newPath);
+					this.eventManager.removeOwnWrite(oldPath);
+					this.eventManager.removeOwnWrite(newPath);
+				}
+			} catch (error) {
+				this.eventManager.removeOwnWrite(oldPath);
+				this.eventManager.removeOwnWrite(newPath);
+				logger.warn(
+					`Failed to apply remote file move ${oldPath} → ${newPath}: ${error instanceof Error ? error.message : error}`
+				);
+				continue;
+			}
+
+			// Carry the tracked state across so the remote pass can compare
+			// hashes at the new path (pure rename → no re-download).
+			this.stateManager.removeFileState(oldPath);
+			if (trackedState) {
+				let localMtime = trackedState.localMtime;
+				const movedFile = this.app.vault.getAbstractFileByPath(newPath);
+				if (movedFile instanceof TFile) {
+					localMtime = movedFile.stat.mtime;
+				} else {
+					try {
+						const stat = await adapter.stat(newPath);
+						if (stat?.mtime) localMtime = stat.mtime;
+					} catch {
+						// keep the previous mtime — a mismatch only costs a re-hash
+					}
+				}
+				this.stateManager.setFileState(newPath, {
+					...trackedState,
+					path: newPath,
+					localMtime,
+				});
+			}
+			logger.info(`Applied remote file move locally: ${oldPath} → ${newPath}`);
 		}
 	}
 
