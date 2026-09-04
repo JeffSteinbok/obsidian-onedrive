@@ -173,6 +173,7 @@ describe('SyncEngine deletion permutations', () => {
 		removeOwnWrite: Mock;
 		isOwnWrite: Mock;
 		markInitialSyncDone: Mock;
+		addDirtyFile: Mock;
 	};
 
 	const createEngine = (shouldSyncPath: (path: string) => boolean = () => true) =>
@@ -228,6 +229,7 @@ describe('SyncEngine deletion permutations', () => {
 			removeOwnWrite: vi.fn(),
 			isOwnWrite: vi.fn().mockReturnValue(false),
 			markInitialSyncDone: vi.fn(),
+			addDirtyFile: vi.fn(),
 		};
 	});
 
@@ -965,6 +967,52 @@ describe('SyncEngine deletion permutations', () => {
 				expect(stateManager.getFileState('B.md')).toMatchObject({ oneDriveId: 'id-x' });
 			});
 		}
+
+		// The old path's tracked state must survive a failed MOVE, or the
+		// retry falls into the "no tracked state for old path" branch and
+		// strands a copy on OneDrive under the old name.
+		it('keeps the old path tracked when an atomic move fails', async () => {
+			const localFile = makeTFile('notes/b.md', 100, 1);
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+			trackFile('notes/a.md', 'stable-id', 'old-hash');
+			mockEventManager.getDirtyFiles.mockReturnValue([
+				{ path: 'notes/b.md', oldPath: 'notes/a.md', type: LocalChangeType.RENAME },
+			]);
+			mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: 'delta-link-next' });
+			mockFileOps.moveFile.mockRejectedValue(new Error('network blip'));
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+				path === 'notes/b.md' ? localFile : null
+			);
+
+			await createEngine().performSync();
+
+			expect(mockFileOps.moveFile).toHaveBeenCalled();
+			expect(stateManager.getFileState('notes/a.md')).toMatchObject({
+				oneDriveId: 'stable-id',
+			});
+		});
+
+		it('retires the old path only once the atomic move succeeds', async () => {
+			const localFile = makeTFile('notes/b.md', 100, 1);
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+			trackFile('notes/a.md', 'stable-id', 'old-hash');
+			mockEventManager.getDirtyFiles.mockReturnValue([
+				{ path: 'notes/b.md', oldPath: 'notes/a.md', type: LocalChangeType.RENAME },
+			]);
+			mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: 'delta-link-next' });
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+				path === 'notes/b.md' ? localFile : null
+			);
+
+			await createEngine().performSync();
+
+			expect(stateManager.getFileState('notes/a.md')).toBeUndefined();
+			expect(stateManager.getFileState('notes/b.md')).toMatchObject({
+				oneDriveId: 'stable-id',
+			});
+		});
 
 		// A delta batch captured before a move this device already applied
 		// would otherwise rename the file backwards.

@@ -1194,7 +1194,12 @@ export class SyncEngine {
 						moveFromId: oldState.oneDriveId,
 						remoteState: oldState,
 					});
-					this.stateManager.removeFileState(change.oldPath);
+					// The old path's state is retired by the MOVE branch of
+					// executeOperation, once the move actually succeeds.
+					// Dropping it here would untrack the file whenever the
+					// move failed, and the retry would then take the "no
+					// tracked state for old path" branch and strand a copy on
+					// OneDrive under the old name.
 					remoteByPath.delete(change.path);
 					continue;
 				}
@@ -1460,6 +1465,13 @@ export class SyncEngine {
 				const remotePath = this.vaultPathToRemotePath(operation.path);
 				logger.info(`Moving item to ${remotePath}`);
 				const movedItem = await this.fileOps.moveFile(operation.moveFromId, remotePath);
+
+				// The move landed — only now is it safe to retire the old
+				// path's tracked state.
+				const movedFromPath = operation.remoteState?.path;
+				if (movedFromPath && movedFromPath !== operation.path) {
+					this.stateManager.removeFileState(movedFromPath);
+				}
 
 				// Update state with new path and item metadata
 				const localFile = this.app.vault.getAbstractFileByPath(operation.path);
