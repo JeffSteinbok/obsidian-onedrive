@@ -21,6 +21,7 @@ export const mockApp = {
 			readBinary: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
 			mkdir: vi.fn().mockResolvedValue(undefined),
 			rmdir: vi.fn().mockResolvedValue(undefined),
+			rename: vi.fn().mockResolvedValue(undefined),
 			getBasePath: vi.fn().mockReturnValue('/mock/vault'),
 		},
 		on: vi.fn().mockReturnValue({ id: 'mock-event-ref' }),
