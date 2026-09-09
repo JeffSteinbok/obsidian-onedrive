@@ -273,7 +273,11 @@ export const ja = {
 			},
 			plugins: {
 				name: 'プラグインを同期',
-				desc: '{{configDir}}/community-plugins.json、{{configDir}}/core-plugins.json、プラグインマニフェスト、プラグインバイナリ（main.js、styles.css）を同期。プラグインデータファイルは同期しません。',
+				desc: '{{configDir}}/community-plugins.json、{{configDir}}/core-plugins.json、プラグインマニフェスト、プラグインバイナリ（main.js、styles.css）を同期。',
+			},
+			pluginData: {
+				name: 'プラグインデータを同期',
+				desc: '各プラグインの data.json 設定ファイルも同期します。OneDrive Sync 自体のデータは端末内に保持されます。',
 			},
 			cssSnippets: {
 				name: 'CSSスニペットを同期',

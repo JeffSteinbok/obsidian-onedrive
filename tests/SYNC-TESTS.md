@@ -118,7 +118,8 @@ This document describes the sync engine test suites and the scenarios they cover
 ### Filtering
 - Ignore `.obsidian/` paths for typed events (handled by raw)
 - Allow plugin manifests/binaries when opted in
-- Exclude plugin data files even when plugin sync enabled
+- Exclude plugin data files unless plugin data sync is also enabled
+- Always exclude OneDrive Sync's own plugin folder and data
 - Suppress own-write events (prevent echo loops)
 
 ### Scheduling

@@ -274,7 +274,11 @@ export const es = {
 			},
 			plugins: {
 				name: 'Sincronizar plugins',
-				desc: 'Sincronizar {{configDir}}/community-plugins.json, {{configDir}}/core-plugins.json, manifiestos de plugins, y binarios de plugins (main.js, styles.css). No sincroniza archivos de datos de plugins.',
+				desc: 'Sincronizar {{configDir}}/community-plugins.json, {{configDir}}/core-plugins.json, manifiestos de plugins, y binarios de plugins (main.js, styles.css).',
+			},
+			pluginData: {
+				name: 'Sincronizar datos de plugins',
+				desc: 'También sincroniza el archivo de configuración data.json de cada plugin. Los datos de OneDrive Sync permanecen en el dispositivo.',
 			},
 			cssSnippets: {
 				name: 'Sincronizar fragmentos CSS',

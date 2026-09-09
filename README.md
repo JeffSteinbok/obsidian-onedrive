@@ -75,7 +75,8 @@ Sync your Obsidian vault with **OneDrive**. Zero-config for personal Microsoft a
 | **Startup Sync Delay**   | Delay before first sync after launch (0 = disabled, 10s recommended)                                                                                                      |
 | **Conflict Resolution**  | Last write wins (default), create duplicate, or manual                                                                                                                    |
 | **Sync App Settings**    | Optional — sync `.obsidian/app.json`, `.obsidian/appearance.json`, and `.obsidian/hotkeys.json` to keep appearance and hotkeys consistent across devices                  |
-| **Sync Plugins**         | Optional — sync plugin lists, manifests, and binaries (`main.js`, `styles.css`). Does **not** sync plugin data files (`data.json`)                                        |
+| **Sync Plugins**         | Optional — sync plugin lists, manifests, and binaries (`main.js`, `styles.css`)                                                                                           |
+| **Sync Plugin Data**     | Optional — also sync each plugin's `data.json`. Requires Sync Plugins; OneDrive Sync's own data remains device-local                                                       |
 | **Sync CSS Snippets**    | Optional — sync CSS snippets from `.obsidian/snippets/` to keep custom styles consistent across devices                                                                   |
 | **Sync Bookmarks**       | Optional — sync `.obsidian/bookmarks.json` to keep bookmarks consistent across devices                                                                                    |
 | **Pull-Only Mode**       | (Experimental) Download changes from OneDrive but never upload local edits. Useful for read-only vaults or backup recovery. Enable under Settings → Experimental          |
