@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../../src/utils/logger', () => ({
 	logger: {
 		debug: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
 	},
 }));
 
@@ -274,6 +277,91 @@ describe('SyncStateManager', () => {
 			stateManager.removeFolderState('folder-id');
 
 			expect(stateManager.getFolderPathById('folder-id')).toBeUndefined();
+		});
+	});
+	describe('duplicate remote id repair on load (#178)', () => {
+		const state = (path: string, oneDriveId?: string) => ({
+			path,
+			localMtime: 1,
+			remoteHash: 'shared-hash',
+			size: 10,
+			remoteModifiedTime: 100,
+			oneDriveId,
+		});
+
+		it('keeps the id on the original and strips it from the conflict copy', () => {
+			// Insertion order puts the copy last, so it would win the
+			// last-write-wins reverse index if the repair trusted that.
+			stateManager.loadState({
+				lastSyncTime: 1,
+				fileStates: [
+					['notes/test.md', state('notes/test.md', 'remote-id')],
+					[
+						'notes/test (conflict 2026-09-01).md',
+						state('notes/test (conflict 2026-09-01).md', 'remote-id'),
+					],
+				],
+			});
+
+			expect(stateManager.getPathByOneDriveId('remote-id')).toBe('notes/test.md');
+			expect(stateManager.getFileState('notes/test.md')?.oneDriveId).toBe('remote-id');
+
+			// The copy keeps its entry but is marked never-uploaded, so the
+			// engine re-uploads it under an id of its own.
+			const copy = stateManager.getFileState('notes/test (conflict 2026-09-01).md');
+			expect(copy).toBeDefined();
+			expect(copy?.oneDriveId).toBeUndefined();
+			expect(copy?.remoteHash).toBe('');
+			expect(copy?.remoteModifiedTime).toBe(0);
+		});
+
+		it('leaves unique ids untouched', () => {
+			stateManager.loadState({
+				lastSyncTime: 1,
+				fileStates: [
+					['a.md', state('a.md', 'id-a')],
+					['b.md', state('b.md', 'id-b')],
+				],
+			});
+
+			expect(stateManager.getFileState('a.md')?.oneDriveId).toBe('id-a');
+			expect(stateManager.getFileState('b.md')?.oneDriveId).toBe('id-b');
+			expect(stateManager.getPathByOneDriveId('id-a')).toBe('a.md');
+			expect(stateManager.getPathByOneDriveId('id-b')).toBe('b.md');
+		});
+
+		it('picks a deterministic keeper when every claimant looks like a copy', () => {
+			stateManager.loadState({
+				lastSyncTime: 1,
+				fileStates: [
+					['z (conflict 2026-09-02).md', state('z (conflict 2026-09-02).md', 'remote-id')],
+					['a (conflict 2026-09-01).md', state('a (conflict 2026-09-01).md', 'remote-id')],
+				],
+			});
+
+			// Sorted order, not map order, decides — so a reload can't flip it.
+			expect(stateManager.getPathByOneDriveId('remote-id')).toBe('a (conflict 2026-09-01).md');
+			expect(stateManager.getFileState('z (conflict 2026-09-02).md')?.oneDriveId).toBeUndefined();
+		});
+
+		it('survives a save/load round trip without re-stripping', () => {
+			stateManager.loadState({
+				lastSyncTime: 1,
+				fileStates: [
+					['notes/test.md', state('notes/test.md', 'remote-id')],
+					[
+						'notes/test (conflict 2026-09-01).md',
+						state('notes/test (conflict 2026-09-01).md', 'remote-id'),
+					],
+				],
+			});
+
+			stateManager.loadState(stateManager.prepareForSave());
+
+			expect(stateManager.getFileState('notes/test.md')?.oneDriveId).toBe('remote-id');
+			expect(
+				stateManager.getFileState('notes/test (conflict 2026-09-01).md')?.oneDriveId
+			).toBeUndefined();
 		});
 	});
 });

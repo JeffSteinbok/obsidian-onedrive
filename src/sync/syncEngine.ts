@@ -188,7 +188,7 @@ export class SyncEngine {
 	// Four concurrent operations is a conservative default for typical vaults.
 	private readonly maxConcurrentOperations: number;
 	// Use atomic PATCH moves instead of delete+upload — more efficient and avoids duplicates.
-	private readonly useAtomicMoves: boolean;
+	private readonly useAtomicMoves: () => boolean;
 	private isSharedDrive: boolean;
 	private remoteRootOnDrive: string;
 	private static readonly DEFAULT_IGNORE_PATTERNS: string[] = [
@@ -233,7 +233,7 @@ export class SyncEngine {
 		this.getNotificationLevel = options.getNotificationLevel ?? (() => 'all');
 		this.pluginVersion = options.pluginVersion ?? 'unknown';
 		this.maxConcurrentOperations = options.maxConcurrentOperations ?? 4;
-		this.useAtomicMoves = options.useAtomicMoves ?? true;
+		this.useAtomicMoves = options.useAtomicMoves ?? (() => true);
 		this.isPullOnlyMode = options.isPullOnlyMode ?? (() => false);
 		this.isAppFolder = options.isAppFolder ?? false;
 
@@ -557,6 +557,20 @@ export class SyncEngine {
 		const configChanges = await this.detectConfigFileChanges(ignoreMatchers, dirtyPaths);
 		localChanges.push(...configChanges);
 
+		// Files we hold but have never put on OneDrive (conflict copies, and
+		// paths healed by the duplicate-id sanitizer) are invisible to both the
+		// dirty queue and the config scan, so pick them up from tracked state.
+		const unuploadedChanges = await this.discoverUnuploadedTrackedFiles(
+			ignoreMatchers,
+			new Set(localChanges.map((change) => change.path))
+		);
+		if (unuploadedChanges.length > 0) {
+			localChanges.push(...unuploadedChanges);
+			logger.info(
+				`Queued ${unuploadedChanges.length} tracked file(s) that have no remote id yet`
+			);
+		}
+
 		logger.info(
 			`Local changes: ${localChanges.length} dirty files (${configChanges.length} config), ${folderChanges.length} folder operations`
 		);
@@ -585,6 +599,58 @@ export class SyncEngine {
 			folderChanges,
 			ignoredCount: ignoredLocalPaths.length,
 		};
+	}
+
+	/**
+	 * Queue uploads for tracked files that have no remote id yet.
+	 *
+	 * A tracked path with no `oneDriveId` is a file this device holds but has
+	 * never successfully put on OneDrive. Two things produce that shape:
+	 *
+	 * - a CREATE_DUPLICATE conflict copy, which is written locally from the
+	 *   remote bytes but deliberately not given the base item's id (#177/#178);
+	 * - a vault healed by `sanitizeDuplicateRemoteIds`, which strips the id
+	 *   from every path but one when several claimed the same remote item.
+	 *
+	 * Neither raises a vault event — the plugin wrote the file itself — so the
+	 * dirty queue never sees them, and the finalize phase clears that queue in
+	 * any case. Rediscovering them from tracked state each sync is what makes
+	 * the upload survive to the next cycle, and makes it retry on failure.
+	 */
+	private async discoverUnuploadedTrackedFiles(
+		ignoreMatchers: RegExp[],
+		dirtyPaths: Set<string>
+	): Promise<LocalChange[]> {
+		const adapter = this.app.vault.adapter;
+		const discovered: LocalChange[] = [];
+		for (const path of this.stateManager.getTrackedPaths()) {
+			if (dirtyPaths.has(path)) continue;
+			if (this.stateManager.getFileState(path)?.oneDriveId) continue;
+			if (!this.shouldSyncPath(path)) continue;
+			if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
+
+			// `.obsidian/` files aren't TFile instances, so fall back to the
+			// adapter for anything the file cache doesn't know.
+			let exists = this.app.vault.getAbstractFileByPath(path) instanceof TFile;
+			if (!exists) {
+				try {
+					exists = await adapter.exists(path);
+				} catch {
+					exists = false;
+				}
+			}
+
+			// A tracked, id-less path whose file is gone locally is dead state,
+			// not an upload: there is nothing remote to delete, so just drop it.
+			if (!exists) {
+				logger.debug(`Dropping tracked state for missing, never-uploaded file: ${path}`);
+				this.stateManager.removeFileState(path);
+				continue;
+			}
+
+			discovered.push({ path, type: LocalChangeType.CREATE });
+		}
+		return discovered;
 	}
 
 	private discoverUntrackedLocalFolders(
@@ -1184,7 +1250,7 @@ export class SyncEngine {
 					remoteByPath.delete(change.oldPath);
 				}
 
-				if (this.useAtomicMoves && oldState?.oneDriveId) {
+				if (this.useAtomicMoves() && oldState?.oneDriveId) {
 					// Use atomic move via OneDrive PATCH API — more efficient (no re-upload)
 					// and avoids duplicate files if something goes wrong
 					logger.debug(`Rename: using atomic move for ${change.oldPath} (OneDrive ID: ${oldState.oneDriveId})`);
@@ -1282,6 +1348,10 @@ export class SyncEngine {
 								path: resolution.duplicatePath,
 								direction: SyncDirection.DOWNLOAD,
 								remoteState,
+								// The copy is a brand-new file with no remote
+								// counterpart; it must not be tracked under the
+								// base item's id (#177, #178).
+								isConflictCopy: true,
 							});
 							operations.push({
 								path: change.path,
@@ -1719,6 +1789,35 @@ export class SyncEngine {
 		} else {
 			const stat = await this.app.vault.adapter.stat(operation.path);
 			localMtime = stat?.mtime ?? Date.now();
+		}
+
+		if (operation.isConflictCopy) {
+			// A CREATE_DUPLICATE copy is a NEW file that happens to hold the
+			// remote version's bytes. It has no remote item of its own, so it
+			// gets no oneDriveId: recording the base item's id here would make
+			// one id resolve to two paths, and every id-keyed inference then
+			// picks the wrong file — deleting the copy deletes the real remote
+			// file (#177), and a rename arriving from another device relocates
+			// the copy instead of the original (#50 follow-up).
+			//
+			// Leaving oneDriveId unset also marks it as not-yet-uploaded, which
+			// discoverUnuploadedTrackedFiles turns into an upload on the next
+			// sync. It cannot be queued dirty here: the write above is marked as
+			// our own so it raises no vault event, and the finalize phase clears
+			// the dirty queue anyway.
+			this.stateManager.setFileState(operation.path, {
+				path: operation.path,
+				localMtime,
+				remoteHash: '',
+				size: content.byteLength,
+				remoteModifiedTime: 0,
+				localContentHash: hashContent(new Uint8Array(content)),
+			});
+			logger.info(
+				`Downloaded conflict copy ${operation.path} with no tracked remote id; ` +
+					`it will be uploaded under its own id on the next sync`
+			);
+			return;
 		}
 
 		this.stateManager.setFileState(operation.path, {

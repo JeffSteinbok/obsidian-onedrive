@@ -458,7 +458,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 					onProgress: (msg) => this.setSyncProgress(msg),
 					pluginVersion: this.manifest.version,
 					maxConcurrentOperations: this.getExperimentalSetting('maxConcurrentOperations'),
-					useAtomicMoves: this.getExperimentalSetting('useAtomicMoves'),
+					useAtomicMoves: () => this.getExperimentalSetting('useAtomicMoves'),
 					isPullOnlyMode: () => this.getExperimentalSetting('pullOnlyMode'),
 				}
 			);

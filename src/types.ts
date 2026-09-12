@@ -149,6 +149,13 @@ export interface SyncOperation {
 	remoteState?: FileState;
 	// For MOVE operations: the OneDrive ID of the item to move
 	moveFromId?: string;
+	/**
+	 * True when this DOWNLOAD writes a CREATE_DUPLICATE conflict copy to a new
+	 * dated path. Such a copy has no remote counterpart of its own yet, so it
+	 * must NOT inherit the base item's oneDriveId — two paths sharing one id
+	 * corrupts every id-keyed inference we make (issues #177, #178).
+	 */
+	isConflictCopy?: boolean;
 }
 
 export interface LargeDeleteWarningInfo {
@@ -222,8 +229,13 @@ export interface SyncEngineOptions {
 	pluginVersion?: string;
 	/** Max concurrent upload/download operations */
 	maxConcurrentOperations?: number;
-	/** Use atomic PATCH moves instead of delete+upload */
-	useAtomicMoves?: boolean;
+	/**
+	 * Returns true if atomic PATCH moves should be used instead of
+	 * delete+upload. A getter, not a snapshot: the user can toggle this in
+	 * settings while the engine is alive, and reading it per-sync means the
+	 * change takes effect on the next sync rather than after a reload.
+	 */
+	useAtomicMoves?: () => boolean;
 	/** Returns true if pull-only mode is enabled */
 	isPullOnlyMode?: () => boolean;
 	/**

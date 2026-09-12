@@ -401,6 +401,18 @@ export function createConflictFileName(originalPath: string): string {
 }
 
 /**
+ * True if a path looks like a conflict copy produced by
+ * {@link createConflictFileName}.
+ *
+ * The bracketed part is matched loosely rather than against the current
+ * timestamp format: earlier builds stamped date-only copies, and those still
+ * exist in long-lived vaults.
+ */
+export function isConflictCopyPath(path: string): boolean {
+	return / \(conflict [^)]*\)$/.test(getFileNameWithoutExtension(path));
+}
+
+/**
  * Known text file extensions (for diff display in conflict resolution)
  */
 const TEXT_EXTENSIONS = new Set([

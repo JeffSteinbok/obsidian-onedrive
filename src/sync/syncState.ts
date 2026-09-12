@@ -3,6 +3,7 @@
  */
 
 import { SyncState, FileState } from '../types';
+import { isConflictCopyPath } from '../utils/pathUtils';
 import { logger } from '../utils/logger';
 
 /**
@@ -39,6 +40,81 @@ export class SyncStateManager {
 	}
 
 	/**
+	 * Repair state where one OneDrive id is tracked under several vault paths.
+	 *
+	 * `oneDriveIdToPath` is one-to-one, so a shared id means the reverse lookup
+	 * silently resolves to whichever path was written last. Every id-keyed
+	 * inference then acts on the wrong file: deleting a conflict copy deletes
+	 * the real remote item (#177), and a rename arriving from another device
+	 * relocates the copy rather than the original.
+	 *
+	 * Older builds minted these by tracking a CREATE_DUPLICATE conflict copy
+	 * under the base item's id. The fix stops new ones appearing; this heals
+	 * vaults that already have them (#178).
+	 *
+	 * The original file keeps the id; conflict copies give it up. That choice
+	 * cannot be left to the reverse index, whose winner is simply whichever
+	 * path was written last — in practice the copy, since it is written after
+	 * the file it was copied from. The paths that give up the id keep their
+	 * content but are marked as never-uploaded, and
+	 * `discoverUnuploadedTrackedFiles` then uploads each under an id of its own.
+	 */
+	private sanitizeDuplicateRemoteIds(): void {
+		const pathsById = new Map<string, string[]>();
+		for (const [path, state] of this.state.fileStates) {
+			if (!state.oneDriveId) continue;
+			const paths = pathsById.get(state.oneDriveId);
+			if (paths) {
+				paths.push(path);
+			} else {
+				pathsById.set(state.oneDriveId, [path]);
+			}
+		}
+
+		let strippedCount = 0;
+		for (const [oneDriveId, paths] of pathsById) {
+			if (paths.length < 2) continue;
+
+			// Prefer a path that isn't a conflict copy; a copy only ever
+			// borrowed the id from the file it was made from. Sorted so the
+			// outcome doesn't depend on map iteration order, and falling back
+			// to the full set when every candidate looks like a copy.
+			const originals = paths.filter((path) => !isConflictCopyPath(path));
+			const candidates = (originals.length > 0 ? originals : paths).slice().sort();
+			const indexWinner = this.oneDriveIdToPath.get(oneDriveId);
+			const keeper =
+				indexWinner && candidates.includes(indexWinner) ? indexWinner : candidates[0];
+			for (const path of paths) {
+				if (path === keeper) continue;
+				const state = this.state.fileStates.get(path);
+				if (!state) continue;
+				// Clear the remote hash too: it describes the keeper's remote
+				// item, and leaving it would let a later sync believe this path
+				// is already in sync with something it no longer points at.
+				this.state.fileStates.set(path, {
+					...state,
+					oneDriveId: undefined,
+					remoteHash: '',
+					remoteModifiedTime: 0,
+				});
+				strippedCount++;
+				logger.warn(
+					`Sync state repair: ${path} shared OneDrive id ${oneDriveId} with ${keeper}; ` +
+						`cleared its remote id so it re-uploads as its own file`
+				);
+			}
+		}
+
+		if (strippedCount > 0) {
+			logger.warn(
+				`Sync state repair: cleared ${strippedCount} duplicate remote id reference(s) ` +
+					`across ${pathsById.size} tracked item(s) (issue #178)`
+			);
+			this.rebuildIndexes();
+		}
+	}
+
+	/**
 	 * Load state from persisted data
 	 */
 	loadState(data?: {
@@ -68,6 +144,7 @@ export class SyncStateManager {
 			obsidianDeltaLink: data.obsidianDeltaLink,
 		};
 		this.rebuildIndexes();
+		this.sanitizeDuplicateRemoteIds();
 
 		logger.debug('Sync state loaded', {
 			lastSyncTime: new Date(data.lastSyncTime).toISOString(),
@@ -188,6 +265,21 @@ export class SyncStateManager {
 		}
 		this.state.fileStates.set(path, state);
 		if (state.oneDriveId) {
+			// Turn a silent invariant break into something a debug log shows.
+			// Only a path that still claims this id counts: rename flows that
+			// retire the old entry before writing the new one are legitimate.
+			const incumbent = this.oneDriveIdToPath.get(state.oneDriveId);
+			if (
+				incumbent &&
+				incumbent !== path &&
+				this.state.fileStates.get(incumbent)?.oneDriveId === state.oneDriveId
+			) {
+				logger.warn(
+					`Sync state: OneDrive id ${state.oneDriveId} is now tracked under two paths ` +
+						`(${incumbent} and ${path}). The reverse index can only hold one, so ` +
+						`id-keyed lookups may resolve to the wrong file (issues #177, #178).`
+				);
+			}
 			this.oneDriveIdToPath.set(state.oneDriveId, path);
 		}
 	}

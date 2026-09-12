@@ -782,6 +782,166 @@ describe('SyncEngine', () => {
 		expect(newCopies).toBe(0);
 	});
 
+	it('does not track a conflict copy under the base file\'s OneDrive id (#177, #178)', async () => {
+		// The copy holds the remote version's bytes but has no remote item of
+		// its own. Recording the base id against it makes one id resolve to two
+		// paths, and every id-keyed inference then picks the wrong file.
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState('notes/test.md', {
+			path: 'notes/test.md',
+			localMtime: 50,
+			remoteHash: 'known-hash',
+			size: 50,
+			remoteModifiedTime: 100,
+			oneDriveId: 'remote-id',
+		});
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('notes/test.md', { id: 'remote-id' })],
+			deltaLink: 'delta-link-2',
+		});
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			path === 'notes/test.md'
+				? makeTFile('notes/test.md', 100, Date.now())
+				: makeTFile(path, 10, Date.now())
+		);
+
+		const duplicateEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			new ConflictResolver(ConflictResolutionStrategy.CREATE_DUPLICATE),
+			mockEventManager as any,
+			'.obsidian',
+			{ remoteRoot: '/remote/root' }
+		);
+
+		await duplicateEngine.performSync();
+
+		const copyPath = stateManager
+			.getTrackedPaths()
+			.find((path) => path.includes(' (conflict '));
+		expect(copyPath).toBeDefined();
+		// The copy carries no remote id...
+		expect(stateManager.getFileState(copyPath!)?.oneDriveId).toBeUndefined();
+		// ...so no remote id reverse-resolves to it. The base file owns its own
+		// id (reassigned by the converging upload) and still resolves to itself.
+		const baseId = stateManager.getFileState('notes/test.md')?.oneDriveId;
+		expect(baseId).toBeDefined();
+		expect(stateManager.getPathByOneDriveId(baseId!)).toBe('notes/test.md');
+	});
+
+	it('uploads a conflict copy under its own id on the next sync', async () => {
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState('notes/test.md', {
+			path: 'notes/test.md',
+			localMtime: 50,
+			remoteHash: 'known-hash',
+			size: 50,
+			remoteModifiedTime: 100,
+			oneDriveId: 'remote-id',
+		});
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'notes/test.md', type: LocalChangeType.MODIFY },
+		]);
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('notes/test.md', { id: 'remote-id' })],
+			deltaLink: 'delta-link-2',
+		});
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			makeTFile(path, 10, Date.now())
+		);
+
+		const duplicateEngine = new SyncEngine(
+			mockApp as any,
+			mockFileOps as any,
+			mockClient as any,
+			stateManager,
+			new ConflictResolver(ConflictResolutionStrategy.CREATE_DUPLICATE),
+			mockEventManager as any,
+			'.obsidian',
+			{ remoteRoot: '/remote/root' }
+		);
+
+		await duplicateEngine.performSync();
+		const copyPath = stateManager
+			.getTrackedPaths()
+			.find((path) => path.includes(' (conflict '))!;
+
+		// Second sync: no vault event for the copy (the plugin wrote it), and
+		// the dirty queue was cleared at finalize — it must still be picked up
+		// from tracked state and uploaded.
+		mockEventManager.getDirtyFiles.mockReturnValue([]);
+		mockClient.getDelta.mockResolvedValue({ items: [], deltaLink: 'delta-link-3' });
+		mockFileOps.uploadFile.mockClear();
+		mockFileOps.uploadFile.mockResolvedValue({ id: 'copy-own-id', size: 10 });
+
+		await duplicateEngine.performSync();
+
+		expect(mockFileOps.uploadFile).toHaveBeenCalledWith(
+			expect.stringContaining(' (conflict '),
+			expect.any(ArrayBuffer)
+		);
+		expect(stateManager.getFileState(copyPath)?.oneDriveId).toBe('copy-own-id');
+	});
+
+	it('applies a remote rename to the original, not to a conflict copy sharing its id (#50)', async () => {
+		// Pre-fix, the conflict copy was tracked under the base id and won the
+		// one-to-one reverse index, so detectRemoteFileMoves relocated the COPY
+		// and left the real file behind as the duplicate — while the tracked
+		// hash moved with it, suppressing the download of the real content.
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState('notes/test.md', {
+			path: 'notes/test.md',
+			localMtime: 50,
+			remoteHash: 'known-hash',
+			size: 50,
+			remoteModifiedTime: 100,
+			oneDriveId: 'remote-id',
+		});
+		// A conflict copy written by an older build: same id, different path.
+		stateManager.setFileState('notes/test (conflict 2026-09-01).md', {
+			path: 'notes/test (conflict 2026-09-01).md',
+			localMtime: 50,
+			remoteHash: 'known-hash',
+			size: 50,
+			remoteModifiedTime: 100,
+			oneDriveId: 'remote-id',
+		});
+		// Sanitization runs on load, so replay the state through it.
+		stateManager.loadState(stateManager.prepareForSave());
+
+		mockEventManager.getDirtyFiles.mockReturnValue([]);
+		// Another device renamed the file; delta reports the same id at a new path.
+		mockClient.getDelta.mockResolvedValue({
+			items: [makeRemoteFile('notes/renamed.md', { id: 'remote-id' })],
+			deltaLink: 'delta-link-2',
+		});
+		mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) =>
+			path === 'notes/renamed.md' ? null : makeTFile(path, 10, Date.now())
+		);
+		mockApp.vault.adapter.exists.mockImplementation(async (path: string) =>
+			path !== 'notes/renamed.md'
+		);
+
+		await syncEngine.performSync();
+
+		// The ORIGINAL is what moves.
+		expect(mockApp.vault.rename).toHaveBeenCalledWith(
+			expect.objectContaining({ path: 'notes/test.md' }),
+			'notes/renamed.md'
+		);
+		// The conflict copy is left alone.
+		expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
+		expect(mockApp.vault.rename).not.toHaveBeenCalledWith(
+			expect.objectContaining({ path: 'notes/test (conflict 2026-09-01).md' }),
+			expect.anything()
+		);
+	});
+
 	it('re-uploads local changes when the remote file was deleted', async () => {
 		stateManager.setLastSyncTime(Date.now());
 		mockEventManager.getDirtyFiles.mockReturnValue([
@@ -2657,7 +2817,7 @@ describe('SyncEngine pull-only mode', () => {
 		};
 	});
 
-	function makeEngine(isPullOnlyMode: () => boolean) {
+	function makeEngine(isPullOnlyMode: () => boolean, useAtomicMoves: () => boolean = () => true) {
 		return new SyncEngine(
 			mockApp as any,
 			mockFileOps,
@@ -2672,7 +2832,7 @@ describe('SyncEngine pull-only mode', () => {
 				getLargeDeleteThreshold: () => 0,
 				pluginVersion: 'test',
 				maxConcurrentOperations: 4,
-				useAtomicMoves: true,
+				useAtomicMoves,
 				isPullOnlyMode,
 			}
 		);
@@ -2750,6 +2910,56 @@ describe('SyncEngine pull-only mode', () => {
 
 		// Second sync with pull-only disabled
 		await engine.performSync();
+		expect(mockFileOps.uploadFile).toHaveBeenCalled();
+	});
+
+	it('respects dynamic atomic-moves toggle between syncs', async () => {
+		// The setting is read per-sync, not snapshotted at construction: a user
+		// who turns atomic moves off in settings gets the delete+upload path on
+		// their very next sync, without reloading the plugin. Reported on #50,
+		// where a control test with the toggle off silently still took the
+		// atomic path and produced misleading evidence.
+		stateManager.setLastSyncTime(Date.now());
+		let atomicMovesEnabled = true;
+		const engine = makeEngine(
+			() => false,
+			() => atomicMovesEnabled
+		);
+
+		const trackOldPath = () =>
+			stateManager.setFileState('old.md', {
+				path: 'old.md',
+				localMtime: 1,
+				remoteHash: 'old-hash',
+				size: 10,
+				remoteModifiedTime: 2,
+				oneDriveId: 'old-remote-id',
+			});
+
+		trackOldPath();
+		mockEventManager.getDirtyFiles.mockReturnValue([
+			{ path: 'new.md', type: LocalChangeType.RENAME, oldPath: 'old.md' },
+		]);
+		mockApp.vault.getAbstractFileByPath.mockReturnValue(makeTFile('new.md', 10, Date.now()));
+
+		// First sync: atomic move (PATCH), no delete + re-upload.
+		await engine.performSync();
+		expect(mockFileOps.moveFile).toHaveBeenCalledWith('old-remote-id', '/remote/root/new.md');
+		expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+
+		// User turns atomic moves off; no plugin reload.
+		atomicMovesEnabled = false;
+		mockFileOps.moveFile.mockClear();
+		mockFileOps.deleteFile.mockClear();
+		mockFileOps.uploadFile.mockClear();
+		stateManager.removeFileState('new.md');
+		trackOldPath();
+
+		// Second sync: legacy delete-old + upload-new path.
+		await engine.performSync();
+		expect(mockFileOps.moveFile).not.toHaveBeenCalled();
+		expect(mockFileOps.deleteFile).toHaveBeenCalled();
 		expect(mockFileOps.uploadFile).toHaveBeenCalled();
 	});
 });
