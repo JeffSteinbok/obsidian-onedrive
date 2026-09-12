@@ -20,3 +20,27 @@ jobs:
       - run: npx vitest run --coverage
       - name: Run Obsidian community validator
         run: npm run validate-obsidian
+
+  # The job above runs in UTC, which hides date handling that only agrees with
+  # itself at offset zero — a test asserting a local calendar date from a
+  # UTC-pinned clock passes there and fails on a developer machine. Re-run the
+  # suite either side of the date line to catch both directions.
+  timezone-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        timezone:
+          - America/Los_Angeles # UTC-7/8: a UTC instant near midnight is still "yesterday"
+          - Pacific/Kiritimati # UTC+14: and near noon it can already be "tomorrow"
+    name: tests (${{ matrix.timezone }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx vitest run
+        env:
+          TZ: ${{ matrix.timezone }}
