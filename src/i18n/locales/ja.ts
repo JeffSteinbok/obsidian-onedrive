@@ -277,7 +277,7 @@ export const ja = {
 			},
 			pluginData: {
 				name: 'プラグインデータを同期',
-				desc: '各プラグインの data.json 設定ファイルも同期します。OneDrive Sync 自体のデータは端末内に保持されます。',
+				desc: '各プラグインの data.json 設定ファイルも同期します。OneDrive Sync 自体のデータは端末内に保持されます。警告: プラグインのデータは端末固有の場合があり、競合を引き起こすことがあります。プラグインの同期動作を理解している場合にのみ有効にしてください。',
 			},
 			cssSnippets: {
 				name: 'CSSスニペットを同期',

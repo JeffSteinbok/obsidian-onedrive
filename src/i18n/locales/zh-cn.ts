@@ -288,7 +288,7 @@ export const zhCn = {
 			},
 			pluginData: {
 				name: '同步插件数据',
-				desc: '同时同步每个插件的 data.json 设置文件。OneDrive Sync 自身的数据仍保留在本机。',
+				desc: '同时同步每个插件的 data.json 设置文件。OneDrive Sync 自身的数据仍保留在本机。警告：插件数据可能因设备而异并导致冲突；仅在了解该插件的同步行为时启用。',
 			},
 			cssSnippets: {
 				name: '同步 CSS 片段',

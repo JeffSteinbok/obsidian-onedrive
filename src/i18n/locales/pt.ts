@@ -278,7 +278,7 @@ export const pt = {
 			},
 			pluginData: {
 				name: 'Sincronizar dados dos plugins',
-				desc: 'Também sincroniza o arquivo de configurações data.json de cada plugin. Os dados do OneDrive Sync permanecem no dispositivo.',
+				desc: 'Também sincroniza o arquivo de configurações data.json de cada plugin. Os dados do OneDrive Sync permanecem no dispositivo. Aviso: os dados dos plugins podem ser específicos do dispositivo e causar conflitos; ative apenas se entender o comportamento de sincronização do plugin.',
 			},
 			cssSnippets: {
 				name: 'Sincronizar snippets CSS',
