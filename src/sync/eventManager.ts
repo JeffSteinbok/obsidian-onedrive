@@ -34,6 +34,8 @@ export class EventManager {
 	private initialSyncDone = false;
 	// When false, vault change events mark files dirty but do not schedule auto-sync
 	private syncOnFileChange = true;
+	// Quiet period after the last vault change before an auto-sync fires
+	private fileChangeSyncDelayMs: number = SYNC_CONFIG.EVENT_THROTTLE_MS;
 	// Callback to check if pull-only mode is enabled
 	private isPullOnlyMode: () => boolean = () => false;
 
@@ -47,15 +49,19 @@ export class EventManager {
 	 *   moment it is constructed, before `startListening()` is ever called.  Defaulting to `true`
 	 *   preserves backward-compatible behaviour for callers that don't pass the argument (e.g. the
 	 *   DEV-only `createTestConflict` path that never calls `startListening`).
+	 * @param fileChangeSyncDelayMs - Quiet period after the last vault change before an auto-sync
+	 *   fires. Pass the persisted setting, for the same reason as `syncOnFileChange`.
 	 */
 	constructor(
 		private app: App,
 		private onSyncTriggered: () => Promise<void>,
 		private stateManager: SyncStateManager,
 		private shouldSyncPath: (path: string) => boolean = (path) => shouldSyncVaultPath(path, false, false, app.vault.configDir),
-		syncOnFileChange = true
+		syncOnFileChange = true,
+		fileChangeSyncDelayMs: number = SYNC_CONFIG.EVENT_THROTTLE_MS
 	) {
 		this.syncOnFileChange = syncOnFileChange;
+		this.fileChangeSyncDelayMs = fileChangeSyncDelayMs;
 	}
 
 	/**
@@ -124,6 +130,15 @@ export class EventManager {
 	 */
 	setSyncOnFileChange(enabled: boolean): void {
 		this.syncOnFileChange = enabled;
+	}
+
+	/**
+	 * Set how long vault changes must stay quiet before an auto-sync fires.
+	 * Each new change restarts the wait, so continuous editing is batched
+	 * into one sync once the user pauses for this long.
+	 */
+	setFileChangeSyncDelay(delayMs: number): void {
+		this.fileChangeSyncDelayMs = delayMs;
 	}
 
 	/**
@@ -313,7 +328,7 @@ export class EventManager {
 
 		this.throttleTimer = timerApi.setTimeout(() => {
 			void this.executeSync();
-		}, SYNC_CONFIG.EVENT_THROTTLE_MS);
+		}, this.fileChangeSyncDelayMs);
 	}
 
 	/**

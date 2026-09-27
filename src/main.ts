@@ -365,7 +365,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			}
 
 			// Initialize event manager — listening starts after initial sync.
-			// Pass syncOnFileChange via constructor so the setting is correct from
+			// Pass syncOnFileChange and the change delay via constructor so they are correct from
 			// the moment the EventManager is constructed, before startListening().
 			this.eventManager = new EventManager(
 				this.app,
@@ -383,7 +383,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 						this.settings.syncBookmarks,
 						this.settings.syncPluginData
 					),
-				this.settings.syncOnFileChange ?? true
+				this.settings.syncOnFileChange ?? true,
+				this.getFileChangeSyncDelayMs()
 			);
 			// Wire up pull-only mode check
 			this.eventManager.setPullOnlyModeCheck(() => this.getExperimentalSetting('pullOnlyMode'));
@@ -1412,6 +1413,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Update event manager sync-on-file-change setting
 		if (this.eventManager) {
 			this.eventManager.setSyncOnFileChange(this.settings.syncOnFileChange ?? true);
+			this.eventManager.setFileChangeSyncDelay(this.getFileChangeSyncDelayMs());
 		}
 
 		// Update logger level if changed
@@ -1425,6 +1427,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		await this.saveData(this.settings);
 		this.lastSavedSettings = serializedSettings;
+	}
+
+	private getFileChangeSyncDelayMs(): number {
+		return (this.settings.fileChangeSyncDelay ?? DEFAULT_SETTINGS.fileChangeSyncDelay) * 1000;
 	}
 
 	private static readonly LOG_LEVEL_MAP: Record<string, LogLevel> = {
@@ -1473,6 +1479,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			syncRoot,
 			syncInterval: this.settings.syncInterval,
 			syncOnFileChange: this.settings.syncOnFileChange ?? true,
+			fileChangeSyncDelay: this.settings.fileChangeSyncDelay,
 			startupSyncDelay: this.settings.startupSyncDelay,
 			conflictResolution: this.settings.conflictResolution,
 			syncAppSettings: this.settings.syncAppSettings,

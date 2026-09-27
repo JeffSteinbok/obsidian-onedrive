@@ -204,6 +204,17 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: t('settings.sync.fileChangeSyncDelay.name'),
+						desc: t('settings.sync.fileChangeSyncDelay.desc'),
+						visible: () => this.plugin.settings.syncOnFileChange ?? true,
+						control: {
+							type: 'dropdown',
+							key: 'fileChangeSyncDelay',
+							options: this.fileChangeSyncDelayOptions(),
+							defaultValue: '3',
+						},
+					},
+					{
 						name: t('settings.sync.startupDelay.name'),
 						desc: t('settings.sync.startupDelay.desc'),
 						control: {
@@ -412,6 +423,8 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		switch (key) {
 			case 'syncOnFileChange':
 				return this.plugin.settings.syncOnFileChange;
+			case 'fileChangeSyncDelay':
+				return String(this.plugin.settings.fileChangeSyncDelay);
 			case 'startupSyncDelay':
 				return String(this.plugin.settings.startupSyncDelay);
 			case 'conflictResolution':
@@ -450,7 +463,16 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			case 'syncOnFileChange':
 				this.plugin.settings.syncOnFileChange = Boolean(value);
 				await this.plugin.saveSettings();
+				this.refreshSettingsUi();
 				return;
+			case 'fileChangeSyncDelay': {
+				const parsed = Number.parseInt(String(value), 10);
+				if (!Number.isNaN(parsed)) {
+					this.plugin.settings.fileChangeSyncDelay = parsed;
+					await this.plugin.saveSettings();
+				}
+				return;
+			}
 			case 'startupSyncDelay': {
 				const parsed = Number.parseInt(String(value), 10);
 				if (!Number.isNaN(parsed)) {
@@ -542,6 +564,16 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 	private supportsDeclarativeSettings(): boolean {
 		return requireApiVersion('1.13.0');
+	}
+
+	private fileChangeSyncDelayOptions(): Record<string, string> {
+		return {
+			'3': t('settings.sync.fileChangeSyncDelay.threeSeconds'),
+			'5': t('settings.sync.fileChangeSyncDelay.fiveSeconds'),
+			'10': t('settings.sync.fileChangeSyncDelay.tenSeconds'),
+			'30': t('settings.sync.fileChangeSyncDelay.thirtySeconds'),
+			'60': t('settings.sync.fileChangeSyncDelay.sixtySeconds'),
+		};
 	}
 
 	private refreshSettingsUi(): void {
@@ -1174,8 +1206,25 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.syncOnFileChange = value;
 						await this.plugin.saveSettings();
+						this.renderSettings();
 					})
 			);
+
+		// Delay before a file change triggers sync
+		if (this.plugin.settings.syncOnFileChange ?? true) {
+			new Setting(containerEl)
+				.setName(t('settings.sync.fileChangeSyncDelay.name'))
+				.setDesc(t('settings.sync.fileChangeSyncDelay.desc'))
+				.addDropdown((dropdown) =>
+					dropdown
+						.addOptions(this.fileChangeSyncDelayOptions())
+						.setValue(String(this.plugin.settings.fileChangeSyncDelay))
+						.onChange(async (value) => {
+							this.plugin.settings.fileChangeSyncDelay = parseInt(value);
+							await this.plugin.saveSettings();
+						})
+				);
+		}
 
 		// Startup sync delay
 		new Setting(containerEl)

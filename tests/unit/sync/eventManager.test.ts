@@ -670,6 +670,54 @@ describe('EventManager', () => {
 			});
 		});
 
+		describe('file change sync delay', () => {
+			it('waits for the delay passed to the constructor before syncing', async () => {
+				const em = new EventManager(
+					mockApp as any,
+					onSyncTriggered,
+					stateManager,
+					undefined,
+					true,
+					5000
+				);
+				em.startListening();
+				eventCallbacks.modify(makeTFile('test.md', 100));
+
+				await vi.advanceTimersByTimeAsync(4999);
+				expect(onSyncTriggered).not.toHaveBeenCalled();
+
+				await vi.advanceTimersByTimeAsync(1);
+				expect(onSyncTriggered).toHaveBeenCalledTimes(1);
+			});
+
+			it('batches continuous edits into one sync once they pause for the delay', async () => {
+				eventManager.startListening();
+				eventManager.setFileChangeSyncDelay(1000);
+
+				// Edits 800ms apart never leave a full second of quiet
+				for (let i = 0; i < 5; i++) {
+					eventCallbacks.modify(makeTFile('test.md', 100 + i));
+					await vi.advanceTimersByTimeAsync(800);
+				}
+				expect(onSyncTriggered).not.toHaveBeenCalled();
+
+				await vi.advanceTimersByTimeAsync(200);
+				expect(onSyncTriggered).toHaveBeenCalledTimes(1);
+			});
+
+			it('applies a delay changed at runtime to the next scheduled sync', async () => {
+				eventManager.startListening();
+				eventManager.setFileChangeSyncDelay(2000);
+				eventCallbacks.modify(makeTFile('test.md', 100));
+
+				await vi.advanceTimersByTimeAsync(1999);
+				expect(onSyncTriggered).not.toHaveBeenCalled();
+
+				await vi.advanceTimersByTimeAsync(1);
+				expect(onSyncTriggered).toHaveBeenCalledTimes(1);
+			});
+		});
+
 	}); // end describe('sync scheduling')
 
 	describe('periodic sync', () => {

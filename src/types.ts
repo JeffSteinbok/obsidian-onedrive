@@ -334,6 +334,7 @@ export interface PluginSettings {
 	// Sync configuration
 	syncInterval: number; // Minutes (0 = manual only)
 	syncOnFileChange: boolean; // Trigger sync automatically when files are modified
+	fileChangeSyncDelay: number; // Seconds of quiet after the last change before an auto-sync fires
 	conflictResolution: ConflictResolutionStrategy;
 	startupSyncDelay: number; // Seconds (0 = disabled, 1, 10, 30)
 	syncAppSettings: boolean; // Opt-in sync for Obsidian app settings (app.json, appearance.json, hotkeys.json)
@@ -381,6 +382,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	// Sync configuration
 	syncInterval: 5, // Poll every 5 minutes
 	syncOnFileChange: true,
+	fileChangeSyncDelay: 3,
 	conflictResolution: ConflictResolutionStrategy.LAST_WRITE_WINS,
 	startupSyncDelay: 10, // 10 seconds default
 	syncAppSettings: false,

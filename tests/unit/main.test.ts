@@ -71,6 +71,7 @@ const mocks = vi.hoisted(() => {
 		clearDirtyFiles: vi.fn(),
 		setPullOnlyModeCheck: vi.fn(),
 		setSyncOnFileChange: vi.fn(),
+		setFileChangeSyncDelay: vi.fn(),
 	};
 
 	const statusBarManager = {
@@ -825,7 +826,8 @@ describe('OneDriveSyncPlugin', () => {
 			expect.any(Function),    // onSyncTriggered
 			expect.anything(),       // stateManager
 			expect.any(Function),    // shouldSyncPath
-			false                    // syncOnFileChange — persisted value
+			false,                   // syncOnFileChange — persisted value
+			3000                     // fileChangeSyncDelayMs — default
 		);
 	});
 
@@ -844,8 +846,43 @@ describe('OneDriveSyncPlugin', () => {
 			expect.any(Function),
 			expect.anything(),
 			expect.any(Function),
-			true
+			true,
+			3000
 		);
+	});
+
+	it('passes the persisted fileChangeSyncDelay to the EventManager in milliseconds', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			appFolderSubpathConfirmed: true,
+			fileChangeSyncDelay: 30,
+		});
+
+		await plugin.onload();
+
+		expect(mocks.EventManager).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.any(Function),
+			expect.anything(),
+			expect.any(Function),
+			true,
+			30000
+		);
+	});
+
+	it('applies a changed fileChangeSyncDelay to the running EventManager on save', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			appFolderSubpathConfirmed: true,
+		});
+
+		await plugin.onload();
+		plugin.settings.fileChangeSyncDelay = 10;
+		await plugin.saveSettings();
+
+		expect(mocks.eventManager.setFileChangeSyncDelay).toHaveBeenLastCalledWith(10000);
 	});
 
 });
