@@ -39,7 +39,7 @@ import { OneDriveItem, OneDriveUser, OneDriveError, OneDriveAccessMode, DeltaRes
 import { logger } from '../utils/logger';
 import { retryWithBackoff } from '../utils/retry';
 import { encodePathForGraph, stripGraphPrefix } from '../utils/pathUtils';
-import { ONEDRIVE_PATHS } from '../constants';
+import { ONEDRIVE_PATHS, SYNC_CONFIG } from '../constants';
 
 interface GraphCollectionResponse<T> {
 	value: T[];
@@ -524,6 +524,10 @@ export class OneDriveClient {
 			// Download using the direct URL (already has auth in URL)
 			const downloadUrl = item['@microsoft.graph.downloadUrl'];
 
+			if (item.size && item.size > SYNC_CONFIG.DOWNLOAD_CHUNK_THRESHOLD) {
+				return await this.downloadFileInChunks(downloadUrl, item.size);
+			}
+
 			// Use requestUrl for binary download (no auth header needed - it's in the URL)
 			const response = await requestUrl({
 				url: downloadUrl,
@@ -542,6 +546,52 @@ export class OneDriveClient {
 				`Failed to download file: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
 		}
+	}
+
+	/**
+	 * Download a large file using HTTP Range requests instead of one single
+	 * request. Obsidian's mobile requestUrl() bridges the response through
+	 * Base64, so a single request for a large file needs the raw bytes, the
+	 * Base64 string, and the decoded ArrayBuffer to briefly coexist in
+	 * memory (~2.3x the file size) and can OOM the app (see #185). Fetching
+	 * smaller ranges keeps that peak proportional to the chunk size instead
+	 * of the whole file.
+	 */
+	private async downloadFileInChunks(downloadUrl: string, fileSize: number): Promise<ArrayBuffer> {
+		const chunkSize = SYNC_CONFIG.DOWNLOAD_CHUNK_SIZE;
+		const buffer = new Uint8Array(fileSize);
+
+		let position = 0;
+		while (position < fileSize) {
+			const end = Math.min(position + chunkSize, fileSize) - 1;
+
+			const chunk = await retryWithBackoff(async () => {
+				const response = await requestUrl({
+					url: downloadUrl,
+					method: 'GET',
+					headers: { Range: `bytes=${position}-${end}` },
+					throw: false,
+				});
+
+				if (response.status !== 206 && response.status !== 200) {
+					throw new Error(`HTTP ${response.status}: ${response.text || 'Request failed'}`);
+				}
+
+				return response.arrayBuffer;
+			});
+
+			// Some servers ignore the Range header and return the whole file
+			// with a 200. Only expected on the first chunk; fall back to it
+			// directly rather than mis-writing it at a non-zero offset.
+			if (position === 0 && chunk.byteLength === fileSize) {
+				return chunk;
+			}
+
+			buffer.set(new Uint8Array(chunk), position);
+			position = end + 1;
+		}
+
+		return buffer.buffer;
 	}
 
 	/**

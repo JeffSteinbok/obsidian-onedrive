@@ -107,6 +107,13 @@ export const SYNC_CONFIG = {
 	SMALL_FILE_THRESHOLD: 4194304, // 4 MB
 	// Target number of chunks per file
 	TARGET_CHUNKS_PER_FILE: 20,
+	// Files larger than this are downloaded using ranged (chunked) requests
+	// instead of one single request. Mobile's requestUrl() bridges the
+	// response through Base64, so a single large request can momentarily
+	// need ~2.3x the file size in memory and trigger an OOM (see #185).
+	DOWNLOAD_CHUNK_THRESHOLD: 8388608, // 8 MB
+	// Size of each ranged download request for files above the threshold
+	DOWNLOAD_CHUNK_SIZE: 8388608, // 8 MB
 };
 
 // OneDrive paths
