@@ -34,6 +34,7 @@ vi.mock('../../../src/utils/logger', () => ({
 import { OneDriveAccessMode, OneDriveError } from '../../../src/types';
 import { OneDriveClient } from '../../../src/api/oneDriveClient';
 import { encodePathForGraph } from '../../../src/utils/pathUtils';
+import { SYNC_CONFIG } from '../../../src/constants';
 
 describe('OneDriveClient', () => {
 	let client: OneDriveClient;
@@ -353,6 +354,78 @@ describe('OneDriveClient', () => {
 			mockApiGet.mockResolvedValue({
 				id: 'item-123',
 				name: 'file.md',
+				'@microsoft.graph.downloadUrl': 'https://download.example/file',
+			});
+			mockRequestUrl.mockResolvedValue({ status: 500, text: 'Server Error' });
+
+			await expect(client.downloadFile('item-123')).rejects.toBeInstanceOf(OneDriveError);
+			await expect(client.downloadFile('item-123')).rejects.toThrow('Failed to download file: HTTP 500: Server Error');
+		});
+
+		it('downloads large files in ranged chunks instead of one request', async () => {
+			const chunkSize = SYNC_CONFIG.DOWNLOAD_CHUNK_SIZE;
+			const fileSize = chunkSize * 2 + 10;
+			mockApiGet.mockResolvedValue({
+				id: 'item-123',
+				name: 'big.bin',
+				size: fileSize,
+				'@microsoft.graph.downloadUrl': 'https://download.example/file',
+			});
+
+			const chunks = [
+				new Uint8Array(chunkSize).fill(1),
+				new Uint8Array(chunkSize).fill(2),
+				new Uint8Array(10).fill(3),
+			];
+			mockRequestUrl.mockImplementation(async ({ headers }: { headers?: Record<string, string> }) => {
+				const range = headers?.Range;
+				const start = Number(range?.split('=')[1].split('-')[0]);
+				const index = start / chunkSize;
+				return { status: 206, text: '', arrayBuffer: chunks[index].buffer };
+			});
+
+			const result = await client.downloadFile('item-123');
+
+			expect(result.byteLength).toBe(fileSize);
+			const resultBytes = new Uint8Array(result);
+			expect(resultBytes[0]).toBe(1);
+			expect(resultBytes[chunkSize - 1]).toBe(1);
+			expect(resultBytes[chunkSize]).toBe(2);
+			expect(resultBytes[chunkSize * 2 - 1]).toBe(2);
+			expect(resultBytes[chunkSize * 2]).toBe(3);
+			expect(resultBytes[fileSize - 1]).toBe(3);
+			expect(mockRequestUrl).toHaveBeenCalledTimes(3);
+			expect(mockRequestUrl).toHaveBeenNthCalledWith(1, {
+				url: 'https://download.example/file',
+				method: 'GET',
+				headers: { Range: `bytes=0-${chunkSize - 1}` },
+				throw: false,
+			});
+		});
+
+		it('falls back to the full body when a ranged request is ignored by the server', async () => {
+			const chunkSize = SYNC_CONFIG.DOWNLOAD_CHUNK_SIZE;
+			const fileSize = chunkSize * 2;
+			mockApiGet.mockResolvedValue({
+				id: 'item-123',
+				name: 'big.bin',
+				size: fileSize,
+				'@microsoft.graph.downloadUrl': 'https://download.example/file',
+			});
+			const fullBuffer = new ArrayBuffer(fileSize);
+			mockRequestUrl.mockResolvedValue({ status: 200, text: '', arrayBuffer: fullBuffer });
+
+			await expect(client.downloadFile('item-123')).resolves.toBe(fullBuffer);
+			expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+		});
+
+		it('throws OneDriveError when a chunk request fails', async () => {
+			const chunkSize = SYNC_CONFIG.DOWNLOAD_CHUNK_SIZE;
+			const fileSize = chunkSize * 2;
+			mockApiGet.mockResolvedValue({
+				id: 'item-123',
+				name: 'big.bin',
+				size: fileSize,
 				'@microsoft.graph.downloadUrl': 'https://download.example/file',
 			});
 			mockRequestUrl.mockResolvedValue({ status: 500, text: 'Server Error' });
