@@ -197,6 +197,19 @@ describe('EventManager', () => {
 			expect(eventManager.getDirtyFiles()).toEqual([]);
 		});
 
+		it('queues plugin data files when plugin data sync is opted in', () => {
+			eventManager = new EventManager(mockApp as any, onSyncTriggered, stateManager, (path) =>
+				shouldSyncVaultPath(path, true, false, mockApp.vault.configDir, false, false, true)
+			);
+			eventManager.startListening();
+
+			eventCallbacks.modify(makeTFile('.obsidian/plugins/calendar/data.json', 100));
+
+			expect(eventManager.getDirtyFiles()).toEqual([
+				{ path: '.obsidian/plugins/calendar/data.json', type: LocalChangeType.MODIFY },
+			]);
+		});
+
 		it('suppresses the first own-write event and allows the next one', () => {
 			eventManager.startListening();
 			const file = makeTFile('test.md', 100);

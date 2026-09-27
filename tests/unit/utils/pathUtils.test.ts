@@ -17,6 +17,7 @@ import {
 	encodePathForGraph,
 	stripGraphPrefix,
 	shouldSyncVaultPath,
+	getInstalledPluginSyncPaths,
 } from '../../../src/utils/pathUtils';
 
 describe('pathUtils', () => {
@@ -312,6 +313,19 @@ describe('pathUtils', () => {
 			);
 		});
 
+		it('should sync plugin data files when both plugin options are enabled', () => {
+			expect(
+				shouldSyncVaultPath(
+					'.obsidian/plugins/calendar/data.json', true, false, '.obsidian', false, false, true
+				)
+			).toBe(true);
+			expect(
+				shouldSyncVaultPath(
+					'.obsidian/plugins/calendar/settings.json', true, false, '.obsidian', false, false, true
+				)
+			).toBe(false);
+		});
+
 		it('should sync app settings and plugin files simultaneously when both are enabled', () => {
 			expect(shouldSyncVaultPath('.obsidian/app.json', true, true, '.obsidian')).toBe(true);
 			expect(shouldSyncVaultPath('.obsidian/plugins/calendar/main.js', true, true, '.obsidian')).toBe(true);
@@ -335,7 +349,11 @@ describe('pathUtils', () => {
 			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync', false, false, '.obsidian')).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/main.js', true, true, '.obsidian')).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/manifest.json', true, true, '.obsidian')).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/data.json', true, true, '.obsidian')).toBe(false);
+			expect(
+				shouldSyncVaultPath(
+					'.obsidian/plugins/onedrive-sync/data.json', true, true, '.obsidian', false, false, true
+				)
+			).toBe(false);
 			expect(shouldSyncVaultPath('.obsidian/plugins/onedrive-sync/styles.css', true, true, '.obsidian')).toBe(false);
 			// Old plugin folder should also be excluded (migration safety)
 			expect(shouldSyncVaultPath('.obsidian/plugins/obsidian-onedrive', false, false, '.obsidian')).toBe(false);
@@ -411,6 +429,19 @@ describe('pathUtils', () => {
 			expect(shouldSyncVaultPath('.config/bookmarks.json', false, false, '.config', false, true)).toBe(true);
 			// .obsidian/bookmarks.json is not in .config configDir -- treated as a regular vault file, always synced
 			expect(shouldSyncVaultPath('.obsidian/bookmarks.json', false, false, '.config', false, true)).toBe(true);
+		});
+	});
+
+	describe('getInstalledPluginSyncPaths', () => {
+		it('includes data.json only when plugin data sync is enabled', async () => {
+			const adapter = { list: async () => ({ folders: ['.obsidian/plugins/calendar'] }) };
+
+			expect(await getInstalledPluginSyncPaths('.obsidian', adapter, false)).not.toContain(
+				'.obsidian/plugins/calendar/data.json'
+			);
+			expect(await getInstalledPluginSyncPaths('.obsidian', adapter, true)).toContain(
+				'.obsidian/plugins/calendar/data.json'
+			);
 		});
 	});
 });

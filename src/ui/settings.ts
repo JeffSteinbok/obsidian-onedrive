@@ -52,6 +52,7 @@ interface OneDrivePlugin extends Plugin {
 	saveSettings(): Promise<void>;
 	onAppSettingsSyncChanged(enabled: boolean): Promise<void>;
 	onPluginManifestSyncChanged(enabled: boolean): Promise<void>;
+	onPluginDataSyncChanged(enabled: boolean): Promise<void>;
 	onCssSnippetSyncChanged(enabled: boolean): Promise<void>;
 	onBookmarkSyncChanged(enabled: boolean): Promise<void>;
 	resetSyncToken(): Promise<void>;
@@ -266,6 +267,15 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: t('settings.sync.pluginData.name'),
+						desc: t('settings.sync.pluginData.desc', { configDir: this.app.vault.configDir }),
+						control: {
+							type: 'toggle',
+							key: 'pluginData',
+							disabled: () => !this.plugin.settings.syncPluginManifests,
+						},
+					},
+					{
 						name: t('settings.sync.cssSnippets.name'),
 						desc: t('settings.sync.cssSnippets.desc', { configDir: this.app.vault.configDir }),
 						control: {
@@ -412,6 +422,8 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				return this.plugin.settings.syncAppSettings;
 			case 'pluginManifests':
 				return this.plugin.settings.syncPluginManifests;
+			case 'pluginData':
+				return this.plugin.settings.syncPluginData;
 			case 'cssSnippets':
 				return this.plugin.settings.syncCssSnippets;
 			case 'bookmarks':
@@ -464,6 +476,10 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				return;
 			case 'pluginManifests':
 				await this.plugin.onPluginManifestSyncChanged(Boolean(value));
+				this.refreshSettingsUi();
+				return;
+			case 'pluginData':
+				await this.plugin.onPluginDataSyncChanged(Boolean(value));
 				return;
 			case 'cssSnippets':
 				await this.plugin.onCssSnippetSyncChanged(Boolean(value));
@@ -1234,7 +1250,20 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncPluginManifests).onChange(async (value) => {
 					await this.plugin.onPluginManifestSyncChanged(value);
+					this.renderSettings();
 				})
+			);
+
+		new Setting(containerEl)
+			.setName(t('settings.sync.pluginData.name'))
+			.setDesc(t('settings.sync.pluginData.desc', { configDir }))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.syncPluginData)
+					.setDisabled(!this.plugin.settings.syncPluginManifests)
+					.onChange(async (value) => {
+						await this.plugin.onPluginDataSyncChanged(value);
+					})
 			);
 
 		new Setting(containerEl)

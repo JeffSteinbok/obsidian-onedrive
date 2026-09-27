@@ -380,7 +380,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 						this.settings.syncAppSettings,
 						this.app.vault.configDir,
 						this.settings.syncCssSnippets,
-						this.settings.syncBookmarks
+						this.settings.syncBookmarks,
+						this.settings.syncPluginData
 					),
 				this.settings.syncOnFileChange ?? true
 			);
@@ -450,7 +451,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 							this.settings.syncAppSettings,
 							this.app.vault.configDir,
 							this.settings.syncCssSnippets,
-							this.settings.syncBookmarks
+							this.settings.syncBookmarks,
+							this.settings.syncPluginData
 						),
 					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
 					getNotificationLevel: () => this.settings.notificationLevel ?? 'all',
@@ -1008,6 +1010,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		// Folder-change flows call saveSettings() after applying this reset.
 		this.settings.syncAppSettings = false;
 		this.settings.syncPluginManifests = false;
+		this.settings.syncPluginData = false;
 		this.settings.syncCssSnippets = false;
 		this.settings.syncBookmarks = false;
 	}
@@ -1112,7 +1115,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 							this.settings.syncPluginManifests,
 							false,
 							this.app.vault.configDir,
-							false
+							false,
+							false,
+							this.settings.syncPluginData
 						)
 				);
 				this.eventManager.setPullOnlyModeCheck(() => this.getExperimentalSetting('pullOnlyMode'));
@@ -1263,6 +1268,18 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		this.settings.syncPluginManifests = enabled;
+		if (!enabled) {
+			this.settings.syncPluginData = false;
+		}
+		await this.saveSettings();
+	}
+
+	async onPluginDataSyncChanged(enabled: boolean): Promise<void> {
+		if (this.settings.syncPluginData === enabled) {
+			return;
+		}
+
+		this.settings.syncPluginData = enabled && this.settings.syncPluginManifests;
 		await this.saveSettings();
 	}
 
@@ -1460,6 +1477,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			conflictResolution: this.settings.conflictResolution,
 			syncAppSettings: this.settings.syncAppSettings,
 			syncPluginManifests: this.settings.syncPluginManifests,
+			syncPluginData: this.settings.syncPluginData,
 			syncCssSnippets: this.settings.syncCssSnippets,
 			syncBookmarks: this.settings.syncBookmarks,
 			notificationLevel: this.settings.notificationLevel ?? 'all',

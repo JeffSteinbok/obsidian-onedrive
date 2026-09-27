@@ -211,7 +211,8 @@ export function getFixedSyncableConfigPaths(
  */
 export async function getInstalledPluginSyncPaths(
 	configDir: string,
-	adapter: { list(path: string): Promise<{ folders: string[] }> }
+	adapter: { list(path: string): Promise<{ folders: string[] }> },
+	includePluginData = false
 ): Promise<string[]> {
 	const pluginsDir = buildConfigPath(configDir, 'plugins');
 	const paths: string[] = [];
@@ -223,6 +224,9 @@ export async function getInstalledPluginSyncPaths(
 			paths.push(buildConfigPath(configDir, 'plugins', folderName, 'manifest.json'));
 			paths.push(buildConfigPath(configDir, 'plugins', folderName, 'main.js'));
 			paths.push(buildConfigPath(configDir, 'plugins', folderName, 'styles.css'));
+			if (includePluginData) {
+				paths.push(buildConfigPath(configDir, 'plugins', folderName, 'data.json'));
+			}
 		}
 	} catch {
 		// plugins folder may not exist
@@ -270,13 +274,14 @@ export async function getAllSyncableConfigPaths(
 	shouldSyncPath: (path: string) => boolean
 ): Promise<string[]> {
 	const syncPlugins = shouldSyncPath(`${configDir}/community-plugins.json`);
+	const syncPluginData = shouldSyncPath(`${configDir}/plugins/example-plugin/data.json`);
 	const syncAppSettings = shouldSyncPath(`${configDir}/app.json`);
 	const syncSnippets = shouldSyncPath(`${configDir}/snippets`);
 	const syncBookmarks = shouldSyncPath(`${configDir}/bookmarks.json`);
 
 	const fixedPaths = getFixedSyncableConfigPaths(configDir, syncPlugins, syncAppSettings, syncBookmarks);
 	const pluginPaths = syncPlugins
-		? await getInstalledPluginSyncPaths(configDir, adapter)
+		? await getInstalledPluginSyncPaths(configDir, adapter, syncPluginData)
 		: [];
 	const snippetPaths = syncSnippets
 		? await getInstalledSnippetSyncPaths(configDir, adapter)
@@ -293,6 +298,11 @@ function isInstalledPluginManifestPath(path: string, configDir: string): boolean
 function isInstalledPluginBinaryPath(path: string, configDir: string): boolean {
 	const normalizedConfigDir = escapeRegExp(normalizeConfigDir(configDir));
 	return new RegExp(`^${normalizedConfigDir}/plugins/[^/]+/(main\\.js|styles\\.css)$`).test(path);
+}
+
+function isInstalledPluginDataPath(path: string, configDir: string): boolean {
+	const normalizedConfigDir = escapeRegExp(normalizeConfigDir(configDir));
+	return new RegExp(`^${normalizedConfigDir}/plugins/[^/]+/data\\.json$`).test(path);
 }
 
 function isCssSnippetPath(path: string, configDir: string): boolean {
@@ -315,7 +325,8 @@ export function shouldSyncVaultPath(
 	syncAppSettings = false,
 	configDir: string,
 	syncCssSnippets = false,
-	syncBookmarks = false
+	syncBookmarks = false,
+	syncPluginData = false
 ): boolean {
 	const normalized = normalizePath(path);
 	const normalizedConfigDir = normalizeConfigDir(configDir);
@@ -369,6 +380,10 @@ export function shouldSyncVaultPath(
 
 	if (!syncPluginManifests) {
 		return false;
+	}
+
+	if (syncPluginData && isInstalledPluginDataPath(normalized, normalizedConfigDir)) {
+		return true;
 	}
 
 	return (
