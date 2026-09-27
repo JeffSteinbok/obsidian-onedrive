@@ -9,9 +9,26 @@ import {
 describe('logManager', () => {
 	describe('liveLogNotePath', () => {
 		it('builds the per-day live log path', () => {
-			const date = new Date('2026-06-04T12:34:56.000Z');
+			// Local time on purpose: the path is built from local date parts so
+			// the log rolls over at the user's midnight, not UTC's.
+			const date = new Date(2026, 5, 4, 12, 34, 56);
 
 			expect(liveLogNotePath(date)).toBe('_OneDriveSyncLogs/2026-06-04.md');
+		});
+
+		it('names the file by local date, not UTC date', () => {
+			// One second past local midnight: a UTC-derived name would report
+			// the previous day west of UTC and the next day far east of it.
+			const justAfterLocalMidnight = new Date(2026, 5, 5, 0, 0, 1);
+			expect(liveLogNotePath(justAfterLocalMidnight)).toBe(
+				'_OneDriveSyncLogs/2026-06-05.md'
+			);
+
+			// One second before local midnight still belongs to the old day.
+			const justBeforeLocalMidnight = new Date(2026, 5, 4, 23, 59, 59);
+			expect(liveLogNotePath(justBeforeLocalMidnight)).toBe(
+				'_OneDriveSyncLogs/2026-06-04.md'
+			);
 		});
 	});
 
@@ -50,7 +67,10 @@ describe('logManager', () => {
 				enabled: true,
 				adapter,
 				setVaultLogHook,
-				now: () => new Date('2026-06-04T12:34:56.000Z'),
+				// Local time, not UTC: liveLogNotePath derives the filename from
+				// local date parts, so a UTC instant would name a different day
+				// for anyone whose offset pushes it across midnight.
+				now: () => new Date(2026, 5, 4, 12, 34, 56),
 			});
 
 			expect(setVaultLogHook).toHaveBeenCalledTimes(1);
@@ -94,7 +114,9 @@ describe('logManager', () => {
 				adapter,
 				stamp: '**Plugin version:** `1.5.1`\n**Config:** `{\"accessMode\":\"app-folder\"}`',
 				setVaultLogHook,
-				now: () => new Date('2026-06-05T00:00:01.000Z'),
+				// Local time: one second past local midnight. Pinned as a UTC
+				// instant this named 2026-06-04 in every timezone behind UTC.
+				now: () => new Date(2026, 5, 5, 0, 0, 1),
 			});
 
 			const writeHook = setVaultLogHook.mock.calls[0][0] as unknown as (line: string) => void;
