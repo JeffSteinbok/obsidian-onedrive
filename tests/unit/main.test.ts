@@ -223,6 +223,8 @@ const createApp = () => ({
 	},
 	workspace: {
 		on: vi.fn(),
+		// Obsidian runs the callback immediately once the layout is ready.
+		onLayoutReady: vi.fn((callback: () => void) => callback()),
 		getLeaf: vi.fn().mockReturnValue({ openFile: vi.fn() }),
 	},
 });
@@ -348,6 +350,24 @@ describe('OneDriveSyncPlugin', () => {
 
 		expect(plugin.settings.tenantId).toBe('my-tenant');
 		expect(plugin.settings.customClientId).toBeUndefined();
+	});
+
+	it('onload defers authenticated initialization until the workspace layout is ready', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		let layoutReady: (() => void) | undefined;
+		(plugin as any).app.workspace.onLayoutReady = vi.fn((callback: () => void) => {
+			layoutReady = callback;
+		});
+
+		await plugin.onload();
+
+		expect(mocks.OneDriveClient).not.toHaveBeenCalled();
+		expect((plugin as any).isInitializing).toBe(true);
+
+		layoutReady?.();
+		await vi.waitFor(() => expect((plugin as any).isInitializing).toBe(false));
+
+		expect(mocks.OneDriveClient).toHaveBeenCalled();
 	});
 
 	it('onload fails closed when the tenant authority cannot be resolved', async () => {

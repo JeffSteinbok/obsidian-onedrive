@@ -163,11 +163,16 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		// Kick off authenticated initialization (API clients, event listeners,
-		// periodic/startup sync). This involves network calls (e.g. app-folder
-		// resolution) that should NOT block Obsidian's startup, so it
-		// runs asynchronously after onload returns.
+		// periodic/startup sync). This involves network calls (token refresh,
+		// app-folder resolution) that should NOT compete with Obsidian's own
+		// startup, so it waits until the workspace layout is ready (#175).
+		// onLayoutReady runs the callback immediately if the layout is already
+		// ready, e.g. when the plugin is enabled after startup.
 		if (this.tokenStorage.hasTokens()) {
-			void this.initializeAfterLoad();
+			this.isInitializing = true;
+			this.app.workspace.onLayoutReady(() => {
+				void this.initializeAfterLoad();
+			});
 		}
 
 		// Add ribbon icon for manual sync
