@@ -257,6 +257,15 @@ export const zhCn = {
 				name: '文件变更时同步',
 				desc: '文件修改后自动同步。禁用后可避免编辑时频繁同步；此时仅会运行定时同步和手动同步。',
 			},
+			fileChangeSyncDelay: {
+				name: '修改后同步延迟',
+				desc: '最后一次编辑后等待多久再同步。每次编辑都会重新计时，因此延迟越长，连续编辑时的同步次数越少。',
+				threeSeconds: '3 秒（默认）',
+				fiveSeconds: '5 秒',
+				tenSeconds: '10 秒',
+				thirtySeconds: '30 秒',
+				sixtySeconds: '60 秒',
+			},
 			startupDelay: {
 				name: '启动同步延迟',
 				desc: 'Obsidian 启动后等待多久再执行首次同步；0 表示关闭。',
