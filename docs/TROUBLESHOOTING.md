@@ -10,12 +10,12 @@
 
 - Check that you're connected (Settings → OneDrive Sync)
 - Manually trigger sync: click ribbon icon or use Command Palette → "OneDrive: Sync now"
-- Enable debug logging (Settings → OneDrive Sync → Advanced) and check console
+- Enable debug logging (Settings → OneDrive Sync → Log Level → Debug), sync again, and check the daily log file in the `_OneDriveSyncLogs/` folder of your vault
 
 ## Authentication fails
 
-- Ensure you're using a **Personal Microsoft account** (@outlook.com, @hotmail.com, etc.)
-- Business/Work accounts (Office 365) are not supported
+- Check that **Account type** in settings matches your account: personal (@outlook.com, @hotmail.com, etc.) or work/school
+- Work and school accounts need a one-time app registration first; see [Account Types](ADVANCED.md#account-types)
 - Check that you entered the device code correctly
 - Try disconnecting and reconnecting
 
