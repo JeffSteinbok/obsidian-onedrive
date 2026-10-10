@@ -301,6 +301,40 @@ describe('OneDriveClient', () => {
 			await expect(client.createFolder('parent', 'New Folder')).resolves.toBe(existingItem as any);
 			expect(getItemByPathSpy).toHaveBeenCalledWith('parent/New Folder');
 		});
+
+		// Graph answers a create POSTed to /me/drive/special/approot/children
+		// with 400 invalidRequest (#191)
+		it('creates App Folder root children under the App Folder item id, not its alias', async () => {
+			mockApiGet.mockResolvedValue({ id: 'approot-id', name: 'ObsidianOneDrive' });
+			mockApiPost.mockResolvedValue({ id: 'folder-1', name: 'TaskForge' });
+
+			await client.createFolder('', 'TaskForge');
+
+			expect(mockClient.api).toHaveBeenCalledWith('/me/drive/special/approot');
+			expect(mockClient.api).toHaveBeenCalledWith('/me/drive/items/approot-id/children');
+			expect(mockClient.api).not.toHaveBeenCalledWith('/me/drive/special/approot/children');
+		});
+
+		it('resolves the App Folder item id only once', async () => {
+			mockApiGet.mockResolvedValue({ id: 'approot-id', name: 'ObsidianOneDrive' });
+			mockApiPost.mockResolvedValue({ id: 'folder-1', name: 'A' });
+
+			await client.createFolder('', 'A');
+			await client.createFolder('/', 'B');
+
+			expect(mockApiGet).toHaveBeenCalledTimes(1);
+			expect(mockClient.api).toHaveBeenLastCalledWith('/me/drive/items/approot-id/children');
+		});
+
+		it('keeps the root children alias in full access mode', async () => {
+			const fullAccessClient = new OneDriveClient(mockAuthProvider as any, OneDriveAccessMode.FULL_ACCESS);
+			mockApiPost.mockResolvedValue({ id: 'folder-1', name: 'TaskForge' });
+
+			await fullAccessClient.createFolder('', 'TaskForge');
+
+			expect(mockApiGet).not.toHaveBeenCalled();
+			expect(mockClient.api).toHaveBeenCalledWith('/me/drive/root/children');
+		});
 	});
 
 	describe('deleteItem', () => {

@@ -69,6 +69,8 @@ export class OneDriveClient {
 	// Example: "ObsidianVaults/JeffBrain" when shared root is "Jeff Documents"
 	// and vault is at "Jeff Documents/ObsidianVaults/JeffBrain".
 	private relativePathInShared = '';
+	// Item id of the App Folder, resolved on first use (see folderChildrenEndpoint)
+	private appRootId?: string;
 
 	constructor(authProvider: OneDriveAuthProvider, accessMode: OneDriveAccessMode = OneDriveAccessMode.APP_FOLDER) {
 		this.authProvider = authProvider;
@@ -409,7 +411,7 @@ export class OneDriveClient {
 		logger.debug('Creating folder:', folderPath, folderName);
 
 		try {
-			const apiPath = this.buildEndpoint(folderPath, 'children');
+			const apiPath = await this.folderChildrenEndpoint(folderPath);
 
 			return await this.postGraph<OneDriveItem>(apiPath, {
 				name: folderName,
@@ -433,6 +435,32 @@ export class OneDriveClient {
 				`Failed to create folder: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
 		}
+	}
+
+	/**
+	 * Endpoint for creating a child of `folderPath`.
+	 *
+	 * Graph rejects a create POSTed to the App Folder's alias
+	 * (`/me/drive/special/approot/children`) with 400 invalidRequest, so a
+	 * folder at the top of a vault synced to the App Folder root could never
+	 * be created (#191). Address the App Folder by its item id instead, the
+	 * documented form for creating a child. Nested paths (`approot:/a:/children`)
+	 * and the other access modes are unaffected.
+	 */
+	private async folderChildrenEndpoint(folderPath: string): Promise<string> {
+		const isAppFolderRoot =
+			this.accessMode === OneDriveAccessMode.APP_FOLDER &&
+			!this.isSharedDrive() &&
+			!folderPath.replace(/^\/+|\/+$/g, '');
+		if (!isAppFolderRoot) {
+			return this.buildEndpoint(folderPath, 'children');
+		}
+
+		if (!this.appRootId) {
+			const appRoot = await this.getGraph<OneDriveItem>('/me/drive/special/approot');
+			this.appRootId = appRoot.id;
+		}
+		return `/me/drive/items/${this.appRootId}/children`;
 	}
 
 	/**
