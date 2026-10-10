@@ -174,6 +174,19 @@ export class EventManager {
 	}
 
 	/**
+	 * Put changes that failed to apply back on the dirty queue so the next
+	 * sync retries them. A newer event already queued for the same path wins,
+	 * since it reflects the vault's current state.
+	 */
+	requeueChanges(changes: LocalChange[]): void {
+		for (const change of changes) {
+			if (!this.dirtyFiles.has(change.path)) {
+				this.dirtyFiles.set(change.path, change);
+			}
+		}
+	}
+
+	/**
 	 * Start listening to vault events
 	 */
 	startListening(): void {
