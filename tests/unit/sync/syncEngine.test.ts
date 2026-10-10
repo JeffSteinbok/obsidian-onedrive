@@ -118,6 +118,13 @@ function hashContent(data: Uint8Array): string {
 	return hash.toString(16).padStart(8, '0');
 }
 
+// Tests stub the vault listing with mockReturnValue, and every non-first sync
+// scans it for external changes, so a stale listing would leak extra uploads
+// into whichever test runs next.
+beforeEach(() => {
+	(mockApp.vault.getFiles as Mock).mockReset().mockReturnValue([]);
+});
+
 describe('SyncEngine', () => {
 	let syncEngine: SyncEngine;
 	let mockFileOps: { uploadFile: Mock; downloadFile: Mock; deleteFile: Mock; moveFile: Mock; createFolder: Mock };
@@ -1820,6 +1827,122 @@ describe('SyncEngine', () => {
 		expect(createFolderMock).toHaveBeenCalledWith('/remote/root/MyFolder');
 		expect(freshStateManager.getFolderIdByPath('MyFolder')).toBe('new-folder-id');
 	});
+
+	// Files changed by another app, or while Obsidian was closed, raise no
+	// vault event, so a sync must find them by comparing the vault to tracked
+	// state (#191).
+	describe('external vault changes', () => {
+		const path = 'notes/task.md';
+		const original = new TextEncoder().encode('- [ ] buy milk');
+		// Same length as the original: the size check alone can't see it
+		const edited = new TextEncoder().encode('- [x] buy milk');
+
+		function trackFile(overrides: Partial<{ localMtime: number; size: number; localContentHash: string }> = {}) {
+			stateManager.setFileState(path, {
+				path,
+				localMtime: 1000,
+				remoteHash: 'remote-hash',
+				size: original.byteLength,
+				remoteModifiedTime: 900,
+				oneDriveId: 'task-id',
+				localContentHash: hashContent(original),
+				...overrides,
+			});
+		}
+
+		function vaultHas(size: number, mtime: number, content: Uint8Array) {
+			const file = makeTFile(path, size, mtime);
+			mockApp.vault.getFiles.mockReturnValue([file]);
+			mockApp.vault.getAbstractFileByPath.mockImplementation((p: string) => (p === path ? file : null));
+			mockApp.vault.readBinary.mockResolvedValue(content.slice().buffer);
+			return file;
+		}
+
+		beforeEach(() => {
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+		});
+
+		it('uploads a tracked file whose size changed', async () => {
+			trackFile();
+			vaultHas(original.byteLength + 5, 2000, new TextEncoder().encode('- [ ] buy milk!!!!!'));
+
+			await syncEngine.performSync();
+
+			expect(mockFileOps.uploadFile).toHaveBeenCalledWith('/remote/root/notes/task.md', expect.any(ArrayBuffer));
+		});
+
+		it('uploads a same-size edit whose content hash changed', async () => {
+			trackFile();
+			vaultHas(edited.byteLength, 2000, edited);
+
+			await syncEngine.performSync();
+
+			expect(mockFileOps.uploadFile).toHaveBeenCalledWith('/remote/root/notes/task.md', expect.any(ArrayBuffer));
+			expect(stateManager.getFileState(path)?.localContentHash).toBe(hashContent(edited));
+		});
+
+		it('records the new mtime without uploading when only the mtime changed', async () => {
+			trackFile();
+			vaultHas(original.byteLength, 2000, original);
+
+			await syncEngine.performSync();
+
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			expect(stateManager.getFileState(path)?.localMtime).toBe(2000);
+		});
+
+		it('backfills the hash without uploading when none was stored', async () => {
+			trackFile({ localContentHash: undefined });
+			vaultHas(original.byteLength, 2000, original);
+
+			await syncEngine.performSync();
+
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			expect(stateManager.getFileState(path)).toMatchObject({
+				localMtime: 2000,
+				localContentHash: hashContent(original),
+			});
+		});
+
+		it('does not read files whose mtime and size are unchanged', async () => {
+			trackFile();
+			vaultHas(original.byteLength, 1000, original);
+
+			await syncEngine.performSync();
+
+			expect(mockApp.vault.readBinary).not.toHaveBeenCalled();
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		});
+
+		it('skips files the plugin is writing itself', async () => {
+			mockEventManager.isOwnWrite.mockImplementation((p: string) => p === path);
+			vaultHas(original.byteLength, 2000, original);
+
+			await syncEngine.performSync();
+
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		});
+
+		it('never deletes a tracked file just because it is missing from the vault index', async () => {
+			trackFile();
+			mockApp.vault.getFiles.mockReturnValue([]);
+
+			await syncEngine.performSync();
+
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			expect(stateManager.getFileState(path)).toBeDefined();
+		});
+
+		it('records the content hash for vault files on upload, so later same-size edits are caught', async () => {
+			mockEventManager.getDirtyFiles.mockReturnValue([{ path, type: LocalChangeType.MODIFY }]);
+			vaultHas(original.byteLength, 2000, original);
+
+			await syncEngine.performSync();
+
+			expect(stateManager.getFileState(path)?.localContentHash).toBe(hashContent(original));
+		});
+	});
 });
 
 
@@ -2195,10 +2318,12 @@ describe('SyncEngine first-sync local vault enumeration', () => {
 		expect(uploadedPaths).toEqual(['/remote/root/notes/keep.md']);
 	});
 
-	it('does not enumerate local files on subsequent (non-first) syncs', async () => {
+	it('uploads untracked local files on subsequent syncs even without a vault event (#191)', async () => {
 		// Establish prior sync state so isFirstSync() is false.
 		stateManager.setLastSyncTime(Date.now());
 		stateManager.setDeltaLink('prev-delta');
+		// Written by another app (e.g. Taskforge on Android): Obsidian indexed
+		// it, but no vault event ever reached the dirty queue.
 		const localFiles = [makeTFile('notes/local-only.md', 50, Date.now())];
 		(mockApp.vault.getFiles as Mock).mockReturnValue(localFiles);
 		(mockApp.vault.getAbstractFileByPath as Mock).mockImplementation(
@@ -2207,8 +2332,8 @@ describe('SyncEngine first-sync local vault enumeration', () => {
 
 		await makeEngine().performSync();
 
-		// Without an event-driven dirty entry, a non-first sync should NOT upload.
-		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		expect(mockFileOps.uploadFile).toHaveBeenCalledTimes(1);
+		expect(mockFileOps.uploadFile.mock.calls[0][0]).toBe('/remote/root/notes/local-only.md');
 	});
 });
 
