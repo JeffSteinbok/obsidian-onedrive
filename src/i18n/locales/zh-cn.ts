@@ -94,6 +94,7 @@ export const zhCn = {
 				'OneDrive 同步：已同步 {{syncedCount}} {{fileLabel}}，{{conflictCount}} {{conflictLabel}}需要处理',
 			completedWithDeferred:
 				'OneDrive sync: {{syncedCount}} {{fileLabel}} synced; {{retryCount}} {{retryLabel}} will retry automatically ({{lockedCount}} locked/deferred)',
+			folderChangesFailed: 'OneDrive 同步：有 {{count}} 个文件夹变更未能应用到 OneDrive。请启用调试日志查看详情。',
 			engineFailed: 'OneDrive 同步失败：{{message}}',
 		},
 		reconcile: {

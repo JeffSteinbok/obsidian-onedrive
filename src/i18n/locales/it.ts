@@ -97,6 +97,7 @@ export const it = {
 				'Sincronizzazione OneDrive: {{syncedCount}} {{fileLabel}} sincronizzati, {{conflictCount}} {{conflictLabel}} necessitano risoluzione',
 			completedWithDeferred:
 				'OneDrive sync: {{syncedCount}} {{fileLabel}} synced; {{retryCount}} {{retryLabel}} will retry automatically ({{lockedCount}} locked/deferred)',
+			folderChangesFailed: 'Sincronizzazione OneDrive: impossibile applicare {{count}} modifica/e di cartella su OneDrive. Attiva il log di debug per i dettagli.',
 			engineFailed: 'Sincronizzazione OneDrive fallita: {{message}}',
 		},
 		reconcile: {

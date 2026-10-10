@@ -400,7 +400,7 @@ export class SyncEngine {
 			}
 
 			// Process explicit folder creates/deletes from vault events
-			await this.processFolderChanges(folderChanges);
+			const failedFolderPaths = await this.processFolderChanges(folderChanges);
 
 			// Prune remote config folders (.obsidian/plugins/*) left empty
 			// after local-driven file deletes. Config folders don't fire
@@ -459,6 +459,16 @@ export class SyncEngine {
 						lockedCount,
 					})
 				);
+			}
+			// Folder failures used to be log-only warnings, so a folder that
+			// could never be created looked like a successful sync (#191).
+			if (failedFolderPaths.length > 0) {
+				logger.warn(
+					`${failedFolderPaths.length} folder change(s) failed: ${failedFolderPaths.join(', ')}`
+				);
+				if (this.shouldNotifyError()) {
+					new Notice(t('notices.sync.folderChangesFailed', { count: failedFolderPaths.length }));
+				}
 			}
 			if (conflictedPaths.length > 0 && this.shouldNotifyError()) {
 				new Notice(
@@ -2055,8 +2065,20 @@ export class SyncEngine {
 	 * Process explicit folder create/delete/rename events from the vault.
 	 * Creates, deletes, or renames remote folders to match user intent.
 	 */
-	private async processFolderChanges(folderChanges: LocalChange[]): Promise<void> {
-		if (folderChanges.length === 0) return;
+	/**
+	 * Apply local folder creates, renames and deletes to OneDrive.
+	 *
+	 * Failures don't stop the sync, but they are returned so the caller can
+	 * surface them: a failure kept to the log is invisible to the user.
+	 * A create whose ancestor failed to create is skipped and counted as failed
+	 * rather than attempted, since it cannot succeed and would only repeat the
+	 * ancestor's failing requests.
+	 *
+	 * @returns Vault paths of the folder changes that failed or were skipped.
+	 */
+	private async processFolderChanges(folderChanges: LocalChange[]): Promise<string[]> {
+		const failedPaths: string[] = [];
+		if (folderChanges.length === 0) return failedPaths;
 
 		// Sort creates shallowest-first, deletes deepest-first
 		const creates = folderChanges
@@ -2085,6 +2107,7 @@ export class SyncEngine {
 					logger.info(`Renamed remote folder: ${oldPath} → ${change.path}`);
 				} catch (error) {
 					logger.error(`Failed to rename remote folder ${oldPath} → ${change.path}:`, error);
+					failedPaths.push(change.path);
 				}
 			} else {
 				// Folder not tracked — may need to create it at the new path
@@ -2098,19 +2121,30 @@ export class SyncEngine {
 					this.stateManager.setFolderState(item.id, change.path);
 					logger.info(`Created remote folder (from rename): ${change.path}`);
 				} catch (error) {
-					logger.warn(`Failed to create remote folder ${change.path}:`, error);
+					logger.error(`Failed to create remote folder ${change.path}:`, error);
+					failedPaths.push(change.path);
 				}
 			}
 		}
 
+		const failedCreates: string[] = [];
 		for (const change of creates) {
+			// Creates run shallowest-first, so a failed ancestor is already known
+			const failedAncestor = failedCreates.find((path) => change.path.startsWith(`${path}/`));
+			if (failedAncestor) {
+				logger.debug(`Skipping remote folder ${change.path}: ancestor ${failedAncestor} failed to create`);
+				failedPaths.push(change.path);
+				continue;
+			}
 			try {
 				const remotePath = this.vaultPathToRemotePath(change.path);
 				const item = await this.fileOps.createFolder(remotePath);
 				this.stateManager.setFolderState(item.id, change.path);
 				logger.info(`Created remote folder: ${change.path}`);
 			} catch (error) {
-				logger.warn(`Failed to create remote folder ${change.path}:`, error);
+				logger.error(`Failed to create remote folder ${change.path}:`, error);
+				failedCreates.push(change.path);
+				failedPaths.push(change.path);
 			}
 		}
 
@@ -2122,7 +2156,8 @@ export class SyncEngine {
 					this.stateManager.removeFolderStateByPath(change.path);
 					logger.info(`Deleted remote folder: ${change.path}`);
 				} catch (error) {
-					logger.warn(`Failed to delete remote folder ${change.path}:`, error);
+					logger.error(`Failed to delete remote folder ${change.path}:`, error);
+					failedPaths.push(change.path);
 				}
 			} else {
 				// Folder not tracked (created before folder tracking existed) — look up by path
@@ -2138,6 +2173,8 @@ export class SyncEngine {
 				}
 			}
 		}
+
+		return failedPaths;
 	}
 
 	/**

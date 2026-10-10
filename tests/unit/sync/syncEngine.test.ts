@@ -1828,6 +1828,71 @@ describe('SyncEngine', () => {
 		expect(freshStateManager.getFolderIdByPath('MyFolder')).toBe('new-folder-id');
 	});
 
+	// Folder failures were log-only warnings, so a folder that could never be
+	// created looked like a successful sync (#191, postmortem #195).
+	describe('folder change failures', () => {
+		const folderNotices = () =>
+			trackingNotice.calls.filter(([message]) => message.includes('folder change(s)'));
+
+		beforeEach(() => {
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('prev-delta');
+		});
+
+		it('reports a failed create and skips its descendants instead of retrying the parent', async () => {
+			mockEventManager.getDirtyFiles.mockReturnValue([
+				{ path: 'TaskForge', type: LocalChangeType.FOLDER_CREATE },
+				{ path: 'TaskForge/Settings', type: LocalChangeType.FOLDER_CREATE },
+				{ path: 'TaskForge/Settings/devices', type: LocalChangeType.FOLDER_CREATE },
+			]);
+			mockFileOps.createFolder.mockRejectedValue(new Error('Failed to create folder: Invalid request'));
+
+			await syncEngine.performSync();
+
+			expect(mockFileOps.createFolder).toHaveBeenCalledTimes(1);
+			expect(mockFileOps.createFolder).toHaveBeenCalledWith('/remote/root/TaskForge');
+			expect(folderNotices()).toHaveLength(1);
+			expect(folderNotices()[0][0]).toContain('3 folder change(s)');
+		});
+
+		it('still creates sibling folders whose ancestors succeeded', async () => {
+			mockEventManager.getDirtyFiles.mockReturnValue([
+				{ path: 'Broken', type: LocalChangeType.FOLDER_CREATE },
+				{ path: 'Fine', type: LocalChangeType.FOLDER_CREATE },
+				{ path: 'Fine/Child', type: LocalChangeType.FOLDER_CREATE },
+			]);
+			mockFileOps.createFolder.mockImplementation(async (remotePath: string) => {
+				if (remotePath.endsWith('/Broken')) throw new Error('Invalid request');
+				return makeRemoteItem({ id: `id-${remotePath}`, name: remotePath.split('/').pop()!, folder: {} });
+			});
+
+			await syncEngine.performSync();
+
+			expect(mockFileOps.createFolder).toHaveBeenCalledWith('/remote/root/Fine/Child');
+			expect(stateManager.getFolderIdByPath('Fine/Child')).toBe('id-/remote/root/Fine/Child');
+			expect(folderNotices()[0][0]).toContain('1 folder change(s)');
+		});
+
+		it('reports a failed delete of a tracked folder', async () => {
+			stateManager.setFolderState('folder-id', 'Old');
+			mockEventManager.getDirtyFiles.mockReturnValue([{ path: 'Old', type: LocalChangeType.FOLDER_DELETE }]);
+			mockFileOps.deleteFile.mockRejectedValue(new Error('forbidden'));
+
+			await syncEngine.performSync();
+
+			expect(folderNotices()[0][0]).toContain('1 folder change(s)');
+		});
+
+		it('shows no folder notice when every folder change succeeds', async () => {
+			mockEventManager.getDirtyFiles.mockReturnValue([{ path: 'New', type: LocalChangeType.FOLDER_CREATE }]);
+
+			await syncEngine.performSync();
+
+			expect(mockFileOps.createFolder).toHaveBeenCalledWith('/remote/root/New');
+			expect(folderNotices()).toHaveLength(0);
+		});
+	});
+
 	// Files changed by another app, or while Obsidian was closed, raise no
 	// vault event, so a sync must find them by comparing the vault to tracked
 	// state (#191).

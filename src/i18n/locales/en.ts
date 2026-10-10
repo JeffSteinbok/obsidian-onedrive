@@ -98,6 +98,7 @@ export const en = {
 				'OneDrive sync: {{syncedCount}} {{fileLabel}} synced, {{conflictCount}} {{conflictLabel}} need resolution',
 			completedWithDeferred:
 				'OneDrive sync: {{syncedCount}} {{fileLabel}} synced; {{retryCount}} {{retryLabel}} will retry automatically ({{lockedCount}} locked/deferred)',
+			folderChangesFailed: 'OneDrive sync: {{count}} folder change(s) couldn\'t be applied on OneDrive. Enable debug logging for details.',
 			engineFailed: 'OneDrive sync failed: {{message}}',
 		},
 		reconcile: {
