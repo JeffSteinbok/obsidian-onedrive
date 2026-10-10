@@ -110,7 +110,7 @@ export interface FileState {
 	size: number;
 	remoteModifiedTime: number;
 	oneDriveId?: string;
-	localContentHash?: string; // hex hash of local content (config files only)
+	localContentHash?: string; // hex hash of local content, used to confirm mtime-only changes
 }
 
 export enum LocalChangeType {

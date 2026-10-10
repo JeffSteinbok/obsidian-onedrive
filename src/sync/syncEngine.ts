@@ -571,6 +571,23 @@ export class SyncEngine {
 			);
 		}
 
+		// Files changed while nothing was listening — by another app on the
+		// device, or while Obsidian was closed — never reach the dirty queue,
+		// so compare the vault against tracked state. The first sync walks the
+		// vault itself (addFirstSyncUploads), so it doesn't need this.
+		if (!this.stateManager.isFirstSync()) {
+			const externalChanges = await this.detectExternalVaultChanges(
+				ignoreMatchers,
+				new Set(localChanges.map((change) => change.path))
+			);
+			if (externalChanges.length > 0) {
+				localChanges.push(...externalChanges);
+				logger.info(
+					`Queued ${externalChanges.length} file(s) changed outside Obsidian's file events`
+				);
+			}
+		}
+
 		logger.info(
 			`Local changes: ${localChanges.length} dirty files (${configChanges.length} config), ${folderChanges.length} folder operations`
 		);
@@ -651,6 +668,80 @@ export class SyncEngine {
 			discovered.push({ path, type: LocalChangeType.CREATE });
 		}
 		return discovered;
+	}
+
+	/**
+	 * Find vault files created or modified without a vault event reaching the
+	 * dirty queue: written by another app (e.g. a task app on Android editing
+	 * the vault folder directly), or changed while Obsidian was closed. Obsidian
+	 * indexes such files, but its startup indexing is suppressed and mobile
+	 * raises no event for another app's writes, so only the vault itself
+	 * shows the change (#191).
+	 *
+	 * Untracked files are queued as creates. For tracked files a size change is
+	 * definitive; a same-size mtime change is confirmed against the content
+	 * hash, because downloads record the mtime from Obsidian's cache, which can
+	 * lag the write. A tracked file with no stored hash (synced before hashes
+	 * were recorded for vault files) is backfilled rather than uploaded, as
+	 * `detectConfigFileChanges` does.
+	 *
+	 * Deliberately detects no deletes: a file missing from the vault index is
+	 * too weak a signal to delete it from OneDrive and every other device.
+	 */
+	private async detectExternalVaultChanges(
+		ignoreMatchers: RegExp[],
+		queuedPaths: Set<string>
+	): Promise<LocalChange[]> {
+		const changes: LocalChange[] = [];
+		for (const file of this.app.vault.getFiles()) {
+			const path = file.path;
+			if (queuedPaths.has(path)) continue;
+			if (!this.shouldSyncPath(path)) continue;
+			if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
+			if (this.conflictQueue?.hasConflict(path)) continue;
+			if (this.eventManager.isOwnWrite(path)) continue;
+
+			const trackedState = this.stateManager.getFileState(path);
+			if (!trackedState) {
+				logger.debug(`External change: untracked file ${path}`);
+				changes.push({ path, type: LocalChangeType.CREATE });
+				continue;
+			}
+			// Id-less tracked paths belong to discoverUnuploadedTrackedFiles
+			if (!trackedState.oneDriveId) continue;
+
+			if (file.stat.size !== trackedState.size) {
+				logger.debug(
+					`External change: size of ${path} changed (${trackedState.size} → ${file.stat.size})`
+				);
+				changes.push({ path, type: LocalChangeType.MODIFY });
+				continue;
+			}
+			if (file.stat.mtime === trackedState.localMtime) continue;
+
+			let hash: string;
+			try {
+				hash = hashContent(new Uint8Array(await this.app.vault.readBinary(file)));
+			} catch (error) {
+				logger.warn(`Could not read ${path} to check for external changes:`, error);
+				continue;
+			}
+
+			if (trackedState.localContentHash && hash !== trackedState.localContentHash) {
+				logger.debug(`External change: content of ${path} changed`);
+				changes.push({ path, type: LocalChangeType.MODIFY });
+				continue;
+			}
+
+			// Unchanged, or no stored hash to compare against: record the
+			// current mtime and hash so the next sync skips the read.
+			this.stateManager.setFileState(path, {
+				...trackedState,
+				localMtime: file.stat.mtime,
+				localContentHash: hash,
+			});
+		}
+		return changes;
 	}
 
 	private discoverUntrackedLocalFolders(
@@ -1711,7 +1802,7 @@ export class SyncEngine {
 			size: content.byteLength,
 			remoteModifiedTime: new Date(item.lastModifiedDateTime).getTime(),
 			oneDriveId: item.id,
-			localContentHash: !(file instanceof TFile) ? hashContent(new Uint8Array(content)) : undefined,
+			localContentHash: hashContent(new Uint8Array(content)),
 		});
 
 		logger.debug(`Uploaded ${operation.path} successfully`);
@@ -1827,7 +1918,7 @@ export class SyncEngine {
 			size: content.byteLength,
 			remoteModifiedTime: operation.remoteState.remoteModifiedTime,
 			oneDriveId: operation.remoteState.oneDriveId,
-			localContentHash: !(file instanceof TFile) ? hashContent(new Uint8Array(content)) : undefined,
+			localContentHash: hashContent(new Uint8Array(content)),
 		});
 
 		logger.debug(`Downloaded ${operation.path} successfully`);
