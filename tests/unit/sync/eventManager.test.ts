@@ -670,6 +670,20 @@ describe('EventManager', () => {
 			});
 		});
 
+		describe('requeueChanges', () => {
+			it('puts failed changes back on the dirty queue', () => {
+				const change = { path: 'Old', type: LocalChangeType.FOLDER_DELETE };
+				eventManager.requeueChanges([change]);
+				expect(eventManager.getDirtyFiles()).toEqual([change]);
+			});
+
+			it('keeps a newer event already queued for the same path', () => {
+				eventManager.addDirtyFile('Old', 'create');
+				eventManager.requeueChanges([{ path: 'Old', type: LocalChangeType.FOLDER_DELETE }]);
+				expect(eventManager.getDirtyFiles()).toEqual([{ path: 'Old', type: LocalChangeType.CREATE }]);
+			});
+		});
+
 		describe('file change sync delay', () => {
 			it('waits for the delay passed to the constructor before syncing', async () => {
 				const em = new EventManager(

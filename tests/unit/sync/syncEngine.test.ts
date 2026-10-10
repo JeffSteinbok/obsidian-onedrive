@@ -140,6 +140,7 @@ describe('SyncEngine', () => {
 		removeOwnWrite: Mock;
 		isOwnWrite: Mock;
 		markInitialSyncDone: Mock;
+		requeueChanges: Mock;
 	};
 	type TrackingNoticeClass = typeof Notice & { calls: Array<[string, number | undefined]> };
 	const trackingNotice = Notice as TrackingNoticeClass;
@@ -196,6 +197,7 @@ describe('SyncEngine', () => {
 			removeOwnWrite: vi.fn(),
 			isOwnWrite: vi.fn().mockReturnValue(false),
 			markInitialSyncDone: vi.fn(),
+			requeueChanges: vi.fn(),
 		};
 
 		mockClient = {
@@ -1881,6 +1883,42 @@ describe('SyncEngine', () => {
 			await syncEngine.performSync();
 
 			expect(folderNotices()[0][0]).toContain('1 folder change(s)');
+		});
+
+		it('requeues a failed folder delete so the next sync retries it', async () => {
+			stateManager.setFolderState('folder-id', 'Old');
+			const deleteChange = { path: 'Old', type: LocalChangeType.FOLDER_DELETE };
+			mockEventManager.getDirtyFiles.mockReturnValue([deleteChange]);
+			mockFileOps.deleteFile.mockRejectedValue(new Error('network down'));
+
+			await syncEngine.performSync();
+
+			// Requeued after the finalize step clears the dirty queue
+			expect(mockEventManager.requeueChanges).toHaveBeenCalledWith([deleteChange]);
+			expect(mockEventManager.requeueChanges.mock.invocationCallOrder[0]).toBeGreaterThan(
+				mockEventManager.clearDirtyFiles.mock.invocationCallOrder[0]
+			);
+			expect(stateManager.getFolderIdByPath('Old')).toBe('folder-id');
+		});
+
+		it('requeues a failed folder rename', async () => {
+			stateManager.setFolderState('folder-id', 'Before');
+			const renameChange = { path: 'After', oldPath: 'Before', type: LocalChangeType.FOLDER_RENAME };
+			mockEventManager.getDirtyFiles.mockReturnValue([renameChange]);
+			mockFileOps.moveFile.mockRejectedValue(new Error('network down'));
+
+			await syncEngine.performSync();
+
+			expect(mockEventManager.requeueChanges).toHaveBeenCalledWith([renameChange]);
+		});
+
+		it('does not requeue failed creates, which are rediscovered every sync', async () => {
+			mockEventManager.getDirtyFiles.mockReturnValue([{ path: 'New', type: LocalChangeType.FOLDER_CREATE }]);
+			mockFileOps.createFolder.mockRejectedValue(new Error('Invalid request'));
+
+			await syncEngine.performSync();
+
+			expect(mockEventManager.requeueChanges).not.toHaveBeenCalled();
 		});
 
 		it('shows no folder notice when every folder change succeeds', async () => {
