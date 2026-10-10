@@ -97,6 +97,7 @@ export const de = {
 				'OneDrive-Synchronisierung: {{syncedCount}} {{fileLabel}} synchronisiert, {{conflictCount}} {{conflictLabel}} müssen gelöst werden',
 			completedWithDeferred:
 				'OneDrive sync: {{syncedCount}} {{fileLabel}} synced; {{retryCount}} {{retryLabel}} will retry automatically ({{lockedCount}} locked/deferred)',
+			folderChangesFailed: 'OneDrive-Synchronisierung: {{count}} Ordneränderung(en) konnten nicht auf OneDrive übernommen werden. Aktiviere das Debug-Protokoll für Details.',
 			engineFailed: 'OneDrive-Synchronisierung fehlgeschlagen: {{message}}',
 		},
 		reconcile: {

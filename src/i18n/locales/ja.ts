@@ -96,6 +96,7 @@ export const ja = {
 				'OneDrive同期: {{syncedCount}} {{fileLabel}}を同期、{{conflictCount}} {{conflictLabel}}の解決が必要です',
 			completedWithDeferred:
 				'OneDrive sync: {{syncedCount}} {{fileLabel}} synced; {{retryCount}} {{retryLabel}} will retry automatically ({{lockedCount}} locked/deferred)',
+			folderChangesFailed: 'OneDrive同期: {{count}} 件のフォルダー変更を OneDrive に反映できませんでした。詳細はデバッグログを有効にして確認してください。',
 			engineFailed: 'OneDrive同期に失敗しました: {{message}}',
 		},
 		reconcile: {
