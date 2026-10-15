@@ -1,5 +1,10 @@
 spec:
   profiles:
+    # Implement approved issues with Claude Code (subscription via CLAUDE_CODE_OAUTH_TOKEN)
+    # instead of the Copilot coding agent. Curation and acceptance review remain Copilot.
+    - name: basic
+      implementation:
+        provider: claude
     - name: postmortem
       default: false
       priority: 100
@@ -12,3 +17,4 @@ spec:
         prompt: postmortem
         guidance: null
         heading: Puppets postmortem instructions
+        provider: claude
