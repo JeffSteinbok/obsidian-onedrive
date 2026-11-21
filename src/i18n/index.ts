@@ -28,6 +28,12 @@
 import { getLanguage } from 'obsidian';
 import { en, type LocaleStrings } from './locales/en';
 import { zhCn } from './locales/zh-cn';
+import { de } from './locales/de';
+import { es } from './locales/es';
+import { fr } from './locales/fr';
+import { it } from './locales/it';
+import { ja } from './locales/ja';
+import { pt } from './locales/pt';
 
 type TranslationParams = Record<string, string | number>;
 
@@ -35,6 +41,12 @@ const locales: Record<string, LocaleStrings> = {
 	en,
 	'zh-cn': zhCn,
 	zh: zhCn,
+	de,
+	es,
+	fr,
+	it,
+	ja,
+	pt,
 };
 
 function normalizeLanguage(language: string): string {

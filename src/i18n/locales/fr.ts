@@ -5,6 +5,7 @@ export const fr = {
 		disconnect: 'Déconnecter de OneDrive',
 		forceFullSync: 'Forcer une synchronisation complète (tout retélécharger)',
 		reconcileFromCloud: 'Réconcilier depuis le cloud (récupération basée sur le cloud)',
+		reconcileToCloud: 'Force upload local to cloud (overwrite everything on OneDrive)',
 		showConflicts: 'Afficher les conflits de synchronisation',
 		devCreateTestConflict: 'DEV: Créer un conflit de test (pour tester l\'interface de conflits)',
 	},
@@ -111,6 +112,18 @@ export const fr = {
 			complete:
 				'Réconciliation depuis le cloud terminée: {{downloaded}} téléchargés, {{deleted}} supprimés, {{refreshed}} actualisés.',
 			failed: 'Réconciliation depuis le cloud échouée: {{message}}',
+		},
+		reconcileToCloud: {
+			notConnected: 'Force upload local: not connected to OneDrive.',
+			selectFolderFirst: 'Force upload local: select a sync folder in settings first.',
+			engineNotInitialized: 'Force upload local: sync engine not initialized.',
+			alreadyInProgress: 'Force upload local: a sync is already in progress.',
+			listing: 'Force upload local: listing OneDrive...',
+			cancelled: 'Force upload local cancelled.',
+			alreadyInSync: 'Force upload local: already in sync.',
+			complete:
+				'Force upload local complete: {{uploaded}} uploaded, {{deleted}} deleted, {{refreshed}} refreshed.',
+			failed: 'Force upload local failed: {{message}}',
 		},
 		dev: {
 			noFileFound: 'OneDrive DEV: Aucun fichier trouvé pour créer un conflit de test',
@@ -248,6 +261,19 @@ export const fr = {
 				currentDisabled: 'Actuellement : synchronisation manuelle uniquement.',
 				resetTooltip: 'Réinitialiser par défaut',
 			},
+			syncOnFileChange: {
+				name: 'Sync on file change',
+				desc: 'Automatically sync when files are modified. Disable to prevent syncing while actively editing — only the periodic interval and manual sync will run.',
+			},
+			fileChangeSyncDelay: {
+				name: 'Delay before syncing changes',
+				desc: 'How long to wait after your last edit before syncing. Each edit restarts the wait, so a longer delay batches continuous editing into fewer syncs.',
+				threeSeconds: '3 seconds (default)',
+				fiveSeconds: '5 seconds',
+				tenSeconds: '10 seconds',
+				thirtySeconds: '30 seconds',
+				sixtySeconds: '60 seconds',
+			},
 			startupDelay: {
 				name: 'Délai de synchronisation au démarrage',
 				desc: 'Délai avant la première synchronisation après le démarrage d\'Obsidian (0 = désactivé)',
@@ -336,6 +362,11 @@ export const fr = {
 				name: 'Réconcilier depuis le cloud',
 				desc: 'Traiter le cloud comme autoritaire. Supprime les fichiers locaux qui n\'existent plus dans OneDrive et télécharge ce qui manque. Utilisez quand Réinitialiser le Jeton de Synchronisation n\'a pas nettoyé les fichiers locaux obsolètes. Destructif — confirmation requise pour les suppressions massives.',
 				button: 'Réconcilier depuis le cloud',
+			},
+			reconcileToCloud: {
+				name: 'Force upload local to cloud',
+				desc: 'Treat the local vault as authoritative. Uploads local files that differ from OneDrive and deletes remote files that no longer exist locally. Use to recover from cloud-side corruption or a bad sync. Destructive — confirmation required for large deletes.',
+				button: 'Force upload local to cloud',
 			},
 			customClientId: {
 				toggleName: 'Utiliser un ID client personnalisé',
