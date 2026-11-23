@@ -282,10 +282,13 @@ describe('OneDriveClient', () => {
 	describe('createFolder', () => {
 		it('creates a folder with fail conflict behavior', async () => {
 			const createdItem = { id: 'folder-1', name: 'New Folder' };
+			mockApiGet.mockResolvedValue({ id: 'parent-id', name: 'parent' });
 			mockApiPost.mockResolvedValue(createdItem);
 
 			await expect(client.createFolder('parent', 'New Folder')).resolves.toBe(createdItem as any);
-			expect(mockClient.api).toHaveBeenCalledWith(client.buildEndpoint('parent', 'children'));
+			// Parent resolved to its item id (#210), not addressed by path
+			expect(mockClient.api).toHaveBeenCalledWith(client.buildEndpoint('parent'));
+			expect(mockClient.api).toHaveBeenCalledWith('/me/drive/items/parent-id/children');
 			expect(mockApiPost).toHaveBeenCalledWith({
 				name: 'New Folder',
 				folder: {},
@@ -296,9 +299,10 @@ describe('OneDriveClient', () => {
 		it('falls back to getItemByPath when the folder already exists', async () => {
 			const existingItem = { id: 'folder-1', name: 'New Folder' };
 			const getItemByPathSpy = vi.spyOn(client, 'getItemByPath').mockResolvedValue(existingItem as any);
+			mockApiGet.mockResolvedValue({ id: 'parent-id', name: 'parent' });
 			mockApiPost.mockRejectedValue(new Error('nameAlreadyExists'));
 
-			await expect(client.createFolder('parent', 'New Folder')).resolves.toBe(existingItem as any);
+			await expect(client.createFolder('parent','New Folder')).resolves.toBe(existingItem as any);
 			expect(getItemByPathSpy).toHaveBeenCalledWith('parent/New Folder');
 		});
 
