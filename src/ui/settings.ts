@@ -55,6 +55,7 @@ interface OneDrivePlugin extends Plugin {
 	onPluginDataSyncChanged(enabled: boolean): Promise<void>;
 	onCssSnippetSyncChanged(enabled: boolean): Promise<void>;
 	onBookmarkSyncChanged(enabled: boolean): Promise<void>;
+	onAdditionalSyncFoldersChanged(folders: string[]): Promise<void>;
 	resetSyncToken(): Promise<void>;
 	reconcileFromCloud(): Promise<void>;
 	reconcileToCloud(): Promise<void>;
@@ -1332,6 +1333,18 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					await this.plugin.onBookmarkSyncChanged(value);
 				})
 			);
+
+		new Setting(containerEl)
+			.setName(t('settings.sync.additionalFolders.name'))
+			.setDesc(t('settings.sync.additionalFolders.desc'))
+			.addTextArea((text) => {
+				text
+					.setPlaceholder(t('settings.sync.additionalFolders.placeholder'))
+					.setValue((this.plugin.settings.additionalSyncFolders ?? []).join('\n'))
+					.onChange(async (value) => {
+						await this.plugin.onAdditionalSyncFoldersChanged(value.split(/\r?\n/));
+					});
+			});
 	}
 
 	private displaySyncStatus(containerEl: HTMLElement): void {

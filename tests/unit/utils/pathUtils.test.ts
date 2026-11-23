@@ -5,6 +5,9 @@
 import { describe, it, expect } from 'vitest';
 import {
 	normalizePath,
+	normalizeAdditionalSyncFolders,
+	isInAdditionalSyncFolder,
+	getAdditionalFolderSyncPaths,
 	joinPath,
 	getParentPath,
 	getFileName,
@@ -443,5 +446,37 @@ describe('pathUtils', () => {
 				'.obsidian/plugins/calendar/data.json'
 			);
 		});
+	});
+});
+
+describe('additional sync folders', () => {
+	it('normalizes user input', () => {
+		expect(normalizeAdditionalSyncFolders([' .claude ', '.claude/', '\\.xyz', '', '../x', 'a/../b'])).toEqual([
+			'.claude',
+			'.xyz',
+		]);
+	});
+
+	it('matches paths inside configured folders', () => {
+		expect(isInAdditionalSyncFolder('.claude/a/b.md', ['.claude'])).toBe(true);
+		expect(isInAdditionalSyncFolder('.claude', ['.claude'])).toBe(true);
+		expect(isInAdditionalSyncFolder('.claudex/a.md', ['.claude'])).toBe(false);
+	});
+
+	it('lists files recursively through the adapter', async () => {
+		const tree: Record<string, { folders: string[]; files: string[] }> = {
+			'.claude': { folders: ['.claude/sub'], files: ['.claude/a.json'] },
+			'.claude/sub': { folders: [], files: ['.claude/sub/b.md'] },
+		};
+		const adapter = {
+			list: async (p: string) => {
+				if (!tree[p]) throw new Error('missing');
+				return tree[p];
+			},
+		};
+		expect(await getAdditionalFolderSyncPaths(['.claude', '.missing'], adapter)).toEqual([
+			'.claude/a.json',
+			'.claude/sub/b.md',
+		]);
 	});
 });

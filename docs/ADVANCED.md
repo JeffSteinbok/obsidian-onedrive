@@ -123,3 +123,7 @@ These settings may improve performance but are not fully tested. Use at your own
 **Duplicate files appearing after moves/renames:**
 - Ensure **Use atomic moves** is ON (default)
 - If you see duplicates, check logs for "no tracked state for old path" warnings — this indicates the old location couldn't be found in sync state
+
+## Additional sync folders
+
+Obsidian does not index hidden folders (such as `.claude`), so they are not synced by default. Under **Settings → Sync → Additional folders to sync** you can list vault-relative folders, one per line (for example `.claude`). Every file inside them is synced recursively, subject to `.syncIgnore`.

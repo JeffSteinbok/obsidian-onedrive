@@ -271,7 +271,8 @@ export async function getInstalledSnippetSyncPaths(
 export async function getAllSyncableConfigPaths(
 	configDir: string,
 	adapter: { list(path: string): Promise<{ folders: string[]; files: string[] }> },
-	shouldSyncPath: (path: string) => boolean
+	shouldSyncPath: (path: string) => boolean,
+	additionalSyncFolders: readonly string[] = []
 ): Promise<string[]> {
 	const syncPlugins = shouldSyncPath(`${configDir}/community-plugins.json`);
 	const syncPluginData = shouldSyncPath(`${configDir}/plugins/example-plugin/data.json`);
@@ -287,7 +288,11 @@ export async function getAllSyncableConfigPaths(
 		? await getInstalledSnippetSyncPaths(configDir, adapter)
 		: [];
 
-	return [...fixedPaths, ...pluginPaths, ...snippetPaths];
+	const additionalPaths = (await getAdditionalFolderSyncPaths(additionalSyncFolders, adapter)).filter(
+		(p) => shouldSyncPath(p)
+	);
+
+	return [...fixedPaths, ...pluginPaths, ...snippetPaths, ...additionalPaths];
 }
 
 function isInstalledPluginManifestPath(path: string, configDir: string): boolean {
@@ -317,6 +322,60 @@ function getWorkspaceStatePattern(configDir: string): RegExp {
 }
 
 /**
+ * Normalize a user-entered list of additional folders to sync (e.g. `.claude`).
+ * Trims, converts separators, strips leading/trailing slashes, drops empty
+ * entries, duplicates and anything containing `..` segments.
+ */
+export function normalizeAdditionalSyncFolders(folders: readonly string[] | undefined): string[] {
+	const result: string[] = [];
+	for (const raw of folders ?? []) {
+		if (typeof raw !== 'string') continue;
+		const folder = normalizePath(raw.trim()).replace(/^(\.\/)+/, '').replace(/^\/+|\/+$/g, '');
+		if (!folder || folder === '.') continue;
+		if (folder.split('/').some((seg) => seg === '..' || seg === '.')) continue;
+		if (!result.includes(folder)) result.push(folder);
+	}
+	return result;
+}
+
+/**
+ * True if the path is one of the user-configured additional sync folders or
+ * lives inside one.
+ */
+export function isInAdditionalSyncFolder(path: string, folders: readonly string[]): boolean {
+	const normalized = normalizePath(path);
+	for (const folder of normalizeAdditionalSyncFolders(folders)) {
+		if (normalized === folder || normalized.startsWith(`${folder}/`)) return true;
+	}
+	return false;
+}
+
+/**
+ * Recursively list every file inside the additional sync folders. Hidden
+ * folders are not indexed by the vault, so the adapter must be used.
+ */
+export async function getAdditionalFolderSyncPaths(
+	folders: readonly string[],
+	adapter: { list(path: string): Promise<{ folders: string[]; files: string[] }> }
+): Promise<string[]> {
+	const paths: string[] = [];
+	const visit = async (dir: string): Promise<void> => {
+		let listing: { folders: string[]; files: string[] };
+		try {
+			listing = await adapter.list(dir);
+		} catch {
+			return; // folder may not exist locally
+		}
+		for (const file of listing.files) paths.push(normalizePath(file));
+		for (const sub of listing.folders) await visit(normalizePath(sub));
+	};
+	for (const folder of normalizeAdditionalSyncFolders(folders)) {
+		await visit(folder);
+	}
+	return paths;
+}
+
+/**
  * Check whether a vault path should be synced.
  */
 export function shouldSyncVaultPath(
@@ -326,7 +385,8 @@ export function shouldSyncVaultPath(
 	configDir: string,
 	syncCssSnippets = false,
 	syncBookmarks = false,
-	syncPluginData = false
+	syncPluginData = false,
+	additionalSyncFolders: readonly string[] = []
 ): boolean {
 	const normalized = normalizePath(path);
 	const normalizedConfigDir = normalizeConfigDir(configDir);
@@ -363,6 +423,10 @@ export function shouldSyncVaultPath(
 	}
 
 	if (!normalized.startsWith(configDirPrefix)) {
+		return true;
+	}
+
+	if (isInAdditionalSyncFolder(normalized, additionalSyncFolders)) {
 		return true;
 	}
 

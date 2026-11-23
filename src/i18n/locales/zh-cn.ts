@@ -309,6 +309,11 @@ export const zhCn = {
 				name: '同步书签',
 				desc: '同步 {{configDir}}/bookmarks.json，让书签在不同设备上保持一致。',
 			},
+			additionalFolders: {
+				name: 'Additional folders to sync',
+				desc: 'Advanced: hidden folders (such as .claude) to sync in addition to the vault contents, one vault-relative path per line.',
+				placeholder: '.claude',
+			},
 			status: {
 				name: '同步状态',
 				desc: '状态：{{status}} · 上次同步：{{lastSync}} · 进度：{{progress}} · 冲突：{{conflicts}}',

@@ -15,7 +15,7 @@ import {
 } from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID, resolveOAuthEndpoints, resolveOAuthScopes } from './constants';
 import { logger, LogLevel } from './utils/logger';
-import { shouldSyncVaultPath } from './utils/pathUtils';
+import { normalizeAdditionalSyncFolders, shouldSyncVaultPath } from './utils/pathUtils';
 import {
 	applyVaultLogHook as applyPluginVaultLogHook,
 	type VaultLogAdapter,
@@ -386,7 +386,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 						this.app.vault.configDir,
 						this.settings.syncCssSnippets,
 						this.settings.syncBookmarks,
-						this.settings.syncPluginData
+						this.settings.syncPluginData,
+						this.settings.additionalSyncFolders
 					),
 				this.settings.syncOnFileChange ?? true,
 				this.getFileChangeSyncDelayMs()
@@ -458,8 +459,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 							this.app.vault.configDir,
 							this.settings.syncCssSnippets,
 							this.settings.syncBookmarks,
-							this.settings.syncPluginData
+							this.settings.syncPluginData,
+							this.settings.additionalSyncFolders
 						),
+					getAdditionalSyncFolders: () =>
+						normalizeAdditionalSyncFolders(this.settings.additionalSyncFolders),
 					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
 					getNotificationLevel: () => this.settings.notificationLevel ?? 'all',
 					largeDeleteWarningHandler: (info) => this.handleLargeDeleteWarning(info),
@@ -1313,6 +1317,16 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		this.settings.syncBookmarks = enabled;
+		await this.saveSettings();
+	}
+
+	async onAdditionalSyncFoldersChanged(folders: string[]): Promise<void> {
+		const normalized = normalizeAdditionalSyncFolders(folders);
+		const current = this.settings.additionalSyncFolders ?? [];
+		if (normalized.length === current.length && normalized.every((f, i) => f === current[i])) {
+			return;
+		}
+		this.settings.additionalSyncFolders = normalized;
 		await this.saveSettings();
 	}
 

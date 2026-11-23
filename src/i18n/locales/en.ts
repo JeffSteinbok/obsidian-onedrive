@@ -316,6 +316,11 @@ export const en = {
 				name: 'Sync bookmarks',
 				desc: 'Sync {{configDir}}/bookmarks.json to keep bookmarks consistent across devices.',
 			},
+			additionalFolders: {
+				name: 'Additional folders to sync',
+				desc: 'Advanced: hidden folders (such as .claude) to sync in addition to the vault contents, one vault-relative path per line.',
+				placeholder: '.claude',
+			},
 			status: {
 				name: 'Sync status',
 				desc: 'Status: {{status}} · Last sync: {{lastSync}} · Progress: {{progress}} · Conflicts: {{conflicts}}',

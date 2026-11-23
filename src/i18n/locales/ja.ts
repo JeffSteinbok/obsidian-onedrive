@@ -315,6 +315,11 @@ export const ja = {
 				name: 'ブックマークを同期',
 				desc: '{{configDir}}/bookmarks.jsonを同期して、デバイス間でブックマークを一貫させます。',
 			},
+			additionalFolders: {
+				name: 'Additional folders to sync',
+				desc: 'Advanced: hidden folders (such as .claude) to sync in addition to the vault contents, one vault-relative path per line.',
+				placeholder: '.claude',
+			},
 			status: {
 				name: '同期状態',
 				desc: '状態: {{status}} · 最終同期: {{lastSync}} · 進捗: {{progress}} · 競合: {{conflicts}}',

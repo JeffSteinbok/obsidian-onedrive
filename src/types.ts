@@ -238,6 +238,8 @@ export interface SyncEngineOptions {
 	useAtomicMoves?: () => boolean;
 	/** Returns true if pull-only mode is enabled */
 	isPullOnlyMode?: () => boolean;
+	/** Extra (typically hidden) vault-relative folders to sync, e.g. `.claude`. */
+	getAdditionalSyncFolders?: () => string[];
 	/**
 	 * True when running in app-folder mode. Used to detect and retire a legacy,
 	 * unscoped app-folder delta cursor that could return sibling vaults' files
@@ -342,6 +344,7 @@ export interface PluginSettings {
 	syncPluginData: boolean; // Opt-in sync for plugin data.json files (except this plugin's own data)
 	syncCssSnippets: boolean; // Opt-in sync for CSS snippets in .obsidian/snippets/
 	syncBookmarks: boolean; // Opt-in sync for Obsidian bookmarks (.obsidian/bookmarks.json)
+	additionalSyncFolders: string[]; // Extra hidden vault-relative folders to sync (e.g. .claude)
 	syncState?: {
 		lastSyncTime: number;
 		fileStates: Array<[string, FileState]>;
@@ -390,6 +393,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	syncPluginData: false,
 	syncCssSnippets: false,
 	syncBookmarks: false,
+	additionalSyncFolders: [],
 	syncState: undefined,
 	conflictQueue: undefined,
 

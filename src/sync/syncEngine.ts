@@ -86,6 +86,7 @@ import {
 	stripGraphPrefix,
 	shouldSyncVaultPath,
 	getAllSyncableConfigPaths,
+	isInAdditionalSyncFolder,
 } from '../utils/pathUtils';
 import { ProgressNotice } from '../ui/progressNotice';
 import { t } from '../i18n';
@@ -212,6 +213,7 @@ export class SyncEngine {
 	private readonly pluginVersion: string;
 	private readonly isPullOnlyMode: () => boolean;
 	private readonly isAppFolder: boolean;
+	private readonly getAdditionalSyncFoldersFn: () => string[];
 
 	constructor(
 		private app: App,
@@ -225,6 +227,7 @@ export class SyncEngine {
 	) {
 		// Apply options with defaults
 		this.remoteRoot = options.remoteRoot ?? '';
+		this.getAdditionalSyncFoldersFn = options.getAdditionalSyncFolders ?? (() => []);
 		this.conflictQueue = options.conflictQueue;
 		this.shouldSyncPath = options.shouldSyncPath ?? ((path) => shouldSyncVaultPath(path, false, false, configDir));
 		this.getLargeDeleteThreshold = options.getLargeDeleteThreshold ?? (() => 0);
@@ -241,6 +244,10 @@ export class SyncEngine {
 		// For shared drives, delta items have paths relative to the remote drive root,
 		// so we need the folder name on that drive for path stripping
 		this.remoteRootOnDrive = options.remoteRootOnDrive ?? this.remoteRoot;
+	}
+
+	private getAdditionalSyncFolders(): string[] {
+		return this.getAdditionalSyncFoldersFn();
 	}
 
 	private isObsidianPath(path: string): boolean {
@@ -824,7 +831,8 @@ export class SyncEngine {
 		const allConfigPaths = await getAllSyncableConfigPaths(
 			this.configDir,
 			adapter,
-			(path) => this.shouldSyncPath(path)
+			(path) => this.shouldSyncPath(path),
+			this.getAdditionalSyncFolders()
 		);
 
 		const checkedPaths = new Set<string>();
@@ -910,6 +918,27 @@ export class SyncEngine {
 			} catch {
 				logger.info(`Tracked plugin file no longer exists: ${path}`);
 				changes.push({ path, type: LocalChangeType.DELETE });
+			}
+		}
+
+		// Tracked files inside additional (hidden) sync folders that no longer
+		// exist locally won't appear in allConfigPaths — detect the deletes.
+		const additionalFolders = this.getAdditionalSyncFolders();
+		if (additionalFolders.length > 0) {
+			for (const path of this.stateManager.getTrackedPaths()) {
+				if (!isInAdditionalSyncFolder(path, additionalFolders)) continue;
+				if (checkedPaths.has(path)) continue;
+				if (dirtyPaths.has(path)) continue;
+				if (!this.shouldSyncPath(path)) continue;
+				if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
+				try {
+					const stat = await adapter.stat(path);
+					if (!stat || stat.type !== 'file') {
+						changes.push({ path, type: LocalChangeType.DELETE });
+					}
+				} catch {
+					changes.push({ path, type: LocalChangeType.DELETE });
+				}
 			}
 		}
 
@@ -1145,7 +1174,8 @@ export class SyncEngine {
 		const configPaths = await getAllSyncableConfigPaths(
 			this.configDir,
 			adapter,
-			(path) => this.shouldSyncPath(path)
+			(path) => this.shouldSyncPath(path),
+			this.getAdditionalSyncFolders()
 		);
 		for (const path of configPaths) {
 			if (remoteCoveredPaths.has(path)) continue;
@@ -2709,7 +2739,8 @@ export class SyncEngine {
 			const configPaths = await getAllSyncableConfigPaths(
 				this.configDir,
 				adapter,
-				(path) => this.shouldSyncPath(path)
+				(path) => this.shouldSyncPath(path),
+				this.getAdditionalSyncFolders()
 			);
 			for (const path of configPaths) {
 				if (localByPath.has(path)) continue;
@@ -2929,7 +2960,8 @@ export class SyncEngine {
 			const configPaths = await getAllSyncableConfigPaths(
 				this.configDir,
 				adapter,
-				(path) => this.shouldSyncPath(path)
+				(path) => this.shouldSyncPath(path),
+				this.getAdditionalSyncFolders()
 			);
 			for (const path of configPaths) {
 				if (localByPath.has(path)) continue;

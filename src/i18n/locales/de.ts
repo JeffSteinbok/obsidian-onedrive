@@ -316,6 +316,11 @@ export const de = {
 				name: 'Lesezeichen synchronisieren',
 				desc: '{{configDir}}/bookmarks.json synchronisieren, um Lesezeichen geräteübergreifend konsistent zu halten.',
 			},
+			additionalFolders: {
+				name: 'Additional folders to sync',
+				desc: 'Advanced: hidden folders (such as .claude) to sync in addition to the vault contents, one vault-relative path per line.',
+				placeholder: '.claude',
+			},
 			status: {
 				name: 'Synchronisierungsstatus',
 				desc: 'Status: {{status}} · Letzte Sync: {{lastSync}} · Fortschritt: {{progress}} · Konflikte: {{conflicts}}',

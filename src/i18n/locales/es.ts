@@ -316,6 +316,11 @@ export const es = {
 				name: 'Sincronizar marcadores',
 				desc: 'Sincronizar {{configDir}}/bookmarks.json para mantener los marcadores consistentes entre dispositivos.',
 			},
+			additionalFolders: {
+				name: 'Additional folders to sync',
+				desc: 'Advanced: hidden folders (such as .claude) to sync in addition to the vault contents, one vault-relative path per line.',
+				placeholder: '.claude',
+			},
 			status: {
 				name: 'Estado de sincronización',
 				desc: 'Estado: {{status}} · Última sincronización: {{lastSync}} · Progreso: {{progress}} · Conflictos: {{conflicts}}',
