@@ -62,4 +62,35 @@ describe('OneDriveSettingTab connection state (#208)', () => {
 
 		expect(isVisible(group)).toBe(false);
 	});
+
+	it('shows "account name unavailable" when signed in without user info', () => {
+		const tab = createTab({ connectedUser: undefined }, true);
+
+		expect((tab as any).connectionStatusDesc()).toBe(
+			t('settings.auth.connectionStatus.connectedAccountUnknown')
+		);
+	});
+
+	it('shows the account when user info is loaded', () => {
+		const tab = createTab(
+			{ connectedUser: { id: '1', displayName: 'Test User', userPrincipalName: 'test@test.com' } },
+			true
+		);
+
+		expect((tab as any).connectionStatusDesc()).toBe(
+			t('settings.auth.connectionStatus.connectedAs', {
+				displayName: 'Test User',
+				userPrincipalName: 'test@test.com',
+			})
+		);
+	});
+
+	it('shows "not connected" for a stale cached user with no tokens', () => {
+		const tab = createTab(
+			{ connectedUser: { id: '1', displayName: 'Test User', userPrincipalName: 'test@test.com' } },
+			false
+		);
+
+		expect((tab as any).connectionStatusDesc()).toBe(t('settings.auth.connectionStatus.notConnected'));
+	});
 });

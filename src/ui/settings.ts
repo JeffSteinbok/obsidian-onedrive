@@ -589,6 +589,9 @@ export class OneDriveSettingTab extends PluginSettingTab {
 
 	/** Description for the connection status row. */
 	private connectionStatusDesc(): string {
+		if (!this.plugin.isConnected()) {
+			return t('settings.auth.connectionStatus.notConnected');
+		}
 		const user = this.plugin.settings.connectedUser;
 		if (user) {
 			return t('settings.auth.connectionStatus.connectedAs', {
@@ -596,9 +599,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				userPrincipalName: user.userPrincipalName,
 			});
 		}
-		return this.plugin.isConnected()
-			? t('settings.auth.connectionStatus.connectedAccountUnknown')
-			: t('settings.auth.connectionStatus.notConnected');
+		return t('settings.auth.connectionStatus.connectedAccountUnknown');
 	}
 
 	private refreshSettingsUi(): void {

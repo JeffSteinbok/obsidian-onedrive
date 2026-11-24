@@ -770,6 +770,49 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.isConnected()).toBe(false);
 	});
 
+	it('isConnected follows the stored tokens, not a stale cached user', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			connectedUser: { id: '1', displayName: 'Test User', userPrincipalName: 'test@test.com' },
+		});
+		await plugin.onload();
+
+		expect(plugin.isConnected()).toBe(false);
+	});
+
+	it('onload confirms the App Folder target for upgraded users who have tokens but no cached user', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		mocks.oneDriveClient.getUserInfo.mockRejectedValue(new Error('502'));
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+		});
+
+		await plugin.onload();
+
+		expect(plugin.settings.appFolderSubpathConfirmed).toBe(true);
+	});
+
+	it('onload leaves the App Folder target unconfirmed for upgraded users with no tokens', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+		});
+
+		await plugin.onload();
+
+		expect(plugin.settings.appFolderSubpathConfirmed).toBe(false);
+	});
+
+	it('onload keeps an explicit unconfirmed App Folder target even with tokens', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			appFolderSubpathConfirmed: false,
+		});
+
+		await plugin.onload();
+
+		expect(plugin.settings.appFolderSubpathConfirmed).toBe(false);
+	});
+
 	it('onload prefers the persisted relative path for shared folders', async () => {
 		mocks.tokenStorage.hasTokens.mockReturnValue(true);
 		(plugin as any).loadData = vi.fn().mockResolvedValue({

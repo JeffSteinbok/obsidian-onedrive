@@ -116,6 +116,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private currentProgressMessage?: string;
 	private mobileProgressNotice?: Notice;
 	private lastSavedSettings?: string;
+	/** Set by loadSettings() when the App Folder upgrade migration needs the token check. */
+	private appFolderConfirmMigrationPending = false;
 	/** In-flight GET /me for the current client, shared by concurrent callers. */
 	private connectedUserLoad?: { client: OneDriveClient; promise: Promise<boolean> };
 
@@ -150,6 +152,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 			await this.saveData(this.settings);
 		}
 		this.syncStateManager.loadState(this.settings.syncState);
+
+		if (this.appFolderConfirmMigrationPending && this.tokenStorage.hasTokens()) {
+			this.settings.appFolderSubpathConfirmed = true;
+		}
+		this.appFolderConfirmMigrationPending = false;
 
 		// A misconfigured identity must not stop the plugin from loading — it leaves
 		// the client unset, and the error surfaces when the user connects or syncs.
@@ -543,7 +550,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 * on it hid the sync folder picker and left sync unconfigurable (#208).
 	 */
 	isConnected(): boolean {
-		return this.tokenStorage.hasTokens() || !!this.settings.connectedUser;
+		return this.tokenStorage.hasTokens();
 	}
 
 	private buildDeviceCodeClient(): DeviceCodeFlowClient {
@@ -1242,6 +1249,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.settings.appFolderSubpathConfirmed = !!(
 					this.settings.connectedUser || this.settings.appFolderSubpath
 				);
+				// Stored tokens also mean "connected" — even when GET /me never
+				// filled in connectedUser (#208). They load after settings, so
+				// onload() finishes this migration once they are available.
+				this.appFolderConfirmMigrationPending = !this.settings.appFolderSubpathConfirmed;
 			}
 		}
 	}
