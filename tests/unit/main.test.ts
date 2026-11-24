@@ -743,6 +743,28 @@ describe('OneDriveSyncPlugin', () => {
 			expect(plugin.settings.connectedUser?.displayName).toBe('Test User');
 		});
 
+		it('replaces a stale cached user with the newly signed-in account', async () => {
+			(plugin as any).loadData = vi.fn().mockResolvedValue({
+				connectedUser: { id: 'old', displayName: 'Old User', userPrincipalName: 'old@test.com' },
+			});
+			await plugin.onload();
+			mocks.deviceCodeClient.authenticate.mockResolvedValue({
+				access_token: 'at',
+				refresh_token: 'rt',
+				expires_in: 3600,
+				token_type: 'Bearer',
+				scope: 'x',
+			});
+			mocks.tokenStorage.setTokens.mockImplementationOnce(() => {
+				mocks.tokenStorage.hasTokens.mockReturnValue(true);
+			});
+
+			await plugin.authenticate();
+			await plugin.loadConnectedUser();
+
+			expect(plugin.settings.connectedUser?.displayName).toBe('Test User');
+		});
+
 		it('shares one in-flight GET /me between concurrent callers', async () => {
 			mocks.tokenStorage.hasTokens.mockReturnValue(true);
 			let resolveUser!: (user: unknown) => void;

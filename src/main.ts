@@ -684,6 +684,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 				tokenResponse.expires_in
 			);
 
+			// The cached display identity belongs to whatever account was signed
+			// in before (possibly another one, e.g. data.json synced from a device
+			// with different tokens). Drop it so GET /me fetches the new one.
+			this.settings.connectedUser = undefined;
+
 			// Save settings
 			await this.saveSettings();
 
