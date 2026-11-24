@@ -8,6 +8,8 @@ import {
 	normalizeAdditionalSyncFolders,
 	validateAdditionalSyncFolders,
 	isInHiddenTopLevelFolder,
+	isOutOfDeviceScope,
+	getFoldersEnteringScope,
 	isInAdditionalSyncFolder,
 	getAdditionalFolderSyncPaths,
 	joinPath,
@@ -544,5 +546,38 @@ describe('per-device sync filter in shouldSyncVaultPath', () => {
 		expect(isInHiddenTopLevelFolder('.claude/a')).toBe(true);
 		expect(isInHiddenTopLevelFolder('.syncIgnore')).toBe(false);
 		expect(isInHiddenTopLevelFolder('notes/.hidden/a')).toBe(false);
+	});
+});
+
+describe('device scope helpers', () => {
+	it('never syncs this plugin\'s folder inside an included folder (another config layout)', () => {
+		const filter = { includeHiddenFolders: ['.obsidian'] };
+		const sync = (p: string) => shouldSyncVaultPath(p, true, true, '.config', true, true, true, filter);
+		expect(sync('.obsidian/app.json')).toBe(true);
+		expect(sync('.obsidian/plugins/onedrive-sync/data.json')).toBe(false);
+		expect(sync('.obsidian/plugins/obsidian-onedrive/data.json')).toBe(false);
+	});
+
+	it('judges files and folders against the filter', () => {
+		const filter = { includeHiddenFolders: ['.claude'], excludeFolders: ['PDFs'] };
+		expect(isOutOfDeviceScope('.git/HEAD', '.obsidian', filter)).toBe(true);
+		expect(isOutOfDeviceScope('.git', '.obsidian', filter, true)).toBe(true);
+		expect(isOutOfDeviceScope('.claude', '.obsidian', filter, true)).toBe(false);
+		expect(isOutOfDeviceScope('PDFs', '.obsidian', filter, true)).toBe(true);
+		expect(isOutOfDeviceScope('PDFs/a.pdf', '.obsidian', filter)).toBe(true);
+		expect(isOutOfDeviceScope('notes/a.md', '.obsidian', filter)).toBe(false);
+		expect(isOutOfDeviceScope('.obsidian/app.json', '.obsidian', filter)).toBe(false);
+	});
+
+	it('lists folders entering scope: new includes and dropped excludes', () => {
+		expect(getFoldersEnteringScope(undefined, {})).toEqual([]);
+		expect(getFoldersEnteringScope(undefined, { includeHiddenFolders: ['.claude'] })).toEqual(['.claude']);
+		expect(
+			getFoldersEnteringScope(
+				{ includeHiddenFolders: ['.claude'], excludeFolders: ['PDFs', 'Big'] },
+				{ includeHiddenFolders: ['.claude', '.cursor'], excludeFolders: ['Big'] }
+			)
+		).toEqual(['.cursor', 'PDFs']);
+		expect(getFoldersEnteringScope({ includeHiddenFolders: ['.claude'] }, {})).toEqual([]);
 	});
 });

@@ -87,6 +87,9 @@ import {
 	shouldSyncVaultPath,
 	getAllSyncableConfigPaths,
 	isInAdditionalSyncFolder,
+	isOutOfDeviceScope,
+	getFoldersEnteringScope,
+	type DeviceSyncFilter,
 } from '../utils/pathUtils';
 import { ProgressNotice } from '../ui/progressNotice';
 import { t } from '../i18n';
@@ -213,7 +216,7 @@ export class SyncEngine {
 	private readonly pluginVersion: string;
 	private readonly isPullOnlyMode: () => boolean;
 	private readonly isAppFolder: boolean;
-	private readonly getAdditionalSyncFoldersFn: () => string[];
+	private readonly getDeviceSyncFilter: () => DeviceSyncFilter;
 
 	constructor(
 		private app: App,
@@ -227,14 +230,14 @@ export class SyncEngine {
 	) {
 		// Apply options with defaults
 		this.remoteRoot = options.remoteRoot ?? '';
-		this.getAdditionalSyncFoldersFn = options.getAdditionalSyncFolders ?? (() => []);
+		const getAdditionalSyncFolders = options.getAdditionalSyncFolders ?? (() => []);
+		this.getDeviceSyncFilter =
+			options.getDeviceSyncFilter ?? (() => ({ includeHiddenFolders: getAdditionalSyncFolders() }));
 		this.conflictQueue = options.conflictQueue;
 		this.shouldSyncPath =
 			options.shouldSyncPath ??
 			((path) =>
-				shouldSyncVaultPath(path, false, false, configDir, false, false, false, {
-					includeHiddenFolders: this.getAdditionalSyncFoldersFn(),
-				}));
+				shouldSyncVaultPath(path, false, false, configDir, false, false, false, this.getDeviceSyncFilter()));
 		this.getLargeDeleteThreshold = options.getLargeDeleteThreshold ?? (() => 0);
 		this.largeDeleteWarningHandler = options.largeDeleteWarningHandler;
 		this.onProgress = options.onProgress;
@@ -252,7 +255,56 @@ export class SyncEngine {
 	}
 
 	private getAdditionalSyncFolders(): string[] {
-		return this.getAdditionalSyncFoldersFn();
+		return [...(this.getDeviceSyncFilter().includeHiddenFolders ?? [])];
+	}
+
+	/**
+	 * Apply changes to this device's include/exclude filter since the last
+	 * sync. Runs once at the start of every sync, so it also covers settings
+	 * changed while no sync was running, or edited directly in data.json.
+	 *
+	 * - Leaving scope: drop the local tracking for every path the filter now
+	 *   rejects, with no remote operation. A folder that is later re-listed is
+	 *   then a fresh opt-in, so files deleted locally in the meantime are not
+	 *   turned into remote deletes.
+	 * - Entering scope: reset the delta cursor (tracked state is kept) so
+	 *   this sync enumerates the remote. Files another device uploaded while
+	 *   this device was out of scope then meet this device's local copies in
+	 *   the conflict path (or download), instead of being blindly replaced by
+	 *   an upload of the untracked local file.
+	 */
+	private applyDeviceScopeChanges(): void {
+		const filter = this.getDeviceSyncFilter();
+		const previous = this.stateManager.getDeviceSyncScope();
+
+		let pruned = 0;
+		for (const path of this.stateManager.getTrackedPaths()) {
+			if (isOutOfDeviceScope(path, this.configDir, filter)) {
+				this.stateManager.removeFileState(path);
+				pruned++;
+			}
+		}
+		for (const [, folderPath] of [...this.stateManager.getAllFolderStates()]) {
+			if (isOutOfDeviceScope(folderPath, this.configDir, filter, true)) {
+				this.stateManager.removeFolderStateByPath(folderPath);
+				pruned++;
+			}
+		}
+		if (pruned > 0) {
+			logger.info(`Stopped tracking ${pruned} path(s) now outside this device's sync scope (no remote changes)`);
+		}
+
+		const entering = getFoldersEnteringScope(previous, filter);
+		if (entering.length > 0 && this.stateManager.getDeltaLink()) {
+			logger.info(
+				`Sync scope gained ${entering.join(', ')} — re-enumerating the remote this sync`
+			);
+			this.stateManager.resetDeltaLink();
+		}
+		this.stateManager.setDeviceSyncScope({
+			includeHiddenFolders: [...(filter.includeHiddenFolders ?? [])],
+			excludeFolders: [...(filter.excludeFolders ?? [])],
+		});
 	}
 
 	private isObsidianPath(path: string): boolean {
@@ -299,7 +351,9 @@ export class SyncEngine {
 		try {
 			progress(t('progress.starting'));
 
-			// Phase 0: Log inventory drift (tracked state vs actual vault files)
+			// Phase 0: Apply per-device scope changes, then log inventory drift
+			// (tracked state vs actual vault files)
+			this.applyDeviceScopeChanges();
 			this.logInventoryDrift();
 
 			// Phase 1: Collect local dirty files, filtering out .syncIgnore matches
@@ -901,11 +955,12 @@ export class SyncEngine {
 					// File was tracked but no longer exists → local delete
 					changes.push({ path, type: LocalChangeType.DELETE });
 				}
-			} catch {
-				// stat failed — if tracked, treat as delete
-				if (trackedState) {
-					changes.push({ path, type: LocalChangeType.DELETE });
-				}
+			} catch (error) {
+				// stat or read threw (EPERM on a Windows hidden file, #209, or
+				// EBUSY while another program writes it). That says nothing
+				// about whether the file exists — Obsidian's stat returns null
+				// for a missing file — so never turn it into a remote delete.
+				logger.warn(`Could not read ${path}; skipping it this sync`, error);
 			}
 		}
 
@@ -2308,6 +2363,14 @@ export class SyncEngine {
 
 		for (const { oldPath, newPath } of sorted) {
 			if (!oldPath || !newPath || oldPath === newPath) continue;
+			const filter = this.getDeviceSyncFilter();
+			if (
+				isOutOfDeviceScope(oldPath, this.configDir, filter, true) ||
+				isOutOfDeviceScope(newPath, this.configDir, filter, true)
+			) {
+				logger.debug(`Remote folder move ${oldPath} → ${newPath}: outside this device's sync scope`);
+				continue;
+			}
 
 			const folder = this.app.vault.getAbstractFileByPath(oldPath);
 			if (!(folder instanceof TFolder)) {

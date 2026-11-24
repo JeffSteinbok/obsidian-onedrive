@@ -17,7 +17,6 @@ import { DEFAULT_ONEDRIVE_CLIENT_ID, resolveOAuthEndpoints, resolveOAuthScopes }
 import { logger, LogLevel } from './utils/logger';
 import {
 	type DeviceSyncFilter,
-	normalizeAdditionalSyncFolders,
 	shouldSyncVaultPath,
 	validateAdditionalSyncFolders,
 	type AdditionalSyncFolderValidation,
@@ -448,7 +447,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 					isAppFolder,
 					conflictQueue: this.conflictQueue,
 					shouldSyncPath: (path) => this.shouldSyncPath(path),
-					getAdditionalSyncFolders: () => this.settings.additionalSyncFolders,
+					getDeviceSyncFilter: () => this.getDeviceSyncFilter(),
 					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
 					getNotificationLevel: () => this.settings.notificationLevel ?? 'all',
 					largeDeleteWarningHandler: (info) => this.handleLargeDeleteWarning(info),
@@ -1178,10 +1177,18 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.normalizeIdentitySettings();
 
 		// data.json is user-editable: keep only valid hidden-folder entries.
-		this.settings.additionalSyncFolders = normalizeAdditionalSyncFolders(
+		const folderValidation = validateAdditionalSyncFolders(
 			this.settings.additionalSyncFolders,
 			this.app.vault.configDir
 		);
+		if (folderValidation.rejected.length > 0) {
+			logger.info(
+				`Ignoring invalid additional sync folder(s): ${folderValidation.rejected
+					.map((r) => `${r.folder} (${r.reason})`)
+					.join(', ')}`
+			);
+		}
+		this.settings.additionalSyncFolders = folderValidation.folders;
 
 		// Migrate legacy enableDebugLogging boolean → logLevel string
 		const raw = this.settings as unknown as Record<string, unknown>;

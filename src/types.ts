@@ -1,3 +1,4 @@
+import type { DeviceSyncFilter } from './utils/pathUtils';
 /**
  * TypeScript interfaces and types for the OneDrive sync plugin
  */
@@ -101,6 +102,9 @@ export interface SyncState {
 	// app-folder query (issue #97). Legacy tokens minted before the fix lack this
 	// and are tossed once so a fresh, subfolder-scoped cursor replaces them.
 	obsidianDeltaLink?: string; // Separate delta cursor for .obsidian scope
+	// Per-device include/exclude filter in effect at the last sync, used to
+	// detect folders entering scope (see SyncEngine.applyDeviceScopeChanges).
+	deviceSyncScope?: { includeHiddenFolders?: string[]; excludeFolders?: string[] };
 }
 
 export interface FileState {
@@ -238,8 +242,13 @@ export interface SyncEngineOptions {
 	useAtomicMoves?: () => boolean;
 	/** Returns true if pull-only mode is enabled */
 	isPullOnlyMode?: () => boolean;
-	/** Extra (typically hidden) vault-relative folders to sync, e.g. `.claude`. */
+	/**
+	 * Extra hidden vault-relative folders to sync, e.g. `.claude`. Ignored
+	 * when `getDeviceSyncFilter` is given (its includeHiddenFolders wins).
+	 */
 	getAdditionalSyncFolders?: () => string[];
+	/** This device's include/exclude filter (lives in never-synced data.json). */
+	getDeviceSyncFilter?: () => DeviceSyncFilter;
 	/**
 	 * True when running in app-folder mode. Used to detect and retire a legacy,
 	 * unscoped app-folder delta cursor that could return sibling vaults' files
@@ -350,6 +359,7 @@ export interface PluginSettings {
 		fileStates: Array<[string, FileState]>;
 		deltaLink?: string;
 		obsidianDeltaLink?: string;
+		deviceSyncScope?: SyncState['deviceSyncScope'];
 	};
 	conflictQueue?: PersistedConflictQueue;
 

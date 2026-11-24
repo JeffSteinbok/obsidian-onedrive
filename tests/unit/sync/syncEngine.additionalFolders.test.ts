@@ -201,7 +201,9 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 	// Note: createConflictFileName currently drops the parent folder for every
 	// path (pre-existing), so the copy is matched by file name only.
 	const writtenPaths = () => mockApp.vault.adapter.writeBinary.mock.calls.map((call) => call[0] as string);
-	const uploadedPaths = () => mockFileOps.uploadFile.mock.calls.map((call) => call[0] as string);
+	// uploadFile receives the remote path; map it back to the vault path.
+	const uploadedPaths = () =>
+		mockFileOps.uploadFile.mock.calls.map((call) => (call[0] as string).replace(/^\/remote\/root\//, ''));
 
 	describe('conflicts in an additional folder (#1)', () => {
 		it('runs the conflict resolver instead of overwriting the remote edit', async () => {
@@ -366,6 +368,104 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 
 			expect(mockFileOps.moveFile).toHaveBeenCalledTimes(1);
 			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+		});
+	});
+	describe('read errors on a listed file (R1)', () => {
+		it('does not delete remotely when stat throws for a listed file', async () => {
+			track('.claude/locked.md');
+			setHiddenDisk({ '.claude/locked.md': { mtime: 5_000, size: 3 } });
+			mockApp.vault.adapter.stat.mockRejectedValue(new Error('EPERM'));
+
+			await createEngine({ getAdditionalSyncFolders: () => ['.claude'] }).performSync();
+
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+		});
+
+		it('does not delete remotely when reading a changed file throws', async () => {
+			track('.claude/busy.md');
+			setHiddenDisk({ '.claude/busy.md': { mtime: 5_000, size: 3 } });
+			mockApp.vault.adapter.readBinary.mockRejectedValue(new Error('EBUSY'));
+
+			await createEngine({ getAdditionalSyncFolders: () => ['.claude'] }).performSync();
+
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('scope transitions (R2, R3)', () => {
+		/** Delta that only returns `fullListing` when enumerating from scratch. */
+		const deltaWithFullListing = (fullListing: OneDriveItem[]) =>
+			mockClient.getDelta.mockImplementation(async (deltaLink?: string) => ({
+				items: deltaLink ? [] : fullListing,
+				deltaLink: 'cursor-next',
+			}));
+
+		it('a staggered first opt-in does not blindly overwrite the other device\'s files', async () => {
+			// Device A already uploaded .claude while this device was not
+			// opted in; this device's cursor has moved past those uploads.
+			stateManager.setDeltaLink('cursor-0');
+			deltaWithFullListing([
+				makeRemoteFile('.claude/CLAUDE.md', {
+					file: { mimeType: 'text/markdown', hashes: { quickXorHash: 'device-a-hash' } },
+				}),
+				makeRemoteFile('.claude/agents/a.md'),
+			]);
+			setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
+			let folders: string[] = [];
+			const engine = createEngine({ getAdditionalSyncFolders: () => folders });
+
+			await engine.performSync(); // not opted in yet
+			expect(writtenPaths()).toEqual([]);
+			expect(uploadedPaths()).toEqual([]);
+
+			folders = ['.claude'];
+			await engine.performSync(); // opted in
+
+			// Device A's version is kept (conflict copy), and the file that
+			// only exists remotely arrives here.
+			expect(writtenPaths().some((p) => /(^|\/)CLAUDE \(conflict .*\)\.md$/.test(p))).toBe(true);
+			expect(writtenPaths()).toContain('.claude/agents/a.md');
+		});
+
+		it('un-list, delete locally, re-list does not delete the folder remotely', async () => {
+			stateManager.setDeltaLink('cursor-0');
+			track('.claude/CLAUDE.md', { localMtime: 5_000, size: 3 });
+			const disk: Record<string, { mtime: number; size: number }> = {
+				'.claude/CLAUDE.md': { mtime: 5_000, size: 3 },
+			};
+			setHiddenDisk(disk);
+			deltaWithFullListing([
+				makeRemoteFile('.claude/CLAUDE.md', {
+					size: 3,
+					file: { mimeType: 'text/markdown', hashes: { quickXorHash: '.claude/CLAUDE.md-old-hash' } },
+				}),
+			]);
+			let folders = ['.claude'];
+			const engine = createEngine({ getAdditionalSyncFolders: () => folders });
+
+			await engine.performSync(); // listed, nothing changed
+			folders = [];
+			await engine.performSync(); // un-listed
+			delete disk['.claude/CLAUDE.md']; // removed locally while un-listed
+			folders = ['.claude'];
+			await engine.performSync(); // re-listed
+
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			// Re-listing is a fresh opt-in: the remote copy comes back.
+			expect(writtenPaths()).toContain('.claude/CLAUDE.md');
+		});
+
+		it('un-listing stops tracking the folder without touching the remote', async () => {
+			track('.claude/CLAUDE.md');
+			stateManager.setFolderState('claude-folder-id', '.claude');
+			setHiddenDisk({});
+
+			await createEngine().performSync();
+
+			expect(stateManager.getFileState('.claude/CLAUDE.md')).toBeUndefined();
+			expect(stateManager.getFolderIdByPath('.claude')).toBeUndefined();
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
 		});
 	});
 });

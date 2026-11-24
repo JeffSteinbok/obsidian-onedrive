@@ -344,6 +344,8 @@ export interface DeviceSyncFilter {
 	excludeFolders?: readonly string[];
 }
 
+const OWN_PLUGIN_FOLDER_ANYWHERE = /(^|\/)plugins\/(onedrive-sync|obsidian-onedrive)(\/|$)/;
+
 export type AdditionalSyncFolderRejection = 'not-hidden' | 'config-dir' | 'invalid';
 
 export interface AdditionalSyncFolderValidation {
@@ -440,7 +442,12 @@ function applyDeviceSyncFilter(
 	filter: DeviceSyncFilter
 ): boolean | undefined {
 	if (isInAnyFolder(normalizedPath, filter.excludeFolders)) return false;
-	if (isInAnyFolder(normalizedPath, filter.includeHiddenFolders)) return true;
+	if (isInAnyFolder(normalizedPath, filter.includeHiddenFolders)) {
+		// An included folder may hold another device's config layout
+		// (e.g. `.obsidian` when this vault uses a custom config dir). This
+		// plugin's own folder holds auth tokens and must never sync.
+		return !OWN_PLUGIN_FOLDER_ANYWHERE.test(normalizedPath);
+	}
 	if (
 		isInHiddenTopLevelFolder(normalizedPath) &&
 		normalizedPath !== normalizedConfigDir &&
@@ -449,6 +456,39 @@ function applyDeviceSyncFilter(
 		return false;
 	}
 	return undefined;
+}
+
+/**
+ * True when the per-device filter keeps `path` out of scope on this device.
+ * Pass `isFolder` for a folder path, so the folder itself (e.g. `.claude`)
+ * is judged like the files inside it.
+ */
+export function isOutOfDeviceScope(
+	path: string,
+	configDir: string,
+	filter: DeviceSyncFilter,
+	isFolder = false
+): boolean {
+	const normalized = normalizePath(path).replace(/\/+$/, '');
+	const probe = isFolder ? `${normalized}/_` : normalized;
+	return applyDeviceSyncFilter(probe, normalizeConfigDir(configDir), filter) === false;
+}
+
+/**
+ * Folders that came into scope between two filters: newly included hidden
+ * folders, and folders no longer excluded. An undefined `previous` (no scope
+ * recorded yet) counts as the empty filter.
+ */
+export function getFoldersEnteringScope(
+	previous: DeviceSyncFilter | undefined,
+	next: DeviceSyncFilter
+): string[] {
+	const prevInclude = new Set(previous?.includeHiddenFolders ?? []);
+	const nextExclude = new Set(next.excludeFolders ?? []);
+	return [
+		...(next.includeHiddenFolders ?? []).filter((f) => !prevInclude.has(f)),
+		...(previous?.excludeFolders ?? []).filter((f) => !nextExclude.has(f)),
+	];
 }
 
 /**

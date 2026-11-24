@@ -130,5 +130,6 @@ Obsidian does not index hidden folders (such as `.claude`), so they are not sync
 
 - **Per device.** The list is stored in this plugin's own settings, which never sync. A device that does not list a folder neither uploads nor downloads it, so its own copy of that folder is left alone.
 - **Hidden folders only.** Entries must start with `.`. Normal folders already sync, and the config folder (`.obsidian`) has its own settings above, so both are rejected.
-- **Conflicts** in these folders follow your conflict strategy, just like notes. The first sync after two devices that both already had the folder opt in treats differing files as conflicts instead of overwriting either side.
+- **Conflicts** in these folders follow your conflict strategy, just like notes. When a device adds a folder, its next sync re-checks the whole OneDrive copy once. If another device already synced that folder, differing files become conflicts instead of overwriting either side, and files that exist only on OneDrive are downloaded.
+- **Removing a folder** from the list only stops syncing it on this device. Nothing is deleted locally or on OneDrive, and adding it back later counts as a fresh opt-in.
 - **Keep them small.** Each file is checked on every sync, which is slow on mobile for big folders such as `.git`. Use `.syncIgnore` to skip parts of a folder.

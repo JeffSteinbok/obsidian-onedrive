@@ -304,6 +304,13 @@ export class OneDriveSettingTab extends PluginSettingTab {
 							key: 'bookmarks',
 						},
 					},
+					{
+						name: t('settings.sync.additionalFolders.name'),
+						desc: t('settings.sync.additionalFolders.desc'),
+						render: (setting) => {
+							this.renderAdditionalFoldersSetting(setting);
+						},
+					},
 				],
 			},
 			{
@@ -1335,32 +1342,49 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				})
 			);
 
-		new Setting(containerEl)
-			.setName(t('settings.sync.additionalFolders.name'))
-			.setDesc(t('settings.sync.additionalFolders.desc'))
-			.addTextArea((text) => {
-				const current = this.plugin.settings.additionalSyncFolders;
-				text
-					.setPlaceholder(t('settings.sync.additionalFolders.placeholder'))
-					.setValue(Array.isArray(current) ? current.join('\n') : '');
-				// Save on blur, not per keystroke: a half-typed ".cl" would
-				// otherwise briefly become a live sync folder.
-				text.inputEl.addEventListener('blur', () => {
-					void (async () => {
-						const result = await this.plugin.onAdditionalSyncFoldersChanged(
-							text.getValue().split(/\r?\n/)
-						);
-						if (result.rejected.length > 0) {
-							new Notice(
-								t('settings.sync.additionalFolders.rejected', {
-									folders: result.rejected.map((r) => r.folder).join(', '),
-								})
-							);
-						}
-						text.setValue(result.folders.join('\n'));
-					})();
-				});
-			});
+		this.renderAdditionalFoldersSetting(
+			new Setting(containerEl)
+				.setName(t('settings.sync.additionalFolders.name'))
+				.setDesc(t('settings.sync.additionalFolders.desc'))
+		);
+	}
+
+	/** Saves the folder list if the textarea holds unsaved edits. */
+	private commitAdditionalFolders?: () => Promise<void>;
+
+	override hide(): void {
+		// Closing the tab can remove the focused textarea without a blur.
+		void this.commitAdditionalFolders?.();
+		super.hide();
+	}
+
+	private renderAdditionalFoldersSetting(setting: Setting): void {
+		setting.addTextArea((text) => {
+			const current = this.plugin.settings.additionalSyncFolders;
+			text
+				.setPlaceholder(t('settings.sync.additionalFolders.placeholder'))
+				.setValue(Array.isArray(current) ? current.join('\n') : '');
+			let committed = text.getValue();
+			// Save on blur (and on hide), not per keystroke: a half-typed
+			// ".cl" would otherwise briefly become a live sync folder.
+			const commit = async () => {
+				const value = text.getValue();
+				if (value === committed) return;
+				committed = value;
+				const result = await this.plugin.onAdditionalSyncFoldersChanged(value.split(/\r?\n/));
+				if (result.rejected.length > 0) {
+					new Notice(
+						t('settings.sync.additionalFolders.rejected', {
+							folders: result.rejected.map((r) => r.folder).join(', '),
+						})
+					);
+				}
+				committed = result.folders.join('\n');
+				text.setValue(committed);
+			};
+			this.commitAdditionalFolders = commit;
+			text.inputEl.addEventListener('blur', () => void commit());
+		});
 	}
 
 	private displaySyncStatus(containerEl: HTMLElement): void {

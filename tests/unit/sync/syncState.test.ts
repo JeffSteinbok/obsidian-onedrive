@@ -219,6 +219,13 @@ describe('SyncStateManager', () => {
 			expect(serialized.fileStates[0][0]).toBe('test.md');
 		});
 
+		it('round-trips the per-device sync scope', () => {
+			stateManager.setDeviceSyncScope({ includeHiddenFolders: ['.claude'], excludeFolders: [] });
+			const restored = new SyncStateManager();
+			restored.loadState(stateManager.prepareForSave());
+			expect(restored.getDeviceSyncScope()).toEqual({ includeHiddenFolders: ['.claude'], excludeFolders: [] });
+		});
+
 		it('should load state from persisted format', () => {
 			const persisted = {
 				lastSyncTime: 999999,
