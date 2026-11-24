@@ -681,6 +681,160 @@ describe('OneDriveSyncPlugin', () => {
 		expect(mocks.deviceCodeClient.authenticate).toHaveBeenCalled();
 	});
 
+	describe('when GET /me fails after sign-in (#208)', () => {
+		const graph502 = () =>
+			Object.assign(new Error('Failed to get user info: '), { statusCode: 502, code: 'UnknownError' });
+
+		const signIn = async () => {
+			(plugin as any).loadData = vi.fn().mockResolvedValue({
+				accessMode: OneDriveAccessMode.APP_FOLDER,
+			});
+			await plugin.onload();
+			mocks.deviceCodeClient.authenticate.mockResolvedValue({
+				access_token: 'at',
+				refresh_token: 'rt',
+				expires_in: 3600,
+				token_type: 'Bearer',
+				scope: 'x',
+			});
+			// Tokens are stored by authenticate(); from then on the plugin has them.
+			mocks.tokenStorage.setTokens.mockImplementationOnce(() => {
+				mocks.tokenStorage.hasTokens.mockReturnValue(true);
+			});
+			await plugin.authenticate();
+		};
+
+		it('still reports the account as connected so the sync folder can be chosen', async () => {
+			mocks.oneDriveClient.getUserInfo.mockRejectedValue(graph502());
+
+			await signIn();
+			await plugin.loadConnectedUser();
+
+			expect(plugin.settings.connectedUser).toBeUndefined();
+			expect(plugin.isConnected()).toBe(true);
+			expect(mocks.SyncEngine).toHaveBeenCalled();
+		});
+
+		it('lets app-folder sync run once the folder is confirmed, without user info', async () => {
+			mocks.oneDriveClient.getUserInfo.mockRejectedValue(graph502());
+			await signIn();
+
+			await plugin.onAppFolderSubpathChanged('');
+			mocks.eventManager.triggerManualSync.mockClear();
+			await plugin.triggerManualSync();
+
+			expect(plugin.settings.connectedUser).toBeUndefined();
+			expect(mocks.eventManager.triggerManualSync).toHaveBeenCalled();
+		});
+
+		it('fetches user info again on a later request and caches it', async () => {
+			mocks.oneDriveClient.getUserInfo.mockRejectedValue(graph502());
+			await signIn();
+			await plugin.loadConnectedUser();
+			expect(plugin.settings.connectedUser).toBeUndefined();
+
+			mocks.oneDriveClient.getUserInfo.mockResolvedValue({
+				id: '1',
+				displayName: 'Test User',
+				userPrincipalName: 'test@test.com',
+			});
+			await expect(plugin.loadConnectedUser()).resolves.toBe(true);
+
+			expect(plugin.settings.connectedUser?.displayName).toBe('Test User');
+		});
+
+		it('replaces a stale cached user with the newly signed-in account', async () => {
+			(plugin as any).loadData = vi.fn().mockResolvedValue({
+				connectedUser: { id: 'old', displayName: 'Old User', userPrincipalName: 'old@test.com' },
+			});
+			await plugin.onload();
+			mocks.deviceCodeClient.authenticate.mockResolvedValue({
+				access_token: 'at',
+				refresh_token: 'rt',
+				expires_in: 3600,
+				token_type: 'Bearer',
+				scope: 'x',
+			});
+			mocks.tokenStorage.setTokens.mockImplementationOnce(() => {
+				mocks.tokenStorage.hasTokens.mockReturnValue(true);
+			});
+
+			await plugin.authenticate();
+			await plugin.loadConnectedUser();
+
+			expect(plugin.settings.connectedUser?.displayName).toBe('Test User');
+		});
+
+		it('shares one in-flight GET /me between concurrent callers', async () => {
+			mocks.tokenStorage.hasTokens.mockReturnValue(true);
+			let resolveUser!: (user: unknown) => void;
+			mocks.oneDriveClient.getUserInfo.mockReturnValue(
+				new Promise((resolve) => {
+					resolveUser = resolve;
+				})
+			);
+			await plugin.onload();
+			mocks.oneDriveClient.getUserInfo.mockClear();
+
+			const first = plugin.loadConnectedUser();
+			const second = plugin.loadConnectedUser();
+			resolveUser({ id: '1', displayName: 'Test User', userPrincipalName: 'test@test.com' });
+
+			await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+			// onload's own background request is the one both callers joined.
+			expect(mocks.oneDriveClient.getUserInfo).not.toHaveBeenCalled();
+		});
+	});
+
+	it('isConnected is false without tokens or a cached user', async () => {
+		await plugin.onload();
+
+		expect(plugin.isConnected()).toBe(false);
+	});
+
+	it('isConnected follows the stored tokens, not a stale cached user', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			connectedUser: { id: '1', displayName: 'Test User', userPrincipalName: 'test@test.com' },
+		});
+		await plugin.onload();
+
+		expect(plugin.isConnected()).toBe(false);
+	});
+
+	it('onload confirms the App Folder target for upgraded users who have tokens but no cached user', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		mocks.oneDriveClient.getUserInfo.mockRejectedValue(new Error('502'));
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+		});
+
+		await plugin.onload();
+
+		expect(plugin.settings.appFolderSubpathConfirmed).toBe(true);
+	});
+
+	it('onload leaves the App Folder target unconfirmed for upgraded users with no tokens', async () => {
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+		});
+
+		await plugin.onload();
+
+		expect(plugin.settings.appFolderSubpathConfirmed).toBe(false);
+	});
+
+	it('onload keeps an explicit unconfirmed App Folder target even with tokens', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		(plugin as any).loadData = vi.fn().mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			appFolderSubpathConfirmed: false,
+		});
+
+		await plugin.onload();
+
+		expect(plugin.settings.appFolderSubpathConfirmed).toBe(false);
+	});
+
 	it('onload prefers the persisted relative path for shared folders', async () => {
 		mocks.tokenStorage.hasTokens.mockReturnValue(true);
 		(plugin as any).loadData = vi.fn().mockResolvedValue({

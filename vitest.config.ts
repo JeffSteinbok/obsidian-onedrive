@@ -14,7 +14,10 @@ export default defineConfig({
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json', 'html'],
-			exclude: ['tests/', 'node_modules/', '*.config.*', 'main.js', 'version-bump.mjs'],
+			// src/ui/ holds Obsidian view code that tests only smoke-test (e.g.
+			// settings visibility rules); counting it whenever a test imports it
+			// would swing the global totals by ~10 points.
+			exclude: ['tests/', 'node_modules/', '*.config.*', 'main.js', 'version-bump.mjs', 'src/ui/**'],
 			thresholds: {
 				// Global minimums - fail CI if overall coverage drops
 				lines: 70,

@@ -116,6 +116,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private currentProgressMessage?: string;
 	private mobileProgressNotice?: Notice;
 	private lastSavedSettings?: string;
+	/** Set by loadSettings() when the App Folder upgrade migration needs the token check. */
+	private appFolderConfirmMigrationPending = false;
+	/** In-flight GET /me for the current client, shared by concurrent callers. */
+	private connectedUserLoad?: { client: OneDriveClient; promise: Promise<boolean> };
 
 	async onload() {
 		logger.info('Loading OneDrive Sync plugin');
@@ -148,6 +152,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 			await this.saveData(this.settings);
 		}
 		this.syncStateManager.loadState(this.settings.syncState);
+
+		if (this.appFolderConfirmMigrationPending && this.tokenStorage.hasTokens()) {
+			this.settings.appFolderSubpathConfirmed = true;
+		}
+		this.appFolderConfirmMigrationPending = false;
 
 		// A misconfigured identity must not stop the plugin from loading — it leaves
 		// the client unset, and the error surfaces when the user connects or syncs.
@@ -496,18 +505,52 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return false;
 		}
 
+		// GET /me can take tens of seconds to fail (each 5xx attempt is retried
+		// with backoff), so callers that ask while a fetch is already running —
+		// e.g. the settings tab opening right after sign-in — share that fetch
+		// instead of starting another.
+		const client = this.oneDriveClient;
+		if (this.connectedUserLoad?.client !== client) {
+			const load = {
+				client,
+				promise: this.fetchConnectedUser(client).finally(() => {
+					if (this.connectedUserLoad === load) {
+						this.connectedUserLoad = undefined;
+					}
+				}),
+			};
+			this.connectedUserLoad = load;
+		}
+		return this.connectedUserLoad.promise;
+	}
+
+	private async fetchConnectedUser(client: OneDriveClient): Promise<boolean> {
 		try {
-			const userInfo = await this.oneDriveClient.getUserInfo();
+			const userInfo = await client.getUserInfo();
 			// Re-check: a disconnect/reconnect may have happened meanwhile.
-			if (!this.settings.connectedUser) {
+			if (!this.settings.connectedUser && this.oneDriveClient === client) {
 				this.settings.connectedUser = userInfo;
 				await this.saveSettings();
 				return true;
 			}
 		} catch (error) {
-			logger.warn('Failed to load connected user info:', error);
+			// Display-only: the account is still connected and syncing works.
+			// The next settings-tab open (or reconnect) tries again.
+			logger.warn('Failed to load connected user info (sync is unaffected):', error);
 		}
 		return false;
+	}
+
+	/**
+	 * Whether the plugin holds credentials for a OneDrive account.
+	 *
+	 * Connection state comes from the stored tokens, not from `connectedUser`:
+	 * the latter is only the display identity from GET /me, which can fail
+	 * (e.g. Graph returning 502) after a perfectly good sign-in. Gating the UI
+	 * on it hid the sync folder picker and left sync unconfigurable (#208).
+	 */
+	isConnected(): boolean {
+		return this.tokenStorage.hasTokens();
 	}
 
 	private buildDeviceCodeClient(): DeviceCodeFlowClient {
@@ -640,6 +683,11 @@ export default class OneDriveSyncPlugin extends Plugin {
 				tokenResponse.refresh_token,
 				tokenResponse.expires_in
 			);
+
+			// The cached display identity belongs to whatever account was signed
+			// in before (possibly another one, e.g. data.json synced from a device
+			// with different tokens). Drop it so GET /me fetches the new one.
+			this.settings.connectedUser = undefined;
 
 			// Save settings
 			await this.saveSettings();
@@ -1206,6 +1254,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 				this.settings.appFolderSubpathConfirmed = !!(
 					this.settings.connectedUser || this.settings.appFolderSubpath
 				);
+				// Stored tokens also mean "connected" — even when GET /me never
+				// filled in connectedUser (#208). They load after settings, so
+				// onload() finishes this migration once they are available.
+				this.appFolderConfirmMigrationPending = !this.settings.appFolderSubpathConfirmed;
 			}
 		}
 	}

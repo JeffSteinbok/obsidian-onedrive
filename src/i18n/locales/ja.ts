@@ -229,6 +229,7 @@ export const ja = {
 			connectionStatus: {
 				name: '接続状態',
 				connectedAs: '接続中: {{displayName}}（{{userPrincipalName}}）',
+				connectedAccountUnknown: '接続中（アカウント名を取得できません）',
 				notConnected: '未接続',
 				connect: 'OneDriveに接続',
 				disconnect: '切断',

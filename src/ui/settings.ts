@@ -75,6 +75,7 @@ interface OneDrivePlugin extends Plugin {
 	invalidateCredentialsForIdentityChange(): Promise<void>;
 	normalizeIdentitySettings(): void;
 	loadConnectedUser(): Promise<boolean>;
+	isConnected(): boolean;
 }
 
 /**
@@ -146,7 +147,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				visible: () =>
 					this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS ||
 					(this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER &&
-						!!this.plugin.settings.connectedUser),
+						this.plugin.isConnected()),
 				items: [
 					{
 						name: t('settings.syncFolder.remoteFolder'),
@@ -163,7 +164,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						}),
 						visible: () =>
 							this.plugin.settings.accessMode === OneDriveAccessMode.APP_FOLDER &&
-							!!this.plugin.settings.connectedUser,
+							this.plugin.isConnected(),
 						render: (setting) => {
 							this.renderVaultSubfolderSetting(setting);
 						},
@@ -176,7 +177,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 							progress: t('settings.sync.status.noProgress'),
 							conflicts: t('settings.sync.status.noConflicts'),
 						}),
-						visible: () => !!this.plugin.settings.connectedUser,
+						visible: () => this.plugin.isConnected(),
 						render: (setting) => {
 							this.renderSyncStatusSetting(setting);
 						},
@@ -540,13 +541,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		// If the display name hasn't been loaded yet (it's fetched in the
 		// background after startup via loadConnectedUser()), kick it off and
 		// re-render once it arrives so the user sees their account.
-		if (this.plugin.settings.connectedUser === undefined) {
-			void this.plugin.loadConnectedUser().then((updated: boolean) => {
-				if (updated) {
-					this.renderSettings();
-				}
-			});
-		}
+		this.requestConnectedUser();
 		this.renderSettings();
 	}
 
@@ -576,6 +571,37 @@ export class OneDriveSettingTab extends PluginSettingTab {
 		};
 	}
 
+	/**
+	 * The account's display name comes from GET /me, fetched in the background
+	 * and allowed to fail (#208). While connected without it, ask again (the
+	 * plugin shares one in-flight request) and re-render once it arrives.
+	 */
+	private requestConnectedUser(): void {
+		if (this.plugin.settings.connectedUser || !this.plugin.isConnected()) {
+			return;
+		}
+		void this.plugin.loadConnectedUser().then((updated: boolean) => {
+			if (updated) {
+				this.refreshSettingsUi();
+			}
+		});
+	}
+
+	/** Description for the connection status row. */
+	private connectionStatusDesc(): string {
+		if (!this.plugin.isConnected()) {
+			return t('settings.auth.connectionStatus.notConnected');
+		}
+		const user = this.plugin.settings.connectedUser;
+		if (user) {
+			return t('settings.auth.connectionStatus.connectedAs', {
+				displayName: user.displayName,
+				userPrincipalName: user.userPrincipalName,
+			});
+		}
+		return t('settings.auth.connectionStatus.connectedAccountUnknown');
+	}
+
 	private refreshSettingsUi(): void {
 		if (this.supportsDeclarativeSettings()) {
 			(this as { update(): void }).update();
@@ -602,7 +628,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	}
 
 	private renderAccountTypeSetting(setting: Setting): void {
-		const isConnected = !!this.plugin.settings.connectedUser;
+		const isConnected = this.plugin.isConnected();
 		const desc = isConnected
 			? t('settings.auth.accountType.desc') + t('settings.auth.accountType.reconnectRequired')
 			: t('settings.auth.accountType.desc');
@@ -631,7 +657,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	}
 
 	private renderTenantIdSetting(setting: Setting): void {
-		const isConnected = !!this.plugin.settings.connectedUser;
+		const isConnected = this.plugin.isConnected();
 		const desc = isConnected
 			? t('settings.auth.accountType.tenantIdDesc') + t('settings.auth.accountType.reconnectRequired')
 			: t('settings.auth.accountType.tenantIdDesc');
@@ -676,7 +702,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	}
 
 	private renderAccessModeSetting(setting: Setting): void {
-		const isConnected = !!this.plugin.settings.connectedUser;
+		const isConnected = this.plugin.isConnected();
 		const appFolderAllowed = this.isAppFolderAllowed();
 		const modeDesc =
 			this.plugin.settings.accessMode === OneDriveAccessMode.FULL_ACCESS
@@ -708,14 +734,10 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	private renderConnectionStatusSetting(setting: Setting): void {
 		setting.setName(t('settings.auth.connectionStatus.name'));
 
-		if (this.plugin.settings.connectedUser) {
-			setting.setDesc(
-				t('settings.auth.connectionStatus.connectedAs', {
-					displayName: this.plugin.settings.connectedUser.displayName,
-					userPrincipalName: this.plugin.settings.connectedUser.userPrincipalName,
-				})
-			);
+		this.requestConnectedUser();
+		setting.setDesc(this.connectionStatusDesc());
 
+		if (this.plugin.isConnected()) {
 			setting.addButton((button) =>
 				button.setButtonText(t('settings.auth.connectionStatus.disconnect')).onClick(async () => {
 					await this.plugin.disconnect();
@@ -725,7 +747,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			return;
 		}
 
-		setting.setDesc(t('settings.auth.connectionStatus.notConnected'));
 		setting.addButton((button) =>
 			button
 				.setButtonText(t('settings.auth.connectionStatus.connect'))
@@ -749,7 +770,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	}
 
 	private renderRemoteFolderSetting(setting: Setting): void {
-		const isConnected = !!this.plugin.settings.connectedUser;
+		const isConnected = this.plugin.isConnected();
 		if (!isConnected) {
 			setting
 				.setName(t('settings.syncFolder.remoteFolder'))
@@ -856,7 +877,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	}
 
 	private renderSyncStatusSetting(setting: Setting): void {
-		const isConnected = !!this.plugin.settings.connectedUser;
+		const isConnected = this.plugin.isConnected();
 		const syncStatus = this.plugin.getSyncStatusInfo();
 		const statusText = this.getSyncStatusText(syncStatus.status);
 		const lastSyncText = syncStatus.lastSyncTime
@@ -1025,14 +1046,9 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			t('settings.auth.connectionStatus.name')
 		);
 
-		if (this.plugin.settings.connectedUser) {
-			statusSetting.setDesc(
-				t('settings.auth.connectionStatus.connectedAs', {
-					displayName: this.plugin.settings.connectedUser.displayName,
-					userPrincipalName: this.plugin.settings.connectedUser.userPrincipalName,
-				})
-			);
+		statusSetting.setDesc(this.connectionStatusDesc());
 
+		if (this.plugin.isConnected()) {
 			// Disconnect button
 				statusSetting.addButton((button) =>
 					button.setButtonText(t('settings.auth.connectionStatus.disconnect')).onClick(async () => {
@@ -1041,8 +1057,6 @@ export class OneDriveSettingTab extends PluginSettingTab {
 					})
 				);
 		} else {
-			statusSetting.setDesc(t('settings.auth.connectionStatus.notConnected'));
-
 			// Connect button
 			statusSetting.addButton((button) =>
 				button
@@ -1071,7 +1085,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	 * Display sync folder section (for full access mode and app folder mode)
 	 */
 	private displaySyncFolderSection(containerEl: HTMLElement): void {
-		const isConnected = !!this.plugin.settings.connectedUser;
+		const isConnected = this.plugin.isConnected();
 		const accessMode = this.plugin.settings.accessMode;
 
 		if (accessMode === OneDriveAccessMode.FULL_ACCESS) {
@@ -1335,7 +1349,7 @@ export class OneDriveSettingTab extends PluginSettingTab {
 	}
 
 	private displaySyncStatus(containerEl: HTMLElement): void {
-		const isConnected = !!this.plugin.settings.connectedUser;
+		const isConnected = this.plugin.isConnected();
 		const syncStatus = this.plugin.getSyncStatusInfo();
 		const statusText = this.getSyncStatusText(syncStatus.status);
 		const lastSyncText = syncStatus.lastSyncTime
