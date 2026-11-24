@@ -219,8 +219,12 @@ export interface SyncEngineOptions {
 	 * Uses a minimal interface to avoid circular imports.
 	 */
 	conflictQueue?: SyncEngineConflictQueue;
-	/** Filter function to determine which paths should sync */
-	shouldSyncPath?: (path: string) => boolean;
+	/**
+	 * Filter function to determine which paths should sync. The engine
+	 * passes the device filter to apply (the per-sync snapshot during a
+	 * sync); implementations must use it instead of reading live settings.
+	 */
+	shouldSyncPath?: (path: string, deviceFilter?: DeviceSyncFilter) => boolean;
 	/** Returns the threshold for large delete warnings (0 = disabled) */
 	getLargeDeleteThreshold?: () => number;
 	/** Handler called when large delete threshold is exceeded */

@@ -186,6 +186,12 @@ interface SyncOperationFailure {
 
 /**
  * Main sync engine
+ *
+ * Device scope: performSync snapshots the device sync filter at Phase 0 and
+ * that snapshot alone decides scope for the whole sync. reconcileFromCloud
+ * and reconcileToCloud take no snapshot and do not record deviceSyncScope;
+ * they use the live filter, and the next performSync's Phase 0 applies any
+ * scope transition.
  */
 export class SyncEngine {
 	// Concurrent operations limit — overridable via experimental settings.
@@ -242,15 +248,15 @@ export class SyncEngine {
 		this.conflictQueue = options.conflictQueue;
 		const baseShouldSyncPath =
 			options.shouldSyncPath ??
-			((path: string) =>
-				shouldSyncVaultPath(path, false, false, configDir, false, false, false, this.currentDeviceFilter()));
-		// During a sync, a path is in scope only if both the live rules and
-		// the Phase 0 snapshot of the device filter allow it. A folder added
-		// mid-sync is thus ignored until the next sync (which re-enumerates
-		// the remote for it), and a folder removed mid-sync drops out at once.
-		this.shouldSyncPath = (path) =>
-			!(this.scopeSnapshot && isOutOfDeviceScope(path, configDir, this.scopeSnapshot)) &&
-			baseShouldSyncPath(path);
+			((path: string, filter?: DeviceSyncFilter) =>
+				shouldSyncVaultPath(path, false, false, configDir, false, false, false, filter ?? {}));
+		// The device filter part of the scope always comes from
+		// currentDeviceFilter(): during a sync that is the Phase 0 snapshot
+		// alone, never the live settings. A folder added or removed mid-sync
+		// therefore takes effect at the next sync's Phase 0
+		// (applyDeviceScopeChanges), so the local and remote sides of one
+		// sync are always decided by the same scope.
+		this.shouldSyncPath = (path) => baseShouldSyncPath(path, this.currentDeviceFilter());
 		this.getLargeDeleteThreshold = options.getLargeDeleteThreshold ?? (() => 0);
 		this.largeDeleteWarningHandler = options.largeDeleteWarningHandler;
 		this.onProgress = options.onProgress;

@@ -446,7 +446,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 					remoteRootOnDrive,
 					isAppFolder,
 					conflictQueue: this.conflictQueue,
-					shouldSyncPath: (path) => this.shouldSyncPath(path),
+					shouldSyncPath: (path, deviceFilter) => this.shouldSyncPath(path, deviceFilter),
 					getDeviceSyncFilter: () => this.getDeviceSyncFilter(),
 					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
 					getNotificationLevel: () => this.settings.notificationLevel ?? 'all',
@@ -1326,8 +1326,12 @@ export default class OneDriveSyncPlugin extends Plugin {
 		return { includeHiddenFolders: this.settings.additionalSyncFolders };
 	}
 
-	/** The one scope check both sync directions and the event manager use. */
-	shouldSyncPath(path: string): boolean {
+	/**
+	 * The one scope check both sync directions and the event manager use.
+	 * The sync engine passes its per-sync device filter snapshot; other
+	 * callers get this device's live filter.
+	 */
+	shouldSyncPath(path: string, deviceFilter: DeviceSyncFilter = this.getDeviceSyncFilter()): boolean {
 		return shouldSyncVaultPath(
 			path,
 			this.settings.syncPluginManifests,
@@ -1336,7 +1340,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			this.settings.syncCssSnippets,
 			this.settings.syncBookmarks,
 			this.settings.syncPluginData,
-			this.getDeviceSyncFilter()
+			deviceFilter
 		);
 	}
 

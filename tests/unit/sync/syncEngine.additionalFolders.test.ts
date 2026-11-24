@@ -24,6 +24,7 @@ import {
 	OneDriveItem,
 	type SyncEngineOptions,
 } from '../../../src/types';
+import { shouldSyncVaultPath, type DeviceSyncFilter } from '../../../src/utils/pathUtils';
 
 function makeRemoteItem(
 	overrides: Partial<OneDriveItem> & { id: string; name: string }
@@ -459,6 +460,10 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 			expect(writtenPaths().some((p) => /(^|\/)CLAUDE \(conflict .*\)\.md$/.test(p))).toBe(true);
 		});
 
+		// Pins only the gatherLocalChanges snapshot filter: the event is for a
+		// folder this device never listed, with no live scope check involved.
+		// The mid-sync add/remove races are covered with a main.ts-like live
+		// shouldSyncPath in the block below.
 		it('ignores queued vault events for paths outside this sync\'s device scope', async () => {
 			setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
 			mockEventManager.getDirtyFiles.mockReturnValue([
@@ -509,6 +514,114 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 			expect(stateManager.getFolderIdByPath('.claude')).toBeUndefined();
 			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
 			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('settings changed during a running sync (production-like live shouldSyncPath)', () => {
+		/**
+		 * Mirrors main.ts: the engine's shouldSyncPath option and device
+		 * filter both read the user's live list, so a change made while a
+		 * sync runs is visible to every later call unless the engine pins
+		 * the Phase 0 snapshot.
+		 */
+		const liveOptions = (live: { folders: string[] }): Partial<SyncEngineOptions> => ({
+			getDeviceSyncFilter: () => ({ includeHiddenFolders: live.folders }),
+			shouldSyncPath: (path: string, filter: DeviceSyncFilter = { includeHiddenFolders: live.folders }) =>
+				shouldSyncVaultPath(path, false, false, '.obsidian', false, false, false, filter),
+		});
+		const deviceAEdit = () => ({
+			items: [
+				makeRemoteFile('.claude/CLAUDE.md', {
+					file: { mimeType: 'text/markdown', hashes: { quickXorHash: 'device-a-new-hash' } },
+				}),
+			],
+			deltaLink: 'next',
+		});
+		const hasConflictCopy = () => writtenPaths().some((p) => /(^|\/)CLAUDE \(conflict .*\)\.md$/.test(p));
+
+		it('un-listing while local changes are gathered does not blind-PUT over the other device\'s edit', async () => {
+			const live = { folders: ['.claude'] };
+			track('.claude/CLAUDE.md');
+			setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
+			mockEventManager.getDirtyFiles.mockImplementation(() => {
+				live.folders = []; // the user un-lists .claude mid-sync
+				return [{ path: '.claude/CLAUDE.md', type: LocalChangeType.MODIFY }];
+			});
+			mockClient.getDelta.mockResolvedValue(deviceAEdit());
+
+			await createEngine(liveOptions(live)).performSync();
+
+			// Device A's edit reaches the conflict resolver (CREATE_DUPLICATE
+			// keeps it as a copy) instead of being dropped and overwritten.
+			expect(mockFileOps.downloadFile).toHaveBeenCalledWith('.claude/CLAUDE.md-id');
+			expect(hasConflictCopy()).toBe(true);
+		});
+
+		it('un-listing before the delta is filtered does not blind-PUT over the other device\'s edit', async () => {
+			const live = { folders: ['.claude'] };
+			track('.claude/CLAUDE.md');
+			setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
+			mockClient.getDelta.mockImplementation(async () => {
+				live.folders = []; // the user un-lists .claude mid-sync
+				return deviceAEdit();
+			});
+
+			await createEngine(liveOptions(live)).performSync();
+
+			// Device A's edit reaches the conflict resolver (CREATE_DUPLICATE
+			// keeps it as a copy) instead of being dropped and overwritten.
+			expect(mockFileOps.downloadFile).toHaveBeenCalledWith('.claude/CLAUDE.md-id');
+			expect(hasConflictCopy()).toBe(true);
+		});
+
+		it('the un-listing takes effect at the next sync without touching the remote', async () => {
+			const live = { folders: ['.claude'] };
+			track('.claude/CLAUDE.md');
+			setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
+			mockClient.getDelta.mockImplementationOnce(async () => {
+				live.folders = [];
+				return deviceAEdit();
+			});
+			const engine = createEngine(liveOptions(live));
+
+			await engine.performSync();
+			mockFileOps.uploadFile.mockClear();
+			mockFileOps.deleteFile.mockClear();
+			await engine.performSync();
+
+			expect(stateManager.getFileState('.claude/CLAUDE.md')).toBeUndefined();
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+		});
+
+		it('adding a folder mid-sync waits for the next sync (no blind upload)', async () => {
+			const live = { folders: [] as string[] };
+			stateManager.setDeltaLink('cursor-0');
+			mockClient.getDelta.mockImplementation(async (deltaLink?: string) => ({
+				items: deltaLink
+					? []
+					: [
+							makeRemoteFile('.claude/CLAUDE.md', {
+								file: { mimeType: 'text/markdown', hashes: { quickXorHash: 'device-a-hash' } },
+							}),
+						],
+				deltaLink: 'cursor-next',
+			}));
+			setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
+			mockEventManager.getDirtyFiles.mockImplementation(() => {
+				live.folders = ['.claude']; // the user lists .claude mid-sync
+				return [{ path: '.claude/CLAUDE.md', type: LocalChangeType.CREATE }];
+			});
+			const engine = createEngine(liveOptions(live));
+
+			await engine.performSync();
+			expect(uploadedPaths()).not.toContain('.claude/CLAUDE.md');
+			expect(writtenPaths()).toEqual([]);
+
+			mockEventManager.getDirtyFiles.mockReturnValue([]);
+			await engine.performSync();
+			expect(uploadedPaths()).not.toContain('.claude/CLAUDE.md');
+			expect(hasConflictCopy()).toBe(true);
 		});
 	});
 });
