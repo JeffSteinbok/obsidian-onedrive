@@ -116,6 +116,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 	private currentProgressMessage?: string;
 	private mobileProgressNotice?: Notice;
 	private lastSavedSettings?: string;
+	/** In-flight GET /me for the current client, shared by concurrent callers. */
+	private connectedUserLoad?: { client: OneDriveClient; promise: Promise<boolean> };
 
 	async onload() {
 		logger.info('Loading OneDrive Sync plugin');
@@ -496,18 +498,52 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return false;
 		}
 
+		// GET /me can take tens of seconds to fail (each 5xx attempt is retried
+		// with backoff), so callers that ask while a fetch is already running —
+		// e.g. the settings tab opening right after sign-in — share that fetch
+		// instead of starting another.
+		const client = this.oneDriveClient;
+		if (this.connectedUserLoad?.client !== client) {
+			const load = {
+				client,
+				promise: this.fetchConnectedUser(client).finally(() => {
+					if (this.connectedUserLoad === load) {
+						this.connectedUserLoad = undefined;
+					}
+				}),
+			};
+			this.connectedUserLoad = load;
+		}
+		return this.connectedUserLoad.promise;
+	}
+
+	private async fetchConnectedUser(client: OneDriveClient): Promise<boolean> {
 		try {
-			const userInfo = await this.oneDriveClient.getUserInfo();
+			const userInfo = await client.getUserInfo();
 			// Re-check: a disconnect/reconnect may have happened meanwhile.
-			if (!this.settings.connectedUser) {
+			if (!this.settings.connectedUser && this.oneDriveClient === client) {
 				this.settings.connectedUser = userInfo;
 				await this.saveSettings();
 				return true;
 			}
 		} catch (error) {
-			logger.warn('Failed to load connected user info:', error);
+			// Display-only: the account is still connected and syncing works.
+			// The next settings-tab open (or reconnect) tries again.
+			logger.warn('Failed to load connected user info (sync is unaffected):', error);
 		}
 		return false;
+	}
+
+	/**
+	 * Whether the plugin holds credentials for a OneDrive account.
+	 *
+	 * Connection state comes from the stored tokens, not from `connectedUser`:
+	 * the latter is only the display identity from GET /me, which can fail
+	 * (e.g. Graph returning 502) after a perfectly good sign-in. Gating the UI
+	 * on it hid the sync folder picker and left sync unconfigurable (#208).
+	 */
+	isConnected(): boolean {
+		return this.tokenStorage.hasTokens() || !!this.settings.connectedUser;
 	}
 
 	private buildDeviceCodeClient(): DeviceCodeFlowClient {

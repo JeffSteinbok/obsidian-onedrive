@@ -19,6 +19,11 @@
 - Check that you entered the device code correctly
 - Try disconnecting and reconnecting
 
+## "Connected (account name unavailable)"
+
+- Sign-in worked, but Microsoft Graph didn't return your account details (for example, `Failed to get user info` with a 502 in the log). The account name is only shown in settings; syncing doesn't need it.
+- Choose your sync folder and sync as normal. The plugin fetches the account name again the next time you open its settings.
+
 ## Large files fail to upload
 
 - Check your OneDrive storage quota

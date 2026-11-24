@@ -230,6 +230,7 @@ export const en = {
 			connectionStatus: {
 				name: 'Connection status',
 				connectedAs: 'Connected as: {{displayName}} ({{userPrincipalName}})',
+				connectedAccountUnknown: 'Connected (account name unavailable)',
 				notConnected: 'Not connected',
 				connect: 'Connect to OneDrive',
 				disconnect: 'Disconnect',

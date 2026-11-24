@@ -223,6 +223,7 @@ export const zhCn = {
 			connectionStatus: {
 				name: '连接状态',
 				connectedAs: '已连接：{{displayName}}（{{userPrincipalName}}）',
+				connectedAccountUnknown: '已连接（账户名称不可用）',
 				notConnected: '未连接',
 				connect: '连接 OneDrive',
 				disconnect: '断开连接',

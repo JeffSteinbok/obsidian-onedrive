@@ -230,6 +230,7 @@ export const de = {
 			connectionStatus: {
 				name: 'Verbindungsstatus',
 				connectedAs: 'Verbunden als: {{displayName}} ({{userPrincipalName}})',
+				connectedAccountUnknown: 'Verbunden (Kontoname nicht verfügbar)',
 				notConnected: 'Nicht verbunden',
 				connect: 'Mit OneDrive verbinden',
 				disconnect: 'Trennen',
