@@ -217,6 +217,12 @@ export class SyncEngine {
 	private readonly isPullOnlyMode: () => boolean;
 	private readonly isAppFolder: boolean;
 	private readonly getDeviceSyncFilter: () => DeviceSyncFilter;
+	/**
+	 * The device filter recorded at Phase 0 of the running sync. The whole
+	 * sync uses it, so a settings change mid-sync waits for the next sync,
+	 * where applyDeviceScopeChanges sees it and handles the transition.
+	 */
+	private scopeSnapshot?: DeviceSyncFilter;
 
 	constructor(
 		private app: App,
@@ -234,10 +240,17 @@ export class SyncEngine {
 		this.getDeviceSyncFilter =
 			options.getDeviceSyncFilter ?? (() => ({ includeHiddenFolders: getAdditionalSyncFolders() }));
 		this.conflictQueue = options.conflictQueue;
-		this.shouldSyncPath =
+		const baseShouldSyncPath =
 			options.shouldSyncPath ??
-			((path) =>
-				shouldSyncVaultPath(path, false, false, configDir, false, false, false, this.getDeviceSyncFilter()));
+			((path: string) =>
+				shouldSyncVaultPath(path, false, false, configDir, false, false, false, this.currentDeviceFilter()));
+		// During a sync, a path is in scope only if both the live rules and
+		// the Phase 0 snapshot of the device filter allow it. A folder added
+		// mid-sync is thus ignored until the next sync (which re-enumerates
+		// the remote for it), and a folder removed mid-sync drops out at once.
+		this.shouldSyncPath = (path) =>
+			!(this.scopeSnapshot && isOutOfDeviceScope(path, configDir, this.scopeSnapshot)) &&
+			baseShouldSyncPath(path);
 		this.getLargeDeleteThreshold = options.getLargeDeleteThreshold ?? (() => 0);
 		this.largeDeleteWarningHandler = options.largeDeleteWarningHandler;
 		this.onProgress = options.onProgress;
@@ -254,8 +267,12 @@ export class SyncEngine {
 		this.remoteRootOnDrive = options.remoteRootOnDrive ?? this.remoteRoot;
 	}
 
+	private currentDeviceFilter(): DeviceSyncFilter {
+		return this.scopeSnapshot ?? this.getDeviceSyncFilter();
+	}
+
 	private getAdditionalSyncFolders(): string[] {
-		return [...(this.getDeviceSyncFilter().includeHiddenFolders ?? [])];
+		return [...(this.currentDeviceFilter().includeHiddenFolders ?? [])];
 	}
 
 	/**
@@ -301,10 +318,12 @@ export class SyncEngine {
 			);
 			this.stateManager.resetDeltaLink();
 		}
-		this.stateManager.setDeviceSyncScope({
+		const snapshot = {
 			includeHiddenFolders: [...(filter.includeHiddenFolders ?? [])],
 			excludeFolders: [...(filter.excludeFolders ?? [])],
-		});
+		};
+		this.stateManager.setDeviceSyncScope(snapshot);
+		this.scopeSnapshot = snapshot;
 	}
 
 	private isObsidianPath(path: string): boolean {
@@ -568,6 +587,8 @@ export class SyncEngine {
 				new Notice(t('notices.sync.engineFailed', { message: errorMsg }));
 			}
 			throw error;
+		} finally {
+			this.scopeSnapshot = undefined;
 		}
 	}
 
@@ -619,6 +640,19 @@ export class SyncEngine {
 		const ignoredLocalPaths: string[] = [];
 		const folderChanges: LocalChange[] = [];
 		const localChanges = allLocalChanges.filter((change) => {
+			// Vault/raw events can queue paths in a folder added to the
+			// device filter after this sync's Phase 0. Leave them to the next
+			// sync, whose config scan rediscovers them once the folder has
+			// entered scope (and the remote has been re-enumerated).
+			if (
+				this.scopeSnapshot &&
+				(isOutOfDeviceScope(change.path, this.configDir, this.scopeSnapshot) ||
+					(change.oldPath !== undefined &&
+						isOutOfDeviceScope(change.oldPath, this.configDir, this.scopeSnapshot)))
+			) {
+				logger.debug(`Skipping ${change.path}: outside this sync's device scope`);
+				return false;
+			}
 			if (this.shouldIgnorePath(change.path, ignoreMatchers)) {
 				ignoredLocalPaths.push(change.path);
 				return false;
@@ -981,9 +1015,9 @@ export class SyncEngine {
 					logger.info(`Tracked plugin file no longer exists: ${path}`);
 					changes.push({ path, type: LocalChangeType.DELETE });
 				}
-			} catch {
-				logger.info(`Tracked plugin file no longer exists: ${path}`);
-				changes.push({ path, type: LocalChangeType.DELETE });
+			} catch (error) {
+				// A stat exception is not proof the file is gone (see R1).
+				logger.warn(`Could not stat ${path}; skipping delete detection this sync`, error);
 			}
 		}
 
@@ -2363,7 +2397,7 @@ export class SyncEngine {
 
 		for (const { oldPath, newPath } of sorted) {
 			if (!oldPath || !newPath || oldPath === newPath) continue;
-			const filter = this.getDeviceSyncFilter();
+			const filter = this.currentDeviceFilter();
 			if (
 				isOutOfDeviceScope(oldPath, this.configDir, filter, true) ||
 				isOutOfDeviceScope(newPath, this.configDir, filter, true)

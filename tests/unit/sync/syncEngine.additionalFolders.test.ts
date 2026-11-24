@@ -392,6 +392,15 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 		});
 	});
 
+	it('does not delete a tracked plugin file remotely when its stat throws', async () => {
+		track('.obsidian/plugins/foo/main.js');
+		mockApp.vault.adapter.stat.mockRejectedValue(new Error('EPERM'));
+
+		await createEngine({ shouldSyncPath: () => true }).performSync();
+
+		expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+	});
+
 	describe('scope transitions (R2, R3)', () => {
 		/** Delta that only returns `fullListing` when enumerating from scratch. */
 		const deltaWithFullListing = (fullListing: OneDriveItem[]) =>
@@ -425,6 +434,40 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 			// only exists remotely arrives here.
 			expect(writtenPaths().some((p) => /(^|\/)CLAUDE \(conflict .*\)\.md$/.test(p))).toBe(true);
 			expect(writtenPaths()).toContain('.claude/agents/a.md');
+		});
+
+		it('a folder added during a running sync waits for the next sync (no blind upload)', async () => {
+			stateManager.setDeltaLink('cursor-0');
+			deltaWithFullListing([
+				makeRemoteFile('.claude/CLAUDE.md', {
+					file: { mimeType: 'text/markdown', hashes: { quickXorHash: 'device-a-hash' } },
+				}),
+			]);
+			setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
+			// The first read (Phase 0) sees the old list; the user's change
+			// lands while the sync is still running.
+			let calls = 0;
+			const engine = createEngine({
+				getAdditionalSyncFolders: () => (calls++ === 0 ? [] : ['.claude']),
+			});
+
+			await engine.performSync();
+			expect(uploadedPaths()).not.toContain('.claude/CLAUDE.md');
+			expect(writtenPaths()).toEqual([]);
+
+			await engine.performSync(); // the change is applied now
+			expect(writtenPaths().some((p) => /(^|\/)CLAUDE \(conflict .*\)\.md$/.test(p))).toBe(true);
+		});
+
+		it('ignores queued vault events for paths outside this sync\'s device scope', async () => {
+			setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
+			mockEventManager.getDirtyFiles.mockReturnValue([
+				{ path: '.claude/CLAUDE.md', type: LocalChangeType.CREATE },
+			]);
+
+			await createEngine().performSync();
+
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
 		});
 
 		it('un-list, delete locally, re-list does not delete the folder remotely', async () => {
