@@ -126,4 +126,9 @@ These settings may improve performance but are not fully tested. Use at your own
 
 ## Additional sync folders
 
-Obsidian does not index hidden folders (such as `.claude`), so they are not synced by default. Under **Settings → Sync → Additional folders to sync** you can list vault-relative folders, one per line (for example `.claude`). Every file inside them is synced recursively, subject to `.syncIgnore`.
+Obsidian does not index hidden folders (such as `.claude`), so they are not synced by default. Under **Settings → Sync → Additional folders to sync** you can list hidden top-level folders, one per line (for example `.claude`). Every file inside them is synced recursively, subject to `.syncIgnore`.
+
+- **Per device.** The list is stored in this plugin's own settings, which never sync. A device that does not list a folder neither uploads nor downloads it, so its own copy of that folder is left alone.
+- **Hidden folders only.** Entries must start with `.`. Normal folders already sync, and the config folder (`.obsidian`) has its own settings above, so both are rejected.
+- **Conflicts** in these folders follow your conflict strategy, just like notes. The first sync after two devices that both already had the folder opt in treats differing files as conflicts instead of overwriting either side.
+- **Keep them small.** Each file is checked on every sync, which is slow on mobile for big folders such as `.git`. Use `.syncIgnore` to skip parts of a folder.

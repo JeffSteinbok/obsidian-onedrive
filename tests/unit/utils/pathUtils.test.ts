@@ -6,6 +6,8 @@ import { describe, it, expect } from 'vitest';
 import {
 	normalizePath,
 	normalizeAdditionalSyncFolders,
+	validateAdditionalSyncFolders,
+	isInHiddenTopLevelFolder,
 	isInAdditionalSyncFolder,
 	getAdditionalFolderSyncPaths,
 	joinPath,
@@ -284,7 +286,14 @@ describe('pathUtils', () => {
 				true
 			);
 			expect(shouldSyncVaultPath('.config/workspace.json', true, true, '.config')).toBe(false);
-			expect(shouldSyncVaultPath('.obsidian/app.json', false, true, '.config')).toBe(true);
+			// Another vault's stray `.obsidian/` is just a hidden folder here:
+			// out of scope unless this device opts in to it.
+			expect(shouldSyncVaultPath('.obsidian/app.json', false, true, '.config')).toBe(false);
+			expect(
+				shouldSyncVaultPath('.obsidian/app.json', false, true, '.config', false, false, false, {
+					includeHiddenFolders: ['.obsidian'],
+				})
+			).toBe(true);
 		});
 
 		it('should sync app settings files when syncAppSettings is enabled', () => {
@@ -405,10 +414,9 @@ describe('pathUtils', () => {
 
 		it('should work with custom configDir for snippets', () => {
 			expect(shouldSyncVaultPath('.config/snippets/my-style.css', false, false, '.config', true)).toBe(true);
-			// .obsidian/snippets/ is not in .config configDir -- treated as a regular vault file, always synced
-			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', false, false, '.config', true)).toBe(true);
-			// .obsidian/snippets/ without syncCssSnippets -- still synced as a regular vault file
-			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', false, false, '.config', false)).toBe(true);
+			// .obsidian/ is not the configDir here -- it is a hidden folder, synced only when opted in
+			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', false, false, '.config', true)).toBe(false);
+			expect(shouldSyncVaultPath('.obsidian/snippets/my-style.css', false, false, '.config', false)).toBe(false);
 		});
 
 		it('should NOT sync bookmarks when syncBookmarks is disabled (default)', () => {
@@ -430,8 +438,8 @@ describe('pathUtils', () => {
 
 		it('should work with custom configDir for bookmarks', () => {
 			expect(shouldSyncVaultPath('.config/bookmarks.json', false, false, '.config', false, true)).toBe(true);
-			// .obsidian/bookmarks.json is not in .config configDir -- treated as a regular vault file, always synced
-			expect(shouldSyncVaultPath('.obsidian/bookmarks.json', false, false, '.config', false, true)).toBe(true);
+			// .obsidian/ is not the configDir here -- it is a hidden folder, synced only when opted in
+			expect(shouldSyncVaultPath('.obsidian/bookmarks.json', false, false, '.config', false, true)).toBe(false);
 		});
 	});
 
@@ -451,10 +459,29 @@ describe('pathUtils', () => {
 
 describe('additional sync folders', () => {
 	it('normalizes user input', () => {
-		expect(normalizeAdditionalSyncFolders([' .claude ', '.claude/', '\\.xyz', '', '../x', 'a/../b'])).toEqual([
-			'.claude',
-			'.xyz',
-		]);
+		expect(
+			normalizeAdditionalSyncFolders([' .claude ', '.claude/', '\\.xyz', '', '../x', 'a/../b'], '.obsidian')
+		).toEqual(['.claude', '.xyz']);
+	});
+
+	it('rejects non-hidden folders and the config dir with a reason', () => {
+		expect(
+			validateAdditionalSyncFolders(['.claude', 'Attachments', 'notes/.hidden', '.obsidian', '.obsidian/x', '../x'], '.obsidian')
+		).toEqual({
+			folders: ['.claude'],
+			rejected: [
+				{ folder: 'Attachments', reason: 'not-hidden' },
+				{ folder: 'notes/.hidden', reason: 'not-hidden' },
+				{ folder: '.obsidian', reason: 'config-dir' },
+				{ folder: '.obsidian/x', reason: 'config-dir' },
+				{ folder: '../x', reason: 'invalid' },
+			],
+		});
+	});
+
+	it('ignores a non-array stored value instead of iterating a string', () => {
+		expect(normalizeAdditionalSyncFolders('.claude', '.obsidian')).toEqual([]);
+		expect(normalizeAdditionalSyncFolders(undefined, '.obsidian')).toEqual([]);
 	});
 
 	it('matches paths inside configured folders', () => {
@@ -478,5 +505,44 @@ describe('additional sync folders', () => {
 			'.claude/a.json',
 			'.claude/sub/b.md',
 		]);
+	});
+});
+
+describe('per-device sync filter in shouldSyncVaultPath', () => {
+	const sync = (path: string, filter = {}) =>
+		shouldSyncVaultPath(path, true, true, '.obsidian', true, true, true, filter);
+
+	it('keeps hidden top-level folders out of scope unless included', () => {
+		expect(sync('.claude/settings.json')).toBe(false);
+		expect(sync('.trash/old.md')).toBe(false);
+		expect(sync('.claude/settings.json', { includeHiddenFolders: ['.claude'] })).toBe(true);
+		expect(sync('.git/HEAD', { includeHiddenFolders: ['.claude'] })).toBe(false);
+	});
+
+	it('leaves normal paths, root dot files and the config dir to the regular rules', () => {
+		expect(sync('notes/a.md')).toBe(true);
+		expect(sync('.syncIgnore')).toBe(true);
+		expect(sync('.obsidian/app.json')).toBe(true);
+		expect(sync('.obsidian/workspace.json', { includeHiddenFolders: ['.claude'] })).toBe(false);
+	});
+
+	it('never syncs .obsidian paths inside an included folder past the own-plugin exclusion', () => {
+		const filter = { includeHiddenFolders: ['.claude'] };
+		expect(sync('.claude/.obsidian/app.json', filter)).toBe(true);
+		expect(sync('.obsidian/plugins/onedrive-sync/data.json', filter)).toBe(false);
+	});
+
+	it('excludes win over includes and over normal vault paths (both directions)', () => {
+		expect(sync('PDFs/big.pdf', { excludeFolders: ['PDFs'] })).toBe(false);
+		expect(sync('PDFsX/big.pdf', { excludeFolders: ['PDFs'] })).toBe(true);
+		expect(
+			sync('.claude/cache/x', { includeHiddenFolders: ['.claude'], excludeFolders: ['.claude/cache'] })
+		).toBe(false);
+	});
+
+	it('identifies hidden top-level folders', () => {
+		expect(isInHiddenTopLevelFolder('.claude/a')).toBe(true);
+		expect(isInHiddenTopLevelFolder('.syncIgnore')).toBe(false);
+		expect(isInHiddenTopLevelFolder('notes/.hidden/a')).toBe(false);
 	});
 });

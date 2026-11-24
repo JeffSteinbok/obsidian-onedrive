@@ -26,6 +26,7 @@ import { FolderBrowserModal, FolderSelection } from './folderBrowserModal';
 import type { SyncStatusInfo } from '../main';
 import { SyncStatus } from './statusBar';
 import { t } from '../i18n';
+import type { AdditionalSyncFolderValidation } from '../utils/pathUtils';
 
 const CONFLICT_RESOLUTION_VALUES = Object.values(ConflictResolutionStrategy);
 const NOTIFICATION_LEVEL_VALUES: readonly PluginSettings['notificationLevel'][] = [
@@ -55,7 +56,7 @@ interface OneDrivePlugin extends Plugin {
 	onPluginDataSyncChanged(enabled: boolean): Promise<void>;
 	onCssSnippetSyncChanged(enabled: boolean): Promise<void>;
 	onBookmarkSyncChanged(enabled: boolean): Promise<void>;
-	onAdditionalSyncFoldersChanged(folders: string[]): Promise<void>;
+	onAdditionalSyncFoldersChanged(folders: string[]): Promise<AdditionalSyncFolderValidation>;
 	resetSyncToken(): Promise<void>;
 	reconcileFromCloud(): Promise<void>;
 	reconcileToCloud(): Promise<void>;
@@ -1338,12 +1339,27 @@ export class OneDriveSettingTab extends PluginSettingTab {
 			.setName(t('settings.sync.additionalFolders.name'))
 			.setDesc(t('settings.sync.additionalFolders.desc'))
 			.addTextArea((text) => {
+				const current = this.plugin.settings.additionalSyncFolders;
 				text
 					.setPlaceholder(t('settings.sync.additionalFolders.placeholder'))
-					.setValue((this.plugin.settings.additionalSyncFolders ?? []).join('\n'))
-					.onChange(async (value) => {
-						await this.plugin.onAdditionalSyncFoldersChanged(value.split(/\r?\n/));
-					});
+					.setValue(Array.isArray(current) ? current.join('\n') : '');
+				// Save on blur, not per keystroke: a half-typed ".cl" would
+				// otherwise briefly become a live sync folder.
+				text.inputEl.addEventListener('blur', () => {
+					void (async () => {
+						const result = await this.plugin.onAdditionalSyncFoldersChanged(
+							text.getValue().split(/\r?\n/)
+						);
+						if (result.rejected.length > 0) {
+							new Notice(
+								t('settings.sync.additionalFolders.rejected', {
+									folders: result.rejected.map((r) => r.folder).join(', '),
+								})
+							);
+						}
+						text.setValue(result.folders.join('\n'));
+					})();
+				});
 			});
 	}
 

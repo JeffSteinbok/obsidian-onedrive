@@ -322,32 +322,133 @@ function getWorkspaceStatePattern(configDir: string): RegExp {
 }
 
 /**
- * Normalize a user-entered list of additional folders to sync (e.g. `.claude`).
- * Trims, converts separators, strips leading/trailing slashes, drops empty
- * entries, duplicates and anything containing `..` segments.
+ * Per-device sync filter. It lives in this plugin's own data.json, which is
+ * never synced, so each device keeps its own. `shouldSyncVaultPath` applies it
+ * to both directions: a path the filter rejects is neither uploaded from this
+ * device nor downloaded to it, and dropping a path from scope never turns into
+ * a remote delete.
  */
-export function normalizeAdditionalSyncFolders(folders: readonly string[] | undefined): string[] {
-	const result: string[] = [];
-	for (const raw of folders ?? []) {
+export interface DeviceSyncFilter {
+	/**
+	 * Hidden top-level folders (first segment starts with `.`, e.g. `.claude`)
+	 * that this device syncs. Every other hidden top-level folder (except the
+	 * config dir, which has its own settings) is out of scope on this device.
+	 * Expected to be already normalized (see `validateAdditionalSyncFolders`).
+	 */
+	includeHiddenFolders?: readonly string[];
+	/**
+	 * Vault folders this device never syncs, in either direction. Wins over
+	 * every include. Expected to be normalized folder paths without slashes at
+	 * either end.
+	 */
+	excludeFolders?: readonly string[];
+}
+
+export type AdditionalSyncFolderRejection = 'not-hidden' | 'config-dir' | 'invalid';
+
+export interface AdditionalSyncFolderValidation {
+	folders: string[];
+	rejected: Array<{ folder: string; reason: AdditionalSyncFolderRejection }>;
+}
+
+function isHiddenSegment(segment: string): boolean {
+	return segment.startsWith('.') && segment !== '.' && segment !== '..';
+}
+
+/**
+ * True for a path inside a hidden top-level folder (e.g. `.claude/x.md` or
+ * `.trash/old.md`). Obsidian never indexes these, so they only sync when the
+ * device opts in. Root-level dot files such as `.syncIgnore` are not folders
+ * and are not affected.
+ */
+export function isInHiddenTopLevelFolder(path: string): boolean {
+	const normalized = normalizePath(path);
+	const slash = normalized.indexOf('/');
+	if (slash <= 0) return false;
+	return isHiddenSegment(normalized.slice(0, slash));
+}
+
+/**
+ * Normalize and validate the user-entered list of additional folders to sync.
+ * Only hidden top-level folders are accepted: normal folders are already
+ * synced through the vault index, and listing one would make the engine track
+ * the same files through two paths (a rename would then also emit a remote
+ * delete of the old path). The config dir is rejected because it has its own
+ * opt-in settings that must not be bypassed.
+ */
+export function validateAdditionalSyncFolders(
+	folders: unknown,
+	configDir: string
+): AdditionalSyncFolderValidation {
+	const result: AdditionalSyncFolderValidation = { folders: [], rejected: [] };
+	if (!Array.isArray(folders)) return result;
+	const normalizedConfigDir = normalizeConfigDir(configDir);
+	for (const raw of folders as unknown[]) {
 		if (typeof raw !== 'string') continue;
-		const folder = normalizePath(raw.trim()).replace(/^(\.\/)+/, '').replace(/^\/+|\/+$/g, '');
-		if (!folder || folder === '.') continue;
-		if (folder.split('/').some((seg) => seg === '..' || seg === '.')) continue;
-		if (!result.includes(folder)) result.push(folder);
+		const trimmed = raw.trim();
+		if (!trimmed) continue;
+		const folder = normalizePath(trimmed).replace(/^(\.\/)+/, '').replace(/^\/+|\/+$/g, '');
+		if (!folder || folder === '.' || folder.split('/').some((seg) => seg === '..' || seg === '.')) {
+			result.rejected.push({ folder: trimmed, reason: 'invalid' });
+			continue;
+		}
+		if (folder === normalizedConfigDir || folder.startsWith(`${normalizedConfigDir}/`)) {
+			result.rejected.push({ folder, reason: 'config-dir' });
+			continue;
+		}
+		if (!isHiddenSegment(folder.split('/')[0])) {
+			result.rejected.push({ folder, reason: 'not-hidden' });
+			continue;
+		}
+		if (!result.folders.includes(folder)) result.folders.push(folder);
 	}
 	return result;
 }
 
 /**
- * True if the path is one of the user-configured additional sync folders or
- * lives inside one.
+ * Normalize the stored list of additional sync folders, silently dropping
+ * entries `validateAdditionalSyncFolders` would reject.
+ */
+export function normalizeAdditionalSyncFolders(folders: unknown, configDir: string): string[] {
+	return validateAdditionalSyncFolders(folders, configDir).folders;
+}
+
+/**
+ * True if the path is one of the given (already normalized) folders or lives
+ * inside one.
  */
 export function isInAdditionalSyncFolder(path: string, folders: readonly string[]): boolean {
-	const normalized = normalizePath(path);
-	for (const folder of normalizeAdditionalSyncFolders(folders)) {
-		if (normalized === folder || normalized.startsWith(`${folder}/`)) return true;
+	return isInAnyFolder(normalizePath(path), folders);
+}
+
+function isInAnyFolder(normalizedPath: string, folders: readonly string[] | undefined): boolean {
+	if (!folders) return false;
+	for (const folder of folders) {
+		if (normalizedPath === folder || normalizedPath.startsWith(`${folder}/`)) return true;
 	}
 	return false;
+}
+
+/**
+ * Apply the per-device filter. Returns false when the device filter keeps
+ * the path out of scope, true when it explicitly opts the path in, and
+ * undefined when the filter has no opinion (the regular rules decide).
+ */
+function applyDeviceSyncFilter(
+	normalizedPath: string,
+	normalizedConfigDir: string,
+	filter: DeviceSyncFilter
+): boolean | undefined {
+	if (isInAnyFolder(normalizedPath, filter.excludeFolders)) return false;
+	if (isInAnyFolder(normalizedPath, filter.includeHiddenFolders)) return true;
+	if (
+		isInHiddenTopLevelFolder(normalizedPath) &&
+		normalizedPath !== normalizedConfigDir &&
+		!normalizedPath.startsWith(`${normalizedConfigDir}/`)
+	) {
+		return false;
+	}
+	return undefined;
 }
 
 /**
@@ -369,7 +470,7 @@ export async function getAdditionalFolderSyncPaths(
 		for (const file of listing.files) paths.push(normalizePath(file));
 		for (const sub of listing.folders) await visit(normalizePath(sub));
 	};
-	for (const folder of normalizeAdditionalSyncFolders(folders)) {
+	for (const folder of folders) {
 		await visit(folder);
 	}
 	return paths;
@@ -386,7 +487,7 @@ export function shouldSyncVaultPath(
 	syncCssSnippets = false,
 	syncBookmarks = false,
 	syncPluginData = false,
-	additionalSyncFolders: readonly string[] = []
+	deviceFilter: DeviceSyncFilter = {}
 ): boolean {
 	const normalized = normalizePath(path);
 	const normalizedConfigDir = normalizeConfigDir(configDir);
@@ -422,11 +523,13 @@ export function shouldSyncVaultPath(
 		return false;
 	}
 
-	if (!normalized.startsWith(configDirPrefix)) {
-		return true;
+	// Per-device include/exclude. Applies to uploads and downloads alike.
+	const deviceDecision = applyDeviceSyncFilter(normalized, normalizedConfigDir, deviceFilter);
+	if (deviceDecision !== undefined) {
+		return deviceDecision;
 	}
 
-	if (isInAdditionalSyncFolder(normalized, additionalSyncFolders)) {
+	if (!normalized.startsWith(configDirPrefix)) {
 		return true;
 	}
 

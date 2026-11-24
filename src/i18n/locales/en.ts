@@ -318,8 +318,9 @@ export const en = {
 			},
 			additionalFolders: {
 				name: 'Additional folders to sync',
-				desc: 'Advanced: hidden folders (such as .claude) to sync in addition to the vault contents, one vault-relative path per line.',
+				desc: 'Advanced, this device only: hidden top-level folders (such as .claude) to sync, one per line. A device that does not list a folder neither uploads nor downloads it. Every file inside is checked on each sync, so keep these folders small or use .syncIgnore.',
 				placeholder: '.claude',
+				rejected: 'Ignored {{folders}}: only hidden top-level folders (starting with ".") other than the config folder can be added here.',
 			},
 			status: {
 				name: 'Sync status',
