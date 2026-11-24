@@ -448,12 +448,19 @@ export class OneDriveClient {
 	 * and the other access modes are unaffected.
 	 */
 	private async folderChildrenEndpoint(folderPath: string): Promise<string> {
-		const isAppFolderRoot =
-			this.accessMode === OneDriveAccessMode.APP_FOLDER &&
-			!this.isSharedDrive() &&
-			!folderPath.replace(/^\/+|\/+$/g, '');
-		if (!isAppFolderRoot) {
+		const isAppFolder =
+			this.accessMode === OneDriveAccessMode.APP_FOLDER && !this.isSharedDrive();
+		if (!isAppFolder) {
 			return this.buildEndpoint(folderPath, 'children');
+		}
+
+		// Non-empty parent (vault subfolder or nested folder): the path-based
+		// `approot:/a:/children` form is rejected the same way (#210), so
+		// resolve the parent's item id and address it directly. Not cached —
+		// the parent may be deleted or recreated between calls.
+		if (folderPath.replace(/^\/+|\/+$/g, '')) {
+			const parent = await this.getGraph<OneDriveItem>(this.buildEndpoint(folderPath));
+			return `/me/drive/items/${parent.id}/children`;
 		}
 
 		if (!this.appRootId) {
