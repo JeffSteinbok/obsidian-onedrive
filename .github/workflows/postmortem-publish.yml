@@ -1,20 +1,9 @@
-# Intentionally disabled in GitHub Actions as of 2026-11-25.
-# Re-enable this workflow from the Actions tab or with
-# `gh workflow enable postmortem-publish.yml`.
-#
-# The postmortem flow opened a tracking issue for each merged bug-fix PR.
-# Puppets handled the analysis and hardening PR, first with GitHub Copilot's
-# coding agent and later with Claude Code via Puppets. This repo has retired
-# Puppets.
-#
-# Issue triage, fixes, and reviews now run through Orca bots on the
-# maintainer's machine. A Steward bot coordinates separate builder and
-# reviewer agents, and the maintainer approves every change. Postmortems
-# may return through Orca. Until then, nothing processes new postmortem
-# issues, so the trigger is disabled to avoid opening issues nobody works.
-#
-# Keep the analysis prompt at `.puppets/prompts/postmortem.md` or move it
-# before removing the Puppets files (see issue #215).
+# This GitHub Actions workflow remains disabled.
+# After each bug-fix merge, the maintainer's Orca bot, Steward, coordinates
+# the postmortem using .github/skills/postmortem/SKILL.md. Codex prepares a
+# hardening PR when warranted, Claude reviews it independently, and Steward
+# posts the writeup on the bug issue. The maintainer merges hardening PRs.
+# The workflow below is retained for reference.
 
 name: Publish Postmortem Writeup
 
