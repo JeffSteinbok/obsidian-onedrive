@@ -1790,7 +1790,17 @@ export class SyncEngine {
 					// the adapter so they get the same conflict handling.
 					const localStat = await this.getLocalFileStat(change.path, file);
 					if (!localStat) {
-						throw new Error(`Cannot compare local file with a changed remote copy: ${change.path}`);
+						// A stale local event cannot override a changed remote file
+						// when the local file is already gone.
+						if (remoteItem.file) {
+							operations.push({
+								path: change.path,
+								direction: SyncDirection.DOWNLOAD,
+								remoteState: this.itemToFileState(remoteItem),
+							});
+						}
+						remoteByPath.delete(change.path);
+						continue;
 					}
 					let isConflict = !!knownState;
 					if (!knownState && !(file instanceof TFile)) {
@@ -1990,8 +2000,12 @@ export class SyncEngine {
 		if (file) return null; // a folder
 		// Callers use null as evidence of absence when making conflict
 		// decisions. Let stat errors abort planning and retain the delta cursor.
-		const stat = await this.app.vault.adapter.stat(path);
-		return stat?.type === 'file' ? stat : null;
+		try {
+			const stat = await this.app.vault.adapter.stat(path);
+			return stat?.type === 'file' ? { mtime: stat.mtime, size: stat.size } : null;
+		} catch (error) {
+			throw new Error(`Could not stat ${path}: ${String(error)}`);
+		}
 	}
 
 	/**
@@ -3091,7 +3105,7 @@ export class SyncEngine {
 	 * if the adapter cannot distinguish an unreadable path from a missing one.
 	 */
 	private async gatherReconcileLocalFiles(
-		remotePaths: Iterable<string>,
+		remoteFiles: ReadonlyMap<string, OneDriveItem>,
 		ignoreMatchers: RegExp[]
 	): Promise<Map<string, { size: number }>> {
 		const inScope = (path: string) =>
@@ -3109,10 +3123,16 @@ export class SyncEngine {
 			(path) => this.shouldSyncPath(path),
 			this.getAdditionalSyncFolders()
 		);
-		for (const path of new Set([...configPaths.filter(inScope), ...remotePaths])) {
+		for (const path of new Set([...configPaths.filter(inScope), ...remoteFiles.keys()])) {
 			if (localByPath.has(path)) continue;
 			const stat = await adapter.stat(path);
-			if (stat?.type === 'file') localByPath.set(path, { size: stat.size });
+			if (stat?.type !== 'file') continue;
+			// A case-insensitive stat can report the same file under two names.
+			// Stop before planning a delete and transfer for that physical file.
+			if (remoteFiles.has(path) && !(await adapter.exists(path, true))) {
+				throw new Error(`Cannot reconcile because the local path does not exactly match the cloud path: ${path}`);
+			}
+			localByPath.set(path, { size: stat.size });
 		}
 		return localByPath;
 	}
@@ -3164,7 +3184,7 @@ export class SyncEngine {
 				remoteFiles.set(vaultPath, item);
 			}
 
-			const localByPath = await this.gatherReconcileLocalFiles(remoteFiles.keys(), ignoreMatchers);
+			const localByPath = await this.gatherReconcileLocalFiles(remoteFiles, ignoreMatchers);
 
 			// 4. Plan operations and tracked-state updates.
 			const matchingFileStates = new Map<string, FileState>();
@@ -3362,7 +3382,7 @@ export class SyncEngine {
 				remoteFiles.set(vaultPath, item);
 			}
 
-			const localByPath = await this.gatherReconcileLocalFiles(remoteFiles.keys(), ignoreMatchers);
+			const localByPath = await this.gatherReconcileLocalFiles(remoteFiles, ignoreMatchers);
 
 			// 4. Plan operations and tracked-state updates.
 			const matchingFileStates = new Map<string, FileState>();
