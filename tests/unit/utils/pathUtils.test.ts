@@ -22,6 +22,7 @@ import {
 	isConflictCopyPath,
 	toOneDrivePath,
 	toVaultPath,
+	isPathWithinRoot,
 	encodePathForGraph,
 	stripGraphPrefix,
 	shouldSyncVaultPath,
@@ -156,6 +157,10 @@ describe('pathUtils', () => {
 			expect(toVaultPath('/other/file.md', '/vault')).toBe('/other/file.md');
 		});
 
+		it('should preserve a sibling folder whose name starts with the remote root name', () => {
+			expect(toVaultPath('/vault-backup/notes/file.md', '/vault')).toBe('/vault-backup/notes/file.md');
+		});
+
 		it('should handle shared drive paths after prefix stripping', () => {
 			// After stripGraphPrefix removes /drives/{id}/root:, the remaining path
 			// needs to have the shared folder root stripped
@@ -181,6 +186,21 @@ describe('pathUtils', () => {
 			it('should handle empty remote root', () => {
 				expect(toVaultPath('notes/file.md', '')).toBe('notes/file.md');
 			});
+	});
+
+	describe('isPathWithinRoot', () => {
+		it.each([
+			['/vault/notes/file.md', '/vault/', true],
+			['/vault', '/vault/', true],
+			['/Vault/notes/file.md', '/vault', false],
+			['\\vault\\notes\\file.md', '\\vault\\', true],
+			['/vault', '/vault', true],
+			['notes/file.md', '', true],
+			['/vault-backup/notes/file.md', '/vault', false],
+			['', '/', true],
+		])('checks %j against root %j as %s', (path, root, expected) => {
+			expect(isPathWithinRoot(path, root)).toBe(expected);
+		});
 	});
 
 	describe('encodePathForGraph', () => {

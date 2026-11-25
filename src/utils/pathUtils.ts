@@ -117,9 +117,9 @@ export function toOneDrivePath(vaultPath: string, remoteRoot: string): string {
  */
 export function toVaultPath(oneDrivePath: string, remoteRoot: string): string {
 	const normalized = normalizePath(oneDrivePath);
-	const rootNormalized = normalizePath(remoteRoot);
+	const rootNormalized = normalizePath(remoteRoot).replace(/\/+$/, '');
 
-	if (normalized.startsWith(rootNormalized)) {
+	if (isPathWithinRoot(normalized, remoteRoot)) {
 		const relativePath = normalized.substring(rootNormalized.length);
 		return relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
 	}
@@ -644,8 +644,11 @@ export function shouldSyncVaultPath(
  */
 export function isPathWithinRoot(path: string, root: string): boolean {
 	const normalizedPath = normalizePath(path);
-	const normalizedRoot = normalizePath(root);
-	return normalizedPath.startsWith(normalizedRoot);
+	const normalizedRoot = normalizePath(root).replace(/\/+$/, '');
+	// A folder prefix ends at a path separator or at the end of the path.
+	return (
+		!root || normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`)
+	);
 }
 
 /**
