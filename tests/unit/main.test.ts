@@ -854,6 +854,18 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.isConnected()).toBe(false);
 	});
 
+	it('onload keeps the legacy App Folder root confirmed for users with tokens and a cached profile', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		vi.mocked(plugin.loadData).mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			connectedUser: { id: '1', displayName: 'Test User', userPrincipalName: 'test@test.com' },
+		});
+
+		await plugin.onload();
+
+		expect(plugin.settings.appFolderSubpathConfirmed).toBe(true);
+	});
+
 	it('onload confirms the App Folder target for upgraded users who have tokens but no cached user', async () => {
 		mocks.tokenStorage.hasTokens.mockReturnValue(true);
 		mocks.oneDriveClient.getUserInfo.mockRejectedValue(new Error('502'));

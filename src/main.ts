@@ -1253,8 +1253,9 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 
 		// Carry forward a saved legacy subpath. For the implicit root, finish
-		// migration after credentials load. Cached GET /me data is display-only
-		// and may have been copied from another device without its credentials.
+		// migration after credentials load. Cached GET /me data from pre-#75
+		// settings may travel without credentials. Settings synced from post-#75
+		// devices carry an explicit confirmation value, which takes precedence.
 		this.appFolderConfirmMigrationPending = false;
 		if (this.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
 			if (typeof loaded.appFolderSubpathConfirmed === 'boolean') {
