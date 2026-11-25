@@ -394,7 +394,10 @@ describe('SyncEngine', () => {
 		});
 	});
 
-	it('realigns localized app-folder delta paths to the vault root', async () => {
+	it.each([
+		'/Aplikacje/ObsidianOneDrive',
+		'/ObsidianOneDrive-backup/ObsidianOneDrive',
+	])('realigns app-folder delta paths under %s to the vault root', async (driveRoot) => {
 		stateManager.setLastSyncTime(Date.now());
 		syncEngine = new SyncEngine(
 			mockApp as any,
@@ -413,7 +416,7 @@ describe('SyncEngine', () => {
 					id: 'remote-idea-id',
 					parentReference: {
 						id: 'parent-id',
-						path: '/drive/root:/Aplikacje/ObsidianOneDrive/Development/Remotething',
+						path: `/drive/root:${driveRoot}/Development/Remotething`,
 					},
 				}),
 			],

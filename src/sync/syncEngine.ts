@@ -86,6 +86,7 @@ import {
 	toVaultPath,
 	getParentPath,
 	stripGraphPrefix,
+	isPathWithinRoot,
 	shouldSyncVaultPath,
 	getAllSyncableConfigPaths,
 	isConflictCopyPath,
@@ -3013,7 +3014,7 @@ export class SyncEngine {
 	private realignRemoteRoot(fullPath: string): string {
 		const normalizedPath = normalizePath(fullPath);
 		const normalizedRoot = normalizePath(this.remoteRootOnDrive);
-		if (!normalizedRoot || normalizedPath.startsWith(normalizedRoot)) {
+		if (isPathWithinRoot(normalizedPath, normalizedRoot)) {
 			return normalizedPath;
 		}
 
@@ -3023,13 +3024,13 @@ export class SyncEngine {
 			return normalizedPath;
 		}
 
-		const marker = `/${rootName}`;
-		const markerIndex = normalizedPath.indexOf(marker);
-		if (markerIndex < 0) {
+		const pathSegments = normalizedPath.split('/');
+		const rootIndex = pathSegments.indexOf(rootName, 1);
+		if (rootIndex < 0) {
 			return normalizedPath;
 		}
 
-		const candidateRoot = normalizedPath.substring(0, markerIndex + marker.length);
+		const candidateRoot = pathSegments.slice(0, rootIndex + 1).join('/');
 		if (!candidateRoot || candidateRoot === normalizedRoot) {
 			return normalizedPath;
 		}

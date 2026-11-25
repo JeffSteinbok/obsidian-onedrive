@@ -156,6 +156,10 @@ describe('pathUtils', () => {
 			expect(toVaultPath('/other/file.md', '/vault')).toBe('/other/file.md');
 		});
 
+		it('should preserve a sibling folder whose name starts with the remote root name', () => {
+			expect(toVaultPath('/vault-backup/notes/file.md', '/vault')).toBe('/vault-backup/notes/file.md');
+		});
+
 		it('should handle shared drive paths after prefix stripping', () => {
 			// After stripGraphPrefix removes /drives/{id}/root:, the remaining path
 			// needs to have the shared folder root stripped
