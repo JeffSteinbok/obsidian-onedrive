@@ -1,3 +1,21 @@
+# Intentionally disabled in GitHub Actions as of 2026-11-25.
+# Re-enable this workflow from the Actions tab or with
+# `gh workflow enable postmortem-guard.yml`.
+#
+# The postmortem flow opened a tracking issue for each merged bug-fix PR.
+# Puppets handled the analysis and hardening PR, first with GitHub Copilot's
+# coding agent and later with Claude Code via Puppets. This repo has retired
+# Puppets.
+#
+# Issue triage, fixes, and reviews now run through Orca bots on the
+# maintainer's machine. A Steward bot coordinates separate builder and
+# reviewer agents, and the maintainer approves every change. Postmortems
+# may return through Orca. Until then, nothing processes new postmortem
+# issues, so the trigger is disabled to avoid opening issues nobody works.
+#
+# Keep the analysis prompt at `.puppets/prompts/postmortem.md` or move it
+# before removing the Puppets files (see issue #215).
+
 name: Postmortem PR Guard
 
 # Postmortem hardening PRs (opened by the Copilot coding agent via
