@@ -23,6 +23,7 @@ import {
 	LocalChangeType,
 	OneDriveItem,
 	type SyncEngineOptions,
+	type ConfigSyncToggles,
 } from '../../../src/types';
 import { shouldSyncVaultPath, type DeviceSyncFilter } from '../../../src/utils/pathUtils';
 
@@ -808,6 +809,198 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 
 			expect(stateManager.getFileState('PDFs/first.pdf')).toBeUndefined();
 			expect(writtenPaths()).not.toContain('PDFs/second.pdf');
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('config sync toggles (#217)', () => {
+		const path = '.obsidian/bookmarks.json';
+		const remoteOnly = '.obsidian/snippets/remote.css';
+		const toggles = (): ConfigSyncToggles => ({
+			syncPluginManifests: false,
+			syncAppSettings: false,
+			syncCssSnippets: false,
+			syncBookmarks: true,
+			syncPluginData: false,
+		});
+		const engineWithLiveToggles = (live: ConfigSyncToggles) => createEngine({
+			getConfigSyncToggles: () => live,
+			shouldSyncPath: (path, scope) => {
+				const config = scope?.config ?? live;
+				return shouldSyncVaultPath(
+					path, config.syncPluginManifests, config.syncAppSettings, '.obsidian',
+					config.syncCssSnippets, config.syncBookmarks, config.syncPluginData, scope
+				);
+			},
+		});
+
+		it('keeps bookmarks in scope when disabled after reconcile lists the cloud', async () => {
+			const live = toggles();
+			setHiddenDisk({ [path]: { mtime: 5000, size: 100 } });
+			mockClient.listAllItems.mockResolvedValue([makeRemoteFile(path, { size: 50 })]);
+			mockApp.vault.getFiles.mockImplementationOnce(() => {
+				live.syncBookmarks = false;
+				return [];
+			});
+
+			await engineWithLiveToggles(live).reconcileToCloud();
+
+			expect(live.syncBookmarks).toBe(false);
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			expect(uploadedPaths()).toContain(path);
+			expect(mockClient.getDelta).toHaveBeenCalledWith(undefined, '/remote/root', '.obsidian');
+		});
+
+		it('uses the original toggle during a regular sync and prunes tracking on the next run', async () => {
+			const live = { ...toggles(), syncAppSettings: true };
+			stateManager.setDeviceSyncScope({ config: { ...live } });
+			track(path);
+			setHiddenDisk({ [path]: { mtime: 5000, size: 3 } });
+			mockClient.getDelta.mockImplementation(async (_cursor, _root, subPath) => {
+				if (subPath) live.syncBookmarks = false;
+				return { items: subPath ? [makeRemoteFile(path)] : [], deltaLink: 'next' };
+			});
+			const engine = engineWithLiveToggles(live);
+
+			await engine.performSync();
+
+			expect(mockFileOps.downloadFile).toHaveBeenCalledWith(`${path}-id`);
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+
+			setHiddenDisk({});
+			mockEventManager.getDirtyFiles.mockReturnValue([{ path, type: LocalChangeType.DELETE }]);
+			mockFileOps.uploadFile.mockClear();
+			await engine.performSync();
+
+			expect(stateManager.getFileState(path)).toBeUndefined();
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		});
+
+		it('preserves opted-out plugin data when a tracked plugin manifest is deleted', async () => {
+			const live = { ...toggles(), syncPluginManifests: true };
+			const pluginFolder = '.obsidian/plugins/example';
+			const manifest = `${pluginFolder}/manifest.json`;
+			const data = `${pluginFolder}/data.json`;
+			stateManager.setDeviceSyncScope({ config: { ...live, syncPluginData: true } });
+			stateManager.setFolderState('plugin-folder-id', pluginFolder);
+			track(manifest);
+			track(data);
+			setHiddenDisk({});
+
+			await engineWithLiveToggles(live).performSync();
+
+			expect(mockFileOps.deleteFile.mock.calls).toEqual([[`${manifest}-id`]]);
+			expect(stateManager.getFileState(data)).toBeUndefined();
+		});
+
+		it.each([
+			{ matches: true, cloudBytes: [1, 2, 3] },
+			{ matches: false, cloudBytes: [3, 2, 1] },
+		])('compares content after an off/on cycle without SHA-1 (matches: $matches)', async ({ matches, cloudBytes }) => {
+			const live = toggles();
+			stateManager.setDeviceSyncScope({ config: { ...live } });
+			track(path, { localMtime: 5000, size: 3 });
+			setHiddenDisk({ [path]: { mtime: 5000, size: 3 } });
+			const engine = engineWithLiveToggles(live);
+			live.syncBookmarks = false;
+			await engine.performSync();
+			expect(stateManager.getFileState(path)).toBeUndefined();
+
+			const item = makeRemoteFile(path, { size: 3 });
+			mockClient.getDelta.mockImplementation(async (_cursor, _root, subPath) => ({
+				items: subPath ? [item] : [],
+				deltaLink: 'next',
+			}));
+			mockFileOps.downloadFile.mockResolvedValue(new Uint8Array(cloudBytes).buffer);
+			live.syncBookmarks = true;
+			await engine.performSync();
+
+			expect(mockFileOps.downloadFile).toHaveBeenCalledWith(item.id);
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			if (matches) {
+				expect(writtenPaths()).toEqual([]);
+				expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+				expect(stateManager.getFileState(path)).toMatchObject({
+					oneDriveId: item.id,
+					localMtime: 5000,
+					localContentHash: expect.any(String),
+				});
+			} else {
+				expect(writtenPaths()).toEqual([expect.stringMatching(/bookmarks \(conflict .*\)\.json$/)]);
+			}
+		});
+
+		it.each(['EPERM', '403'])('retries a config comparison after %s while syncing other files', async (error) => {
+			const live = toggles();
+			stateManager.setDeviceSyncScope({ config: { ...live } });
+			track(path, { localMtime: 5000, size: 3 });
+			setHiddenDisk({ [path]: { mtime: 5000, size: 3 } });
+			const engine = engineWithLiveToggles(live);
+			live.syncBookmarks = false;
+			await engine.performSync();
+
+			const note = makeRemoteFile('note.md');
+			const config = makeRemoteFile(path, { size: 3 });
+			let comparisonBlocked = true;
+			const configCursors: (string | undefined)[] = [];
+			mockClient.getDelta.mockImplementation(async (cursor, _root, subPath) => {
+				if (subPath) configCursors.push(cursor);
+				return {
+					items: subPath ? (cursor ? [] : [config]) : (cursor === 'vault-next' ? [] : [note]),
+					deltaLink: subPath ? 'config-next' : 'vault-next',
+				};
+			});
+			mockApp.vault.adapter.readBinary.mockImplementation(async (file: string) => {
+				if (file === path && comparisonBlocked && error === 'EPERM') throw new Error(error);
+				return new Uint8Array([1, 2, 3]).buffer;
+			});
+			mockFileOps.downloadFile.mockImplementation(async (id: string) => {
+				if (id === config.id && comparisonBlocked && error === '403') throw new Error(error);
+				return new Uint8Array([1, 2, 3]).buffer;
+			});
+			live.syncBookmarks = true;
+			await expect(engine.performSync()).resolves.toBeUndefined();
+			expect(writtenPaths()).toEqual(['note.md']);
+			expect(stateManager.getFileState(path)).toBeUndefined();
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+
+			// A second blocked run has no other operations. It must still leave
+			// the config cursor eligible for a full retry on the next run.
+			await expect(engine.performSync()).resolves.toBeUndefined();
+			expect(stateManager.getFileState(path)).toBeUndefined();
+			comparisonBlocked = false;
+			await engine.performSync();
+
+			expect(configCursors).toEqual([undefined, undefined, undefined]);
+			expect(writtenPaths()).toEqual(['note.md']);
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			expect(stateManager.getFileState(path)?.oneDriveId).toBe(config.id);
+		});
+
+		it('re-enumerates config when enabling bookmarks and snippets, checking local copies for conflicts', async () => {
+			const live = { ...toggles(), syncAppSettings: true, syncBookmarks: false };
+			setHiddenDisk({ [path]: { mtime: 5000, size: 3 } });
+			const engine = engineWithLiveToggles(live);
+			stateManager.setObsidianDeltaLink('old-config-cursor');
+			await engine.performSync();
+
+			live.syncBookmarks = true;
+			live.syncCssSnippets = true;
+			mockEventManager.getDirtyFiles.mockReturnValue([{ path: remoteOnly, type: LocalChangeType.DELETE }]);
+			mockClient.getDelta.mockImplementation(async (cursor, _root, subPath) => ({
+				items: subPath && !cursor ? [makeRemoteFile(path), makeRemoteFile(remoteOnly)] : [],
+				deltaLink: 'next',
+			}));
+			await engine.performSync();
+
+			expect(mockClient.getDelta).toHaveBeenCalledWith(undefined, '/remote/root', '.obsidian');
+			expect(mockFileOps.downloadFile).toHaveBeenCalledWith(`${path}-id`);
+			expect(mockFileOps.downloadFile).toHaveBeenCalledWith(`${remoteOnly}-id`);
+			expect(writtenPaths()).toContain(remoteOnly);
+			expect(writtenPaths()).toEqual(expect.arrayContaining([expect.stringMatching(/bookmarks \(conflict .*\)\.json$/)]));
 			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
 		});
 	});

@@ -181,7 +181,7 @@ export class SyncStateManager {
 		};
 	}
 
-	/** Per-device filter in effect at the last sync (undefined if never recorded). */
+	/** Previously applied sync scope (undefined if never recorded). */
 	getDeviceSyncScope(): SyncState['deviceSyncScope'] {
 		return this.state.deviceSyncScope;
 	}

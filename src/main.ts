@@ -6,6 +6,8 @@
 import { Platform, Plugin, Notice, TFile } from 'obsidian';
 import {
 	AccountType,
+	type ConfigSyncToggles,
+	type SyncScope,
 	PluginSettings,
 	DEFAULT_SETTINGS,
 	DEFAULT_EXPERIMENTAL_SETTINGS,
@@ -456,7 +458,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 					remoteRootOnDrive,
 					isAppFolder,
 					conflictQueue: this.conflictQueue,
-					shouldSyncPath: (path, deviceFilter) => this.shouldSyncPath(path, deviceFilter),
+					shouldSyncPath: (path, scope) => this.shouldSyncPath(path, scope),
+					getConfigSyncToggles: () => this.getConfigSyncToggles(),
 					getDeviceSyncFilter: () => this.getDeviceSyncFilter(),
 					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
 					getNotificationLevel: () => this.settings.notificationLevel ?? 'all',
@@ -1383,21 +1386,24 @@ export default class OneDriveSyncPlugin extends Plugin {
 		};
 	}
 
-	/**
-	 * The one scope check both sync directions and the event manager use.
-	 * The sync engine passes its per-sync device filter snapshot; other
-	 * callers get this device's live filter.
-	 */
-	shouldSyncPath(path: string, deviceFilter: DeviceSyncFilter = this.getDeviceSyncFilter()): boolean {
+	private getConfigSyncToggles(): ConfigSyncToggles {
+		const { syncPluginManifests, syncAppSettings, syncCssSnippets, syncBookmarks, syncPluginData } = this.settings;
+		return { syncPluginManifests, syncAppSettings, syncCssSnippets, syncBookmarks, syncPluginData };
+	}
+
+	/** The engine supplies its run snapshot. The event manager uses live settings. */
+	shouldSyncPath(path: string, scope?: SyncScope): boolean {
+		// The engine supplies config toggles. Missing keys in a snapshot are off.
+		const config = scope ? (scope.config ?? {}) : this.settings;
 		return shouldSyncVaultPath(
 			path,
-			this.settings.syncPluginManifests,
-			this.settings.syncAppSettings,
+			config.syncPluginManifests,
+			config.syncAppSettings,
 			this.app.vault.configDir,
-			this.settings.syncCssSnippets,
-			this.settings.syncBookmarks,
-			this.settings.syncPluginData,
-			deviceFilter
+			config.syncCssSnippets,
+			config.syncBookmarks,
+			config.syncPluginData,
+			scope ?? this.getDeviceSyncFilter()
 		);
 	}
 
