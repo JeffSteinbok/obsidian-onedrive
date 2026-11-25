@@ -228,7 +228,7 @@ export interface SyncEngineOptions {
 	 * Uses a minimal interface to avoid circular imports.
 	 */
 	conflictQueue?: SyncEngineConflictQueue;
-	/** Apply the engine's snapshot when deciding which paths to sync. */
+	/** Decide scope from the engine's supplied snapshot instead of live settings. */
 	shouldSyncPath?: (path: string, scope?: SyncScope) => boolean;
 	/** Returns the threshold for large delete warnings (0 = disabled) */
 	getLargeDeleteThreshold?: () => number;

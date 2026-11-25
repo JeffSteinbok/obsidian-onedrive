@@ -1574,9 +1574,26 @@ export class SyncEngine {
 				if (configEntering) comparedPaths.add(path);
 				continue;
 			}
-			const matches = await this.localContentMatchesRemote(path, item);
+			const localContent = configEntering && (item.size === undefined || item.size === localStat.size)
+				? await this.app.vault.adapter.readBinary(path)
+				: undefined;
+			let matches = configEntering && !localContent
+				? false
+				: await this.localContentMatchesRemote(path, item, localContent);
+			if (localContent && matches === undefined) {
+				// Some OneDrive accounts omit SHA-1. Compare the actual bytes before
+				// treating an untracked config file as a conflict.
+				const remoteBytes = new Uint8Array(await this.fileOps.downloadFile(item.id));
+				const localBytes = new Uint8Array(localContent);
+				matches = localBytes.length === remoteBytes.length &&
+					localBytes.every((byte, index) => byte === remoteBytes[index]);
+			}
 			if (matches === true) {
-				this.stateManager.setFileState(path, { ...this.itemToFileState(item), localMtime: localStat.mtime });
+				this.stateManager.setFileState(path, {
+					...this.itemToFileState(item),
+					localMtime: localStat.mtime,
+					...(localContent && { localContentHash: hashContent(new Uint8Array(localContent)) }),
+				});
 				this.eventManager.removeDirtyPaths([path]);
 			} else {
 				this.pushConflictResolution(operations, path, localStat, item, undefined);
@@ -1951,12 +1968,13 @@ export class SyncEngine {
 	 */
 	private async localContentMatchesRemote(
 		path: string,
-		item: OneDriveItem
+		item: OneDriveItem,
+		localContent?: ArrayBuffer
 	): Promise<boolean | undefined> {
 		const remoteSha1 = item.file?.hashes?.sha1Hash;
 		if (!remoteSha1) return undefined;
 		try {
-			const content = await this.app.vault.adapter.readBinary(path);
+			const content = localContent ?? await this.app.vault.adapter.readBinary(path);
 			const localSha1 = await sha1HexUpper(content);
 			if (!localSha1) return undefined;
 			const matches = localSha1 === remoteSha1.toUpperCase();

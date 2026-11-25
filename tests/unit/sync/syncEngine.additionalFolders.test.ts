@@ -894,6 +894,43 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 			expect(stateManager.getFileState(data)).toBeUndefined();
 		});
 
+		it.each([
+			{ matches: true, cloudBytes: [1, 2, 3] },
+			{ matches: false, cloudBytes: [3, 2, 1] },
+		])('compares content after an off/on cycle without SHA-1 (matches: $matches)', async ({ matches, cloudBytes }) => {
+			const live = toggles();
+			stateManager.setDeviceSyncScope({ config: { ...live } });
+			track(path, { localMtime: 5000, size: 3 });
+			setHiddenDisk({ [path]: { mtime: 5000, size: 3 } });
+			const engine = engineWithLiveToggles(live);
+			live.syncBookmarks = false;
+			await engine.performSync();
+			expect(stateManager.getFileState(path)).toBeUndefined();
+
+			const item = makeRemoteFile(path, { size: 3 });
+			mockClient.getDelta.mockImplementation(async (_cursor, _root, subPath) => ({
+				items: subPath ? [item] : [],
+				deltaLink: 'next',
+			}));
+			mockFileOps.downloadFile.mockResolvedValue(new Uint8Array(cloudBytes).buffer);
+			live.syncBookmarks = true;
+			await engine.performSync();
+
+			expect(mockFileOps.downloadFile).toHaveBeenCalledWith(item.id);
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			if (matches) {
+				expect(writtenPaths()).toEqual([]);
+				expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+				expect(stateManager.getFileState(path)).toMatchObject({
+					oneDriveId: item.id,
+					localMtime: 5000,
+					localContentHash: expect.any(String),
+				});
+			} else {
+				expect(writtenPaths()).toEqual([expect.stringMatching(/bookmarks \(conflict .*\)\.json$/)]);
+			}
+		});
+
 		it('re-enumerates config when enabling bookmarks and snippets, checking local copies for conflicts', async () => {
 			const live = { ...toggles(), syncAppSettings: true, syncBookmarks: false };
 			setHiddenDisk({ [path]: { mtime: 5000, size: 3 } });

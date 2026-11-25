@@ -1393,6 +1393,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 	/** The engine supplies its run snapshot. The event manager uses live settings. */
 	shouldSyncPath(path: string, scope?: SyncScope): boolean {
+		// The engine supplies config toggles. Missing keys in a snapshot are off.
 		const config = scope ? (scope.config ?? {}) : this.settings;
 		return shouldSyncVaultPath(
 			path,
