@@ -90,6 +90,14 @@ export interface OneDriveUser {
 // Sync Types
 // ============================================================================
 
+export type ConfigSyncToggles = Pick<PluginSettings,
+	'syncPluginManifests' | 'syncAppSettings' | 'syncCssSnippets' | 'syncBookmarks' | 'syncPluginData'
+>;
+
+export interface SyncScope extends DeviceSyncFilter {
+	config?: Partial<ConfigSyncToggles>;
+}
+
 export interface SyncState {
 	lastSyncTime: number; // Unix timestamp in milliseconds
 	fileStates: Map<string, FileState>;
@@ -102,9 +110,8 @@ export interface SyncState {
 	// app-folder query (issue #97). Legacy tokens minted before the fix lack this
 	// and are tossed once so a fresh, subfolder-scoped cursor replaces them.
 	obsidianDeltaLink?: string; // Separate delta cursor for .obsidian scope
-	// Per-device include/exclude filter in effect at the last sync, used to
-	// detect folders entering scope (see SyncEngine.applyDeviceScopeChanges).
-	deviceSyncScope?: { includeHiddenFolders?: string[]; excludeFolders?: string[] };
+	// Scope used to detect paths entering sync on this device.
+	deviceSyncScope?: SyncScope;
 }
 
 export interface FileState {
@@ -221,14 +228,8 @@ export interface SyncEngineOptions {
 	 * Uses a minimal interface to avoid circular imports.
 	 */
 	conflictQueue?: SyncEngineConflictQueue;
-	/**
-	 * Filter function to determine which paths should sync. The engine
-	 * always passes the device filter to apply (the per-run snapshot during
-	 * performSync and the reconcile runs); implementations must use it
-	 * instead of reading live settings. When it is omitted (callers outside
-	 * the engine, such as the EventManager), use this device's live filter.
-	 */
-	shouldSyncPath?: (path: string, deviceFilter?: DeviceSyncFilter) => boolean;
+	/** Apply the engine's snapshot when deciding which paths to sync. */
+	shouldSyncPath?: (path: string, scope?: SyncScope) => boolean;
 	/** Returns the threshold for large delete warnings (0 = disabled) */
 	getLargeDeleteThreshold?: () => number;
 	/** Handler called when large delete threshold is exceeded */
@@ -257,6 +258,8 @@ export interface SyncEngineOptions {
 	getAdditionalSyncFolders?: () => string[];
 	/** This device's include/exclude filter (lives in never-synced data.json). */
 	getDeviceSyncFilter?: () => DeviceSyncFilter;
+	/** Reads the config-file opt-ins at the start of each run. */
+	getConfigSyncToggles?: () => ConfigSyncToggles;
 	/**
 	 * True when running in app-folder mode. Used to detect and retire a legacy,
 	 * unscoped app-folder delta cursor that could return sibling vaults' files

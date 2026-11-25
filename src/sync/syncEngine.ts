@@ -74,6 +74,8 @@ import {
 	SyncEngineOptions,
 	SyncEngineConflictQueue,
 	NotificationLevel,
+	type ConfigSyncToggles,
+	type SyncScope,
 } from '../types';
 import { logger } from '../utils/logger';
 import { isDeferrableError } from '../utils/errors';
@@ -185,11 +187,21 @@ interface SyncOperationFailure {
 	deferrable: boolean;
 }
 
-/** A copy of a device filter that later settings edits cannot change. */
-function copyDeviceFilter(filter: DeviceSyncFilter): { includeHiddenFolders: string[]; excludeFolders: string[] } {
+const ALL_CONFIG_SYNC_TOGGLES: ConfigSyncToggles = {
+	syncPluginManifests: true,
+	syncAppSettings: true,
+	syncCssSnippets: true,
+	syncBookmarks: true,
+	syncPluginData: true,
+};
+const CONFIG_SYNC_TOGGLES = Object.keys(ALL_CONFIG_SYNC_TOGGLES) as (keyof ConfigSyncToggles)[];
+
+/** Copy the arrays and config settings so later edits cannot change the run. */
+function copySyncScope(scope: SyncScope) {
 	return {
-		includeHiddenFolders: [...(filter.includeHiddenFolders ?? [])],
-		excludeFolders: [...(filter.excludeFolders ?? [])],
+		includeHiddenFolders: [...(scope.includeHiddenFolders ?? [])],
+		excludeFolders: [...(scope.excludeFolders ?? [])],
+		...(scope.config && { config: { ...scope.config } }),
 	};
 }
 
@@ -232,13 +244,9 @@ export class SyncEngine {
 	private readonly pluginVersion: string;
 	private readonly isPullOnlyMode: () => boolean;
 	private readonly isAppFolder: boolean;
-	private readonly getDeviceSyncFilter: () => DeviceSyncFilter;
-	/**
-	 * The device filter recorded at Phase 0 of the running sync. The whole
-	 * sync uses it, so a settings change mid-sync waits for the next sync,
-	 * where applyDeviceScopeChanges sees it and handles the transition.
-	 */
-	private scopeSnapshot?: DeviceSyncFilter;
+	private readonly readSyncScope: () => SyncScope;
+	private readonly baseShouldSyncPath: NonNullable<SyncEngineOptions['shouldSyncPath']>;
+	private scopeSnapshot?: SyncScope;
 
 	constructor(
 		private app: App,
@@ -253,20 +261,26 @@ export class SyncEngine {
 		// Apply options with defaults
 		this.remoteRoot = options.remoteRoot ?? '';
 		const getAdditionalSyncFolders = options.getAdditionalSyncFolders ?? (() => []);
-		this.getDeviceSyncFilter =
+		const getDeviceSyncFilter =
 			options.getDeviceSyncFilter ?? (() => ({ includeHiddenFolders: getAdditionalSyncFolders() }));
+		this.readSyncScope = () => ({
+			...getDeviceSyncFilter(),
+			config: options.getConfigSyncToggles?.(),
+		});
 		this.conflictQueue = options.conflictQueue;
-		const baseShouldSyncPath =
+		this.baseShouldSyncPath =
 			options.shouldSyncPath ??
-			((path: string, filter?: DeviceSyncFilter) =>
-				shouldSyncVaultPath(path, false, false, configDir, false, false, false, filter ?? {}));
-		// The device filter part of the scope always comes from
-		// currentDeviceFilter(): during a sync that is the Phase 0 snapshot
-		// alone, never the live settings. A folder added or removed mid-sync
-		// therefore takes effect at the next sync's Phase 0
-		// (applyDeviceScopeChanges), so the local and remote sides of one
-		// sync are always decided by the same scope.
-		this.shouldSyncPath = (path) => baseShouldSyncPath(path, this.currentDeviceFilter());
+			((path, scope) => shouldSyncVaultPath(
+				path,
+				scope?.config?.syncPluginManifests,
+				scope?.config?.syncAppSettings,
+				configDir,
+				scope?.config?.syncCssSnippets,
+				scope?.config?.syncBookmarks,
+				scope?.config?.syncPluginData,
+				scope
+			));
+		this.shouldSyncPath = (path) => this.baseShouldSyncPath(path, this.currentSyncScope());
 		this.getLargeDeleteThreshold = options.getLargeDeleteThreshold ?? (() => 0);
 		this.largeDeleteWarningHandler = options.largeDeleteWarningHandler;
 		this.onProgress = options.onProgress;
@@ -283,24 +297,24 @@ export class SyncEngine {
 		this.remoteRootOnDrive = options.remoteRootOnDrive ?? this.remoteRoot;
 	}
 
-	private currentDeviceFilter(): DeviceSyncFilter {
-		return this.scopeSnapshot ?? this.getDeviceSyncFilter();
+	private currentSyncScope(): SyncScope {
+		return this.scopeSnapshot ?? this.readSyncScope();
 	}
 
 	private getAdditionalSyncFolders(): string[] {
-		return [...(this.currentDeviceFilter().includeHiddenFolders ?? [])];
+		return [...(this.currentSyncScope().includeHiddenFolders ?? [])];
 	}
 
 	/** Bulk folder mutations must preserve excluded descendants too. */
 	private folderContainsExclusion(path: string): boolean {
 		const folder = normalizePath(path).replace(/\/+$/, '');
-		return this.currentDeviceFilter().excludeFolders?.some(
+		return this.currentSyncScope().excludeFolders?.some(
 			(excluded) => excluded === folder || excluded.startsWith(`${folder}/`)
 		) ?? false;
 	}
 
 	/**
-	 * Apply changes to this device's include/exclude filter since the last
+	 * Apply changes to the sync scope since the last
 	 * sync. Runs once at the start of every sync, so it also covers settings
 	 * changed while no sync was running, or edited directly in data.json.
 	 *
@@ -314,13 +328,18 @@ export class SyncEngine {
 	 *   the conflict path (or download), instead of being blindly replaced by
 	 *   an upload of the untracked local file.
 	 */
-	private applyDeviceScopeChanges(): readonly string[] {
-		const filter = this.getDeviceSyncFilter();
+	private applyDeviceScopeChanges() {
+		const filter = this.currentSyncScope();
 		const previous = this.stateManager.getDeviceSyncScope();
+		const allConfigScope = { ...filter, config: ALL_CONFIG_SYNC_TOGGLES };
 
 		let pruned = 0;
 		for (const path of this.stateManager.getTrackedPaths()) {
-			if (isOutOfDeviceScope(path, this.configDir, filter)) {
+			if (
+				isOutOfDeviceScope(path, this.configDir, filter) ||
+				(this.isOutsideConfigScope(path) &&
+					this.baseShouldSyncPath(path, allConfigScope))
+			) {
 				this.stateManager.removeFileState(path);
 				pruned++;
 			}
@@ -341,8 +360,40 @@ export class SyncEngine {
 				this.stateManager.setObsidianDeltaLink(undefined);
 			}
 		}
-		this.scopeSnapshot = copyDeviceFilter(filter);
-		return (previous?.excludeFolders ?? []).filter((folder) => !nextExclusions.has(folder));
+		// Older state has no recorded toggles. Refresh the enabled config stream
+		// once so untracked paths are compared with cloud content before upload.
+		const previousConfigScope = { ...filter, config: previous?.config ?? {} };
+		const configEntering = CONFIG_SYNC_TOGGLES.some(
+			(key) => filter.config?.[key] && !previousConfigScope.config[key]
+		);
+		if (configEntering) {
+			this.stateManager.setObsidianDeltaLink(undefined);
+		}
+		this.rememberDisabledConfigToggles();
+
+		return {
+			reenteredFolders: (previous?.excludeFolders ?? []).filter((folder) => !nextExclusions.has(folder)),
+			configPathEntering: configEntering
+				? (path: string) => this.isObsidianPath(path) &&
+					!this.baseShouldSyncPath(path, previousConfigScope)
+				: undefined,
+		};
+	}
+
+	private isOutsideConfigScope(path: string): boolean {
+		return !!this.currentSyncScope().config && this.isObsidianPath(path) && !this.shouldSyncPath(path);
+	}
+
+	/** Preserve disabled categories even if the run drops tracking and then aborts. */
+	private rememberDisabledConfigToggles(): void {
+		const { config } = this.currentSyncScope();
+		const previous = this.stateManager.getDeviceSyncScope();
+		if (!config || !previous?.config) return;
+		const pending = { ...previous.config };
+		for (const key of CONFIG_SYNC_TOGGLES) {
+			if (!config[key]) pending[key] = false;
+		}
+		this.stateManager.setDeviceSyncScope({ ...previous, config: pending });
 	}
 
 	private pruneOutOfScopeFolderStates(filter: DeviceSyncFilter): number {
@@ -358,27 +409,32 @@ export class SyncEngine {
 
 	/** Keep exclusions pending for regular sync after reconcile drops their state. */
 	private rememberReconcileExclusions(): void {
-		const filter = this.currentDeviceFilter();
+		const filter = this.currentSyncScope();
 		this.pruneOutOfScopeFolderStates(filter);
+		this.rememberDisabledConfigToggles();
 		if (!filter.excludeFolders?.length) return;
-		const previous = copyDeviceFilter(this.stateManager.getDeviceSyncScope() ?? {});
+		const previous = copySyncScope(this.stateManager.getDeviceSyncScope() ?? {});
 		previous.excludeFolders = [...new Set([...previous.excludeFolders, ...filter.excludeFolders])];
 		this.stateManager.setDeviceSyncScope(previous);
 	}
 
 	/**
-	 * Pin the device filter for a reconcile run, so its remote listing and
-	 * its local scan are decided by the same scope even if the user changes
-	 * the folder list while it runs. Rebuilding file state also records the
+	 * Pin the sync scope for a reconcile run, so its remote listing and
+	 * its local scan use the same settings throughout the run. Rebuilding file state also records the
 	 * active exclusions so regular sync can re-enumerate them on re-entry.
 	 */
 	private async withReconcileScopeSnapshot(run: () => Promise<void>): Promise<void> {
-		this.scopeSnapshot = copyDeviceFilter(this.getDeviceSyncFilter());
+		this.scopeSnapshot = copySyncScope(this.readSyncScope());
 		try {
 			await run();
 		} finally {
 			this.scopeSnapshot = undefined;
 		}
+	}
+
+	private hasConfigScope(): boolean {
+		return ['community-plugins.json', 'app.json', 'bookmarks.json', 'snippets']
+			.some((path) => this.shouldSyncPath(`${this.configDir}/${path}`));
 	}
 
 	private isObsidianPath(path: string): boolean {
@@ -423,11 +479,12 @@ export class SyncEngine {
 		};
 
 		try {
+			this.scopeSnapshot = copySyncScope(this.readSyncScope());
 			progress(t('progress.starting'));
 
 			// Phase 0: Apply per-device scope changes, then log inventory drift
 			// (tracked state vs actual vault files)
-			const reenteredFolders = this.applyDeviceScopeChanges();
+			const { reenteredFolders, configPathEntering } = this.applyDeviceScopeChanges();
 			this.logInventoryDrift();
 
 			// Phase 1: Collect local dirty files, filtering out .syncIgnore matches
@@ -473,7 +530,8 @@ export class SyncEngine {
 				localChanges,
 				plannableRemoteChanges,
 				isFirstSync,
-				reenteredFolders
+				reenteredFolders,
+				configPathEntering
 			);
 
 			// On first sync the dirty queue is empty, so walk the vault and add
@@ -519,7 +577,7 @@ export class SyncEngine {
 					logger.info('Everything up to date — no operations needed');
 				}
 				if (folderChanges.length === 0 && deletedFolderPaths.length === 0) {
-					this.stateManager.setDeviceSyncScope(copyDeviceFilter(this.currentDeviceFilter()));
+					this.stateManager.setDeviceSyncScope(copySyncScope(this.currentSyncScope()));
 					this.stateManager.setDeltaLink(deltaResponse.deltaLink, true);
 					if (obsidianDeltaResponse) {
 						this.stateManager.setObsidianDeltaLink(obsidianDeltaResponse.deltaLink);
@@ -556,10 +614,14 @@ export class SyncEngine {
 				this.eventManager.removeDirtyPaths(downloadedPaths);
 			}
 
-			const completedScope = copyDeviceFilter(this.currentDeviceFilter());
+			const completedScope = copySyncScope(this.currentSyncScope());
 			if (failedPaths.length > 0 && reenteredFolders.length > 0) {
 				// Keep re-entry pending so a failed conflict is re-planned against a full listing.
 				completedScope.excludeFolders.push(...reenteredFolders);
+			}
+			if (configPathEntering && failedPaths.some(configPathEntering)) {
+				// Retry the full config listing if an operation on a newly enabled path failed.
+				completedScope.config = this.stateManager.getDeviceSyncScope()?.config;
 			}
 			this.stateManager.setDeviceSyncScope(completedScope);
 			this.stateManager.setDeltaLink(deltaResponse.deltaLink, true);
@@ -703,17 +765,17 @@ export class SyncEngine {
 		const ignoredLocalPaths: string[] = [];
 		const folderChanges: LocalChange[] = [];
 		const localChanges = allLocalChanges.filter((change) => {
-			// Vault/raw events can queue paths in a folder added to the
-			// device filter after this sync's Phase 0. Leave them to the next
-			// sync, whose config scan rediscovers them once the folder has
-			// entered scope (and the remote has been re-enumerated).
+			// Live vault/raw events can queue paths enabled after Phase 0.
+			// The next sync rediscovers them after refreshing the remote listing.
 			if (
 				this.scopeSnapshot &&
 				(isOutOfDeviceScope(change.path, this.configDir, this.scopeSnapshot) ||
+					this.isOutsideConfigScope(change.path) ||
 					(change.oldPath !== undefined &&
-						isOutOfDeviceScope(change.oldPath, this.configDir, this.scopeSnapshot)))
+						(isOutOfDeviceScope(change.oldPath, this.configDir, this.scopeSnapshot) ||
+							this.isOutsideConfigScope(change.oldPath))))
 			) {
-				logger.debug(`Skipping ${change.path}: outside this sync's device scope`);
+				logger.debug(`Skipping ${change.path}: outside this run's sync scope`);
 				return false;
 			}
 			if (this.shouldIgnorePath(change.path, ignoreMatchers)) {
@@ -1154,9 +1216,7 @@ export class SyncEngine {
 		progress(t('progress.fetchingRemoteChanges'));
 		this.retireLegacyUnscopedDeltaLink();
 		const deltaLink = this.stateManager.getDeltaLink();
-		const shouldSyncObsidianScope =
-			this.shouldSyncPath(`${this.configDir}/community-plugins.json`) ||
-			this.shouldSyncPath(`${this.configDir}/app.json`);
+		const shouldSyncObsidianScope = this.hasConfigScope();
 		const isFirstSync = this.stateManager.isFirstSync();
 		logger.info(`Delta query: isFirstSync=${isFirstSync}, hasDeltaLink=${!!deltaLink}`);
 		const obsidianDeltaLink = this.stateManager.getObsidianDeltaLink();
@@ -1260,7 +1320,7 @@ export class SyncEngine {
 				const folderPath = this.remotePathToVaultPath(item);
 				if (
 					item.id && folderPath &&
-					!isOutOfDeviceScope(folderPath, this.configDir, this.currentDeviceFilter(), true)
+					!isOutOfDeviceScope(folderPath, this.configDir, this.currentSyncScope(), true)
 				) {
 					const previousPath = this.stateManager.getFolderPathById(item.id);
 					if (previousPath && previousPath !== folderPath) {
@@ -1487,7 +1547,8 @@ export class SyncEngine {
 		localChanges: LocalChange[],
 		remoteChanges: OneDriveItem[],
 		isFirstSync: boolean,
-		reenteredFolders: readonly string[] = []
+		reenteredFolders: readonly string[] = [],
+		configPathEntering?: (path: string) => boolean
 	): Promise<SyncOperation[]> {
 		const operations: SyncOperation[] = [];
 
@@ -1501,12 +1562,18 @@ export class SyncEngine {
 		// Paths returning to scope have no shared base. Compare any surviving
 		// local file with the current remote item before processing dirty events.
 		const comparedPaths = new Set<string>();
-		for (const [path, item] of reenteredFolders.length > 0 ? remoteByPath : []) {
+		for (const [path, item] of reenteredFolders.length > 0 || configPathEntering ? remoteByPath : []) {
 			if (!item.file || item.deleted || this.stateManager.getFileState(path)) continue;
-			if (!reenteredFolders.some((folder) => path === folder || path.startsWith(`${folder}/`))) continue;
+			const configEntering = configPathEntering?.(path);
+			if (!configEntering &&
+				!reenteredFolders.some((folder) => path === folder || path.startsWith(`${folder}/`))) continue;
 			if (this.conflictQueue?.hasConflict(path)) continue;
 			const localStat = await this.getLocalFileStat(path, this.app.vault.getAbstractFileByPath(path));
-			if (!localStat) continue;
+			if (!localStat) {
+				// Stale events from before the opt-in must not suppress a fresh download.
+				if (configEntering) comparedPaths.add(path);
+				continue;
+			}
 			const matches = await this.localContentMatchesRemote(path, item);
 			if (matches === true) {
 				this.stateManager.setFileState(path, { ...this.itemToFileState(item), localMtime: localStat.mtime });
@@ -2362,6 +2429,9 @@ export class SyncEngine {
 		const adapter = this.app.vault.adapter;
 		for (const folderPath of sorted) {
 			if (this.folderContainsExclusion(folderPath)) continue;
+			// The cloud folder may still contain plugin data this device opted out of.
+			if (this.shouldSyncPath(`${folderPath}/manifest.json`) &&
+				this.isOutsideConfigScope(`${folderPath}/data.json`)) continue;
 			try {
 				const stat = await adapter.stat(folderPath);
 				if (stat) continue;
@@ -2516,7 +2586,7 @@ export class SyncEngine {
 
 		for (const { oldPath, newPath } of sorted) {
 			if (!oldPath || !newPath || oldPath === newPath) continue;
-			const filter = this.currentDeviceFilter();
+			const filter = this.currentSyncScope();
 			if (
 				isOutOfDeviceScope(oldPath, this.configDir, filter, true) ||
 				isOutOfDeviceScope(newPath, this.configDir, filter, true) ||
@@ -3160,9 +3230,7 @@ export class SyncEngine {
 			// 8. Advance delta cursors so the next normal sync starts clean.
 			progress(t('progress.advancingDeltaCursor'));
 			try {
-				const shouldSyncObsidianScope =
-					this.shouldSyncPath(`${this.configDir}/community-plugins.json`) ||
-					this.shouldSyncPath(`${this.configDir}/app.json`);
+				const shouldSyncObsidianScope = this.hasConfigScope();
 				// The two delta streams are independent — fetch them in parallel
 				const [newDelta, newObs] = await Promise.all([
 					this.oneDriveClient.getDelta(undefined, this.remoteRoot),
@@ -3385,9 +3453,7 @@ export class SyncEngine {
 			// 8. Advance delta cursors so the next normal sync starts clean.
 			progress(t('progress.advancingDeltaCursor'));
 			try {
-				const shouldSyncObsidianScope =
-					this.shouldSyncPath(`${this.configDir}/community-plugins.json`) ||
-					this.shouldSyncPath(`${this.configDir}/app.json`);
+				const shouldSyncObsidianScope = this.hasConfigScope();
 				// The two delta streams are independent — fetch them in parallel
 				const [newDelta, newObs] = await Promise.all([
 					this.oneDriveClient.getDelta(undefined, this.remoteRoot),
