@@ -54,7 +54,7 @@
  * @see ConflictResolver for conflict handling strategies
  */
 
-import { App, Notice, TFile, TFolder } from 'obsidian';
+import { App, Notice, TAbstractFile, TFile, TFolder } from 'obsidian';
 import { FileOperations } from '../api/fileOperations';
 import { OneDriveClient } from '../api/oneDriveClient';
 import { SyncStateManager } from './syncState';
@@ -86,6 +86,10 @@ import {
 	stripGraphPrefix,
 	shouldSyncVaultPath,
 	getAllSyncableConfigPaths,
+	isInAdditionalSyncFolder,
+	isOutOfDeviceScope,
+	getFoldersEnteringScope,
+	type DeviceSyncFilter,
 } from '../utils/pathUtils';
 import { ProgressNotice } from '../ui/progressNotice';
 import { t } from '../i18n';
@@ -180,8 +184,24 @@ interface SyncOperationFailure {
 	deferrable: boolean;
 }
 
+/** A copy of a device filter that later settings edits cannot change. */
+function copyDeviceFilter(filter: DeviceSyncFilter): { includeHiddenFolders: string[]; excludeFolders: string[] } {
+	return {
+		includeHiddenFolders: [...(filter.includeHiddenFolders ?? [])],
+		excludeFolders: [...(filter.excludeFolders ?? [])],
+	};
+}
+
 /**
  * Main sync engine
+ *
+ * Device scope: every entry point that touches the remote (performSync,
+ * reconcileFromCloud, reconcileToCloud) snapshots the device sync filter
+ * when it starts, and that snapshot alone decides scope for the whole run.
+ * A folder added or removed while a run is in progress takes effect in the
+ * next run. Only performSync records deviceSyncScope and applies scope
+ * transitions (prune / cursor reset); the reconcile runs rebuild tracked
+ * state from scratch, and the next performSync's Phase 0 handles the rest.
  */
 export class SyncEngine {
 	// Concurrent operations limit — overridable via experimental settings.
@@ -212,6 +232,13 @@ export class SyncEngine {
 	private readonly pluginVersion: string;
 	private readonly isPullOnlyMode: () => boolean;
 	private readonly isAppFolder: boolean;
+	private readonly getDeviceSyncFilter: () => DeviceSyncFilter;
+	/**
+	 * The device filter recorded at Phase 0 of the running sync. The whole
+	 * sync uses it, so a settings change mid-sync waits for the next sync,
+	 * where applyDeviceScopeChanges sees it and handles the transition.
+	 */
+	private scopeSnapshot?: DeviceSyncFilter;
 
 	constructor(
 		private app: App,
@@ -225,8 +252,21 @@ export class SyncEngine {
 	) {
 		// Apply options with defaults
 		this.remoteRoot = options.remoteRoot ?? '';
+		const getAdditionalSyncFolders = options.getAdditionalSyncFolders ?? (() => []);
+		this.getDeviceSyncFilter =
+			options.getDeviceSyncFilter ?? (() => ({ includeHiddenFolders: getAdditionalSyncFolders() }));
 		this.conflictQueue = options.conflictQueue;
-		this.shouldSyncPath = options.shouldSyncPath ?? ((path) => shouldSyncVaultPath(path, false, false, configDir));
+		const baseShouldSyncPath =
+			options.shouldSyncPath ??
+			((path: string, filter?: DeviceSyncFilter) =>
+				shouldSyncVaultPath(path, false, false, configDir, false, false, false, filter ?? {}));
+		// The device filter part of the scope always comes from
+		// currentDeviceFilter(): during a sync that is the Phase 0 snapshot
+		// alone, never the live settings. A folder added or removed mid-sync
+		// therefore takes effect at the next sync's Phase 0
+		// (applyDeviceScopeChanges), so the local and remote sides of one
+		// sync are always decided by the same scope.
+		this.shouldSyncPath = (path) => baseShouldSyncPath(path, this.currentDeviceFilter());
 		this.getLargeDeleteThreshold = options.getLargeDeleteThreshold ?? (() => 0);
 		this.largeDeleteWarningHandler = options.largeDeleteWarningHandler;
 		this.onProgress = options.onProgress;
@@ -241,6 +281,78 @@ export class SyncEngine {
 		// For shared drives, delta items have paths relative to the remote drive root,
 		// so we need the folder name on that drive for path stripping
 		this.remoteRootOnDrive = options.remoteRootOnDrive ?? this.remoteRoot;
+	}
+
+	private currentDeviceFilter(): DeviceSyncFilter {
+		return this.scopeSnapshot ?? this.getDeviceSyncFilter();
+	}
+
+	private getAdditionalSyncFolders(): string[] {
+		return [...(this.currentDeviceFilter().includeHiddenFolders ?? [])];
+	}
+
+	/**
+	 * Apply changes to this device's include/exclude filter since the last
+	 * sync. Runs once at the start of every sync, so it also covers settings
+	 * changed while no sync was running, or edited directly in data.json.
+	 *
+	 * - Leaving scope: drop the local tracking for every path the filter now
+	 *   rejects, with no remote operation. A folder that is later re-listed is
+	 *   then a fresh opt-in, so files deleted locally in the meantime are not
+	 *   turned into remote deletes.
+	 * - Entering scope: reset the delta cursor (tracked state is kept) so
+	 *   this sync enumerates the remote. Files another device uploaded while
+	 *   this device was out of scope then meet this device's local copies in
+	 *   the conflict path (or download), instead of being blindly replaced by
+	 *   an upload of the untracked local file.
+	 */
+	private applyDeviceScopeChanges(): void {
+		const filter = this.getDeviceSyncFilter();
+		const previous = this.stateManager.getDeviceSyncScope();
+
+		let pruned = 0;
+		for (const path of this.stateManager.getTrackedPaths()) {
+			if (isOutOfDeviceScope(path, this.configDir, filter)) {
+				this.stateManager.removeFileState(path);
+				pruned++;
+			}
+		}
+		for (const [, folderPath] of [...this.stateManager.getAllFolderStates()]) {
+			if (isOutOfDeviceScope(folderPath, this.configDir, filter, true)) {
+				this.stateManager.removeFolderStateByPath(folderPath);
+				pruned++;
+			}
+		}
+		if (pruned > 0) {
+			logger.info(`Stopped tracking ${pruned} path(s) now outside this device's sync scope (no remote changes)`);
+		}
+
+		const entering = getFoldersEnteringScope(previous, filter);
+		if (entering.length > 0 && this.stateManager.getDeltaLink()) {
+			logger.info(
+				`Sync scope gained ${entering.join(', ')} — re-enumerating the remote this sync`
+			);
+			this.stateManager.resetDeltaLink();
+		}
+		const snapshot = copyDeviceFilter(filter);
+		this.stateManager.setDeviceSyncScope(snapshot);
+		this.scopeSnapshot = snapshot;
+	}
+
+	/**
+	 * Pin the device filter for a reconcile run, so its remote listing and
+	 * its local scan are decided by the same scope even if the user changes
+	 * the folder list while it runs. Reconcile rebuilds tracked state from
+	 * scratch (clearFileStates), so no prune or cursor reset is needed, and
+	 * deviceSyncScope is left for the next performSync's Phase 0.
+	 */
+	private async withReconcileScopeSnapshot(run: () => Promise<void>): Promise<void> {
+		this.scopeSnapshot = copyDeviceFilter(this.getDeviceSyncFilter());
+		try {
+			await run();
+		} finally {
+			this.scopeSnapshot = undefined;
+		}
 	}
 
 	private isObsidianPath(path: string): boolean {
@@ -287,7 +399,9 @@ export class SyncEngine {
 		try {
 			progress(t('progress.starting'));
 
-			// Phase 0: Log inventory drift (tracked state vs actual vault files)
+			// Phase 0: Apply per-device scope changes, then log inventory drift
+			// (tracked state vs actual vault files)
+			this.applyDeviceScopeChanges();
 			this.logInventoryDrift();
 
 			// Phase 1: Collect local dirty files, filtering out .syncIgnore matches
@@ -502,6 +616,8 @@ export class SyncEngine {
 				new Notice(t('notices.sync.engineFailed', { message: errorMsg }));
 			}
 			throw error;
+		} finally {
+			this.scopeSnapshot = undefined;
 		}
 	}
 
@@ -553,6 +669,19 @@ export class SyncEngine {
 		const ignoredLocalPaths: string[] = [];
 		const folderChanges: LocalChange[] = [];
 		const localChanges = allLocalChanges.filter((change) => {
+			// Vault/raw events can queue paths in a folder added to the
+			// device filter after this sync's Phase 0. Leave them to the next
+			// sync, whose config scan rediscovers them once the folder has
+			// entered scope (and the remote has been re-enumerated).
+			if (
+				this.scopeSnapshot &&
+				(isOutOfDeviceScope(change.path, this.configDir, this.scopeSnapshot) ||
+					(change.oldPath !== undefined &&
+						isOutOfDeviceScope(change.oldPath, this.configDir, this.scopeSnapshot)))
+			) {
+				logger.debug(`Skipping ${change.path}: outside this sync's device scope`);
+				return false;
+			}
 			if (this.shouldIgnorePath(change.path, ignoreMatchers)) {
 				ignoredLocalPaths.push(change.path);
 				return false;
@@ -576,7 +705,13 @@ export class SyncEngine {
 		// aren't TFile instances). Detect changes by comparing their
 		// current mtime/size against tracked sync state. Pass the dirty
 		// snapshot we already took so both phases see the same queue.
-		const dirtyPaths = new Set(allLocalChanges.map((change) => change.path));
+		// Include rename sources: the old path of a queued rename must not be
+		// re-detected as a delete by the config / additional-folder scan.
+		const dirtyPaths = new Set<string>();
+		for (const change of allLocalChanges) {
+			dirtyPaths.add(change.path);
+			if (change.oldPath) dirtyPaths.add(change.oldPath);
+		}
 		const configChanges = await this.detectConfigFileChanges(ignoreMatchers, dirtyPaths);
 		localChanges.push(...configChanges);
 
@@ -824,7 +959,8 @@ export class SyncEngine {
 		const allConfigPaths = await getAllSyncableConfigPaths(
 			this.configDir,
 			adapter,
-			(path) => this.shouldSyncPath(path)
+			(path) => this.shouldSyncPath(path),
+			this.getAdditionalSyncFolders()
 		);
 
 		const checkedPaths = new Set<string>();
@@ -882,11 +1018,12 @@ export class SyncEngine {
 					// File was tracked but no longer exists → local delete
 					changes.push({ path, type: LocalChangeType.DELETE });
 				}
-			} catch {
-				// stat failed — if tracked, treat as delete
-				if (trackedState) {
-					changes.push({ path, type: LocalChangeType.DELETE });
-				}
+			} catch (error) {
+				// stat or read threw (EPERM on a Windows hidden file, #209, or
+				// EBUSY while another program writes it). That says nothing
+				// about whether the file exists — Obsidian's stat returns null
+				// for a missing file — so never turn it into a remote delete.
+				logger.warn(`Could not read ${path}; skipping it this sync`, error);
 			}
 		}
 
@@ -907,9 +1044,37 @@ export class SyncEngine {
 					logger.info(`Tracked plugin file no longer exists: ${path}`);
 					changes.push({ path, type: LocalChangeType.DELETE });
 				}
-			} catch {
-				logger.info(`Tracked plugin file no longer exists: ${path}`);
-				changes.push({ path, type: LocalChangeType.DELETE });
+			} catch (error) {
+				// A stat exception is not proof the file is gone (see R1).
+				logger.warn(`Could not stat ${path}; skipping delete detection this sync`, error);
+			}
+		}
+
+		// Tracked files inside additional (hidden) sync folders that no longer
+		// exist locally won't appear in allConfigPaths — detect the deletes.
+		const additionalFolders = this.getAdditionalSyncFolders();
+		if (additionalFolders.length > 0) {
+			for (const path of this.stateManager.getTrackedPaths()) {
+				if (!isInAdditionalSyncFolder(path, additionalFolders)) continue;
+				if (checkedPaths.has(path)) continue;
+				if (dirtyPaths.has(path)) continue;
+				if (!this.shouldSyncPath(path)) continue;
+				if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
+				// Indexed vault files are handled by vault events, never here.
+				if (this.app.vault.getAbstractFileByPath(path) instanceof TFile) continue;
+				let stat: Awaited<ReturnType<typeof adapter.stat>>;
+				try {
+					stat = await adapter.stat(path);
+				} catch (error) {
+					// Obsidian returns null for a missing file. An exception
+					// (e.g. EPERM on a Windows hidden file, #209) says nothing
+					// about existence, so never turn it into a remote delete.
+					logger.warn(`Could not stat ${path}; skipping delete detection this sync`, error);
+					continue;
+				}
+				if (!stat || stat.type !== 'file') {
+					changes.push({ path, type: LocalChangeType.DELETE });
+				}
 			}
 		}
 
@@ -1145,7 +1310,8 @@ export class SyncEngine {
 		const configPaths = await getAllSyncableConfigPaths(
 			this.configDir,
 			adapter,
-			(path) => this.shouldSyncPath(path)
+			(path) => this.shouldSyncPath(path),
+			this.getAdditionalSyncFolders()
 		);
 		for (const path of configPaths) {
 			if (remoteCoveredPaths.has(path)) continue;
@@ -1438,62 +1604,34 @@ export class SyncEngine {
 						localState: knownState,
 						remoteState: this.itemToFileState(remoteItem),
 					});
-				} else if (file instanceof TFile && knownState) {
-					// Remote content genuinely changed — real conflict
-					const conflictInfo: ConflictInfo = {
-						path: change.path,
-						localModifiedTime: file.stat.mtime,
-						remoteModifiedTime: new Date(remoteItem.lastModifiedDateTime).getTime(),
-						localSize: file.stat.size,
-						remoteSize: remoteItem.size || 0,
-					};
-					const resolution = this.conflictResolver.resolveConflict(conflictInfo);
-					const remoteState = this.itemToFileState(remoteItem);
-					switch (resolution.kind) {
-						case 'duplicate':
-							// CREATE_DUPLICATE: preserve the remote version under a
-							// new dated name, then converge the base path by
-							// uploading the local version. Without this converging
-							// upload the base file keeps its stale tracked hash, so
-							// it is re-detected as a conflict on every subsequent
-							// sync and a fresh dated copy is spawned each cycle —
-							// the runaway duplication in #128.
-							operations.push({
-								path: resolution.duplicatePath,
-								direction: SyncDirection.DOWNLOAD,
-								remoteState,
-								// The copy is a brand-new file with no remote
-								// counterpart; it must not be tracked under the
-								// base item's id (#177, #178).
-								isConflictCopy: true,
-							});
-							operations.push({
-								path: change.path,
-								direction: SyncDirection.UPLOAD,
-								localState: knownState,
-								remoteState,
-							});
-							break;
-						case 'converge':
-							operations.push({
-								path: change.path,
-								direction: resolution.direction,
-								localState: knownState,
-								remoteState,
-							});
-							break;
-						case 'manual':
-							operations.push({
-								path: change.path,
-								direction: SyncDirection.CONFLICT,
-								localState: knownState,
-								remoteState,
-							});
-							break;
-					}
 				} else {
-					// No known state, upload local
-					operations.push({ path: change.path, direction: SyncDirection.UPLOAD });
+					// Files Obsidian does not index (config files, opted-in
+					// hidden folders) have no TFile; read their stat through
+					// the adapter so they get the same conflict handling.
+					const localStat = await this.getLocalFileStat(change.path, file);
+					let isConflict = !!(localStat && knownState);
+					if (localStat && !knownState && !(file instanceof TFile)) {
+						// No shared base (e.g. two devices that both had the
+						// folder before opting in). Identical content needs no
+						// work; anything else must not blindly overwrite remote.
+						const matches = await this.localContentMatchesRemote(change.path, remoteItem);
+						if (matches === true) {
+							logger.debug(`Local ${change.path} already matches remote — tracking without transfer`);
+							this.stateManager.setFileState(change.path, {
+								...this.itemToFileState(remoteItem),
+								localMtime: localStat.mtime,
+							});
+							remoteByPath.delete(change.path);
+							continue;
+						}
+						isConflict = true;
+					}
+					if (isConflict && localStat) {
+						this.pushConflictResolution(operations, change.path, localStat, remoteItem, knownState);
+					} else {
+						// No known state, upload local
+						operations.push({ path: change.path, direction: SyncDirection.UPLOAD });
+					}
 				}
 				// Remove from remote map so we don't process it again
 				remoteByPath.delete(change.path);
@@ -1576,6 +1714,88 @@ export class SyncEngine {
 		}
 
 		return operations;
+	}
+
+	/**
+	 * Run the configured conflict strategy for a path changed on both sides
+	 * and queue the resulting operations. Shared by indexed vault files and
+	 * adapter-only files (config files, opted-in hidden folders).
+	 */
+	private pushConflictResolution(
+		operations: SyncOperation[],
+		path: string,
+		localStat: { mtime: number; size: number },
+		remoteItem: OneDriveItem,
+		knownState: FileState | undefined
+	): void {
+		const conflictInfo: ConflictInfo = {
+			path,
+			localModifiedTime: localStat.mtime,
+			remoteModifiedTime: new Date(remoteItem.lastModifiedDateTime).getTime(),
+			localSize: localStat.size,
+			remoteSize: remoteItem.size || 0,
+		};
+		const resolution = this.conflictResolver.resolveConflict(conflictInfo);
+		const remoteState = this.itemToFileState(remoteItem);
+		switch (resolution.kind) {
+			case 'duplicate':
+				// CREATE_DUPLICATE: preserve the remote version under a
+				// new dated name, then converge the base path by
+				// uploading the local version. Without this converging
+				// upload the base file keeps its stale tracked hash, so
+				// it is re-detected as a conflict on every subsequent
+				// sync and a fresh dated copy is spawned each cycle —
+				// the runaway duplication in #128.
+				operations.push({
+					path: resolution.duplicatePath,
+					direction: SyncDirection.DOWNLOAD,
+					remoteState,
+					// The copy is a brand-new file with no remote
+					// counterpart; it must not be tracked under the
+					// base item's id (#177, #178).
+					isConflictCopy: true,
+				});
+				operations.push({
+					path,
+					direction: SyncDirection.UPLOAD,
+					localState: knownState,
+					remoteState,
+				});
+				break;
+			case 'converge':
+				operations.push({
+					path,
+					direction: resolution.direction,
+					localState: knownState,
+					remoteState,
+				});
+				break;
+			case 'manual':
+				operations.push({
+					path,
+					direction: SyncDirection.CONFLICT,
+					localState: knownState,
+					remoteState,
+				});
+				break;
+		}
+	}
+
+	/**
+	 * Local mtime/size for a file, whether or not Obsidian indexes it.
+	 */
+	private async getLocalFileStat(
+		path: string,
+		file: TAbstractFile | null
+	): Promise<{ mtime: number; size: number } | null> {
+		if (file instanceof TFile) return file.stat;
+		if (file) return null; // a folder
+		try {
+			const stat = await this.app.vault.adapter.stat(path);
+			return stat && stat.type === 'file' ? { mtime: stat.mtime, size: stat.size } : null;
+		} catch {
+			return null;
+		}
 	}
 
 	/**
@@ -2206,6 +2426,14 @@ export class SyncEngine {
 
 		for (const { oldPath, newPath } of sorted) {
 			if (!oldPath || !newPath || oldPath === newPath) continue;
+			const filter = this.currentDeviceFilter();
+			if (
+				isOutOfDeviceScope(oldPath, this.configDir, filter, true) ||
+				isOutOfDeviceScope(newPath, this.configDir, filter, true)
+			) {
+				logger.debug(`Remote folder move ${oldPath} → ${newPath}: outside this device's sync scope`);
+				continue;
+			}
 
 			const folder = this.app.vault.getAbstractFileByPath(oldPath);
 			if (!(folder instanceof TFolder)) {
@@ -2664,6 +2892,10 @@ export class SyncEngine {
 	 * modal used by normal sync.
 	 */
 	async reconcileFromCloud(): Promise<void> {
+		await this.withReconcileScopeSnapshot(() => this.runReconcileFromCloud());
+	}
+
+	private async runReconcileFromCloud(): Promise<void> {
 		logger.info('Starting reconcile-from-cloud operation');
 		const progress = (msg: string | undefined) => {
 			try {
@@ -2709,7 +2941,8 @@ export class SyncEngine {
 			const configPaths = await getAllSyncableConfigPaths(
 				this.configDir,
 				adapter,
-				(path) => this.shouldSyncPath(path)
+				(path) => this.shouldSyncPath(path),
+				this.getAdditionalSyncFolders()
 			);
 			for (const path of configPaths) {
 				if (localByPath.has(path)) continue;
@@ -2884,6 +3117,10 @@ export class SyncEngine {
 	 * large-delete confirmation modal used by normal sync.
 	 */
 	async reconcileToCloud(): Promise<void> {
+		await this.withReconcileScopeSnapshot(() => this.runReconcileToCloud());
+	}
+
+	private async runReconcileToCloud(): Promise<void> {
 		logger.info('Starting reconcile-to-cloud operation');
 		const progress = (msg: string | undefined) => {
 			try {
@@ -2929,7 +3166,8 @@ export class SyncEngine {
 			const configPaths = await getAllSyncableConfigPaths(
 				this.configDir,
 				adapter,
-				(path) => this.shouldSyncPath(path)
+				(path) => this.shouldSyncPath(path),
+				this.getAdditionalSyncFolders()
 			);
 			for (const path of configPaths) {
 				if (localByPath.has(path)) continue;

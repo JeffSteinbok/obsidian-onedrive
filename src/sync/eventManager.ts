@@ -10,7 +10,7 @@ import { LocalChange, LocalChangeType } from '../types';
 import { SyncStateManager } from './syncState';
 import { logger } from '../utils/logger';
 import { SYNC_CONFIG } from '../constants';
-import { shouldSyncVaultPath } from '../utils/pathUtils';
+import { isInHiddenTopLevelFolder, shouldSyncVaultPath } from '../utils/pathUtils';
 
 import { timerApi } from '../utils/timerApi';
 
@@ -286,7 +286,10 @@ export class EventManager {
 			(this.app.vault as Events).on('raw', (...args: unknown[]) => {
 				const path = args[0];
 				if (typeof path !== 'string') return;
-				if (!path.startsWith(configPrefix)) return;
+				// Config files and files in hidden folders (e.g. an opted-in
+				// `.claude`) are not TFiles. shouldSyncPath decides which
+				// hidden folders this device actually syncs.
+				if (!path.startsWith(configPrefix) && !isInHiddenTopLevelFolder(path)) return;
 				if (!this.shouldSyncPath(path)) return;
 				if (this.shouldIgnoreEvent(path)) return;
 				// Ignore raw events until the first sync completes — Obsidian

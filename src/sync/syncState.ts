@@ -124,6 +124,7 @@ export class SyncStateManager {
 		deltaLink?: string;
 		deltaLinkScoped?: boolean;
 		obsidianDeltaLink?: string;
+		deviceSyncScope?: SyncState['deviceSyncScope'];
 	}): void {
 		if (!data) {
 			this.state = {
@@ -142,6 +143,7 @@ export class SyncStateManager {
 			deltaLink: data.deltaLink,
 			deltaLinkScoped: data.deltaLinkScoped,
 			obsidianDeltaLink: data.obsidianDeltaLink,
+			deviceSyncScope: data.deviceSyncScope,
 		};
 		this.rebuildIndexes();
 		this.sanitizeDuplicateRemoteIds();
@@ -166,6 +168,7 @@ export class SyncStateManager {
 		deltaLink?: string;
 		deltaLinkScoped?: boolean;
 		obsidianDeltaLink?: string;
+		deviceSyncScope?: SyncState['deviceSyncScope'];
 	} {
 		return {
 			lastSyncTime: this.state.lastSyncTime,
@@ -174,7 +177,17 @@ export class SyncStateManager {
 			deltaLink: this.state.deltaLink,
 			deltaLinkScoped: this.state.deltaLinkScoped,
 			obsidianDeltaLink: this.state.obsidianDeltaLink,
+			deviceSyncScope: this.state.deviceSyncScope,
 		};
+	}
+
+	/** Per-device filter in effect at the last sync (undefined if never recorded). */
+	getDeviceSyncScope(): SyncState['deviceSyncScope'] {
+		return this.state.deviceSyncScope;
+	}
+
+	setDeviceSyncScope(scope: SyncState['deviceSyncScope']): void {
+		this.state.deviceSyncScope = scope;
 	}
 
 	/**

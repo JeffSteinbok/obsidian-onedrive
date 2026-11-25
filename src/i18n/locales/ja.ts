@@ -316,6 +316,12 @@ export const ja = {
 				name: 'ブックマークを同期',
 				desc: '{{configDir}}/bookmarks.jsonを同期して、デバイス間でブックマークを一貫させます。',
 			},
+			additionalFolders: {
+				name: 'Additional folders to sync',
+				desc: 'Advanced, this device only: hidden top-level folders (such as .claude) to sync, one per line. A device that does not list a folder neither uploads nor downloads it. Every file inside is checked on each sync, so keep these folders small or use .syncIgnore.',
+				placeholder: '.claude',
+				rejected: 'Ignored {{folders}}: only hidden top-level folders (starting with ".") other than the config folder can be added here.',
+			},
 			status: {
 				name: '同期状態',
 				desc: '状態: {{status}} · 最終同期: {{lastSync}} · 進捗: {{progress}} · 競合: {{conflicts}}',

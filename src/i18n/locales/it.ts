@@ -317,6 +317,12 @@ export const it = {
 				name: 'Sincronizza segnalibri',
 				desc: 'Sincronizza {{configDir}}/bookmarks.json per mantenere i segnalibri coerenti tra dispositivi.',
 			},
+			additionalFolders: {
+				name: 'Additional folders to sync',
+				desc: 'Advanced, this device only: hidden top-level folders (such as .claude) to sync, one per line. A device that does not list a folder neither uploads nor downloads it. Every file inside is checked on each sync, so keep these folders small or use .syncIgnore.',
+				placeholder: '.claude',
+				rejected: 'Ignored {{folders}}: only hidden top-level folders (starting with ".") other than the config folder can be added here.',
+			},
 			status: {
 				name: 'Stato sincronizzazione',
 				desc: 'Stato: {{status}} · Ultima sincronizzazione: {{lastSync}} · Progresso: {{progress}} · Conflitti: {{conflicts}}',

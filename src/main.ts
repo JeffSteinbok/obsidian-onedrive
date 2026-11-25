@@ -15,7 +15,12 @@ import {
 } from './types';
 import { DEFAULT_ONEDRIVE_CLIENT_ID, resolveOAuthEndpoints, resolveOAuthScopes } from './constants';
 import { logger, LogLevel } from './utils/logger';
-import { shouldSyncVaultPath } from './utils/pathUtils';
+import {
+	type DeviceSyncFilter,
+	shouldSyncVaultPath,
+	validateAdditionalSyncFolders,
+	type AdditionalSyncFolderValidation,
+} from './utils/pathUtils';
 import {
 	applyVaultLogHook as applyPluginVaultLogHook,
 	type VaultLogAdapter,
@@ -387,16 +392,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 					await this.performSync();
 				},
 				this.syncStateManager,
-				(path) =>
-					shouldSyncVaultPath(
-						path,
-						this.settings.syncPluginManifests,
-						this.settings.syncAppSettings,
-						this.app.vault.configDir,
-						this.settings.syncCssSnippets,
-						this.settings.syncBookmarks,
-						this.settings.syncPluginData
-					),
+				(path) => this.shouldSyncPath(path),
 				this.settings.syncOnFileChange ?? true,
 				this.getFileChangeSyncDelayMs()
 			);
@@ -459,16 +455,8 @@ export default class OneDriveSyncPlugin extends Plugin {
 					remoteRootOnDrive,
 					isAppFolder,
 					conflictQueue: this.conflictQueue,
-					shouldSyncPath: (path) =>
-						shouldSyncVaultPath(
-							path,
-							this.settings.syncPluginManifests,
-							this.settings.syncAppSettings,
-							this.app.vault.configDir,
-							this.settings.syncCssSnippets,
-							this.settings.syncBookmarks,
-							this.settings.syncPluginData
-						),
+					shouldSyncPath: (path, deviceFilter) => this.shouldSyncPath(path, deviceFilter),
+					getDeviceSyncFilter: () => this.getDeviceSyncFilter(),
 					getLargeDeleteThreshold: () => this.settings.largeDeleteThreshold ?? 0,
 					getNotificationLevel: () => this.settings.notificationLevel ?? 'all',
 					largeDeleteWarningHandler: (info) => this.handleLargeDeleteWarning(info),
@@ -1236,6 +1224,20 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		this.normalizeIdentitySettings();
 
+		// data.json is user-editable: keep only valid hidden-folder entries.
+		const folderValidation = validateAdditionalSyncFolders(
+			this.settings.additionalSyncFolders,
+			this.app.vault.configDir
+		);
+		if (folderValidation.rejected.length > 0) {
+			logger.info(
+				`Ignoring invalid additional sync folder(s): ${folderValidation.rejected
+					.map((r) => `${r.folder} (${r.reason})`)
+					.join(', ')}`
+			);
+		}
+		this.settings.additionalSyncFolders = folderValidation.folders;
+
 		// Migrate legacy enableDebugLogging boolean → logLevel string
 		const raw = this.settings as unknown as Record<string, unknown>;
 		if ('enableDebugLogging' in raw) {
@@ -1366,6 +1368,44 @@ export default class OneDriveSyncPlugin extends Plugin {
 
 		this.settings.syncBookmarks = enabled;
 		await this.saveSettings();
+	}
+
+	/**
+	 * This device's include/exclude filter. It is built from settings in the
+	 * plugin's own data.json, which never syncs, so it is per-device.
+	 */
+	getDeviceSyncFilter(): DeviceSyncFilter {
+		return { includeHiddenFolders: this.settings.additionalSyncFolders };
+	}
+
+	/**
+	 * The one scope check both sync directions and the event manager use.
+	 * The sync engine passes its per-sync device filter snapshot; other
+	 * callers get this device's live filter.
+	 */
+	shouldSyncPath(path: string, deviceFilter: DeviceSyncFilter = this.getDeviceSyncFilter()): boolean {
+		return shouldSyncVaultPath(
+			path,
+			this.settings.syncPluginManifests,
+			this.settings.syncAppSettings,
+			this.app.vault.configDir,
+			this.settings.syncCssSnippets,
+			this.settings.syncBookmarks,
+			this.settings.syncPluginData,
+			deviceFilter
+		);
+	}
+
+	async onAdditionalSyncFoldersChanged(folders: string[]): Promise<AdditionalSyncFolderValidation> {
+		const validation = validateAdditionalSyncFolders(folders, this.app.vault.configDir);
+		const normalized = validation.folders;
+		const current = this.settings.additionalSyncFolders;
+		if (normalized.length === current.length && normalized.every((f, i) => f === current[i])) {
+			return validation;
+		}
+		this.settings.additionalSyncFolders = normalized;
+		await this.saveSettings();
+		return validation;
 	}
 
 	async resetSyncToken(): Promise<void> {

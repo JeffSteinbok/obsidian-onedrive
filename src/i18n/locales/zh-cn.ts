@@ -310,6 +310,12 @@ export const zhCn = {
 				name: '同步书签',
 				desc: '同步 {{configDir}}/bookmarks.json，让书签在不同设备上保持一致。',
 			},
+			additionalFolders: {
+				name: 'Additional folders to sync',
+				desc: 'Advanced, this device only: hidden top-level folders (such as .claude) to sync, one per line. A device that does not list a folder neither uploads nor downloads it. Every file inside is checked on each sync, so keep these folders small or use .syncIgnore.',
+				placeholder: '.claude',
+				rejected: 'Ignored {{folders}}: only hidden top-level folders (starting with ".") other than the config folder can be added here.',
+			},
 			status: {
 				name: '同步状态',
 				desc: '状态：{{status}} · 上次同步：{{lastSync}} · 进度：{{progress}} · 冲突：{{conflicts}}',

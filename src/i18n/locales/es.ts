@@ -317,6 +317,12 @@ export const es = {
 				name: 'Sincronizar marcadores',
 				desc: 'Sincronizar {{configDir}}/bookmarks.json para mantener los marcadores consistentes entre dispositivos.',
 			},
+			additionalFolders: {
+				name: 'Additional folders to sync',
+				desc: 'Advanced, this device only: hidden top-level folders (such as .claude) to sync, one per line. A device that does not list a folder neither uploads nor downloads it. Every file inside is checked on each sync, so keep these folders small or use .syncIgnore.',
+				placeholder: '.claude',
+				rejected: 'Ignored {{folders}}: only hidden top-level folders (starting with ".") other than the config folder can be added here.',
+			},
 			status: {
 				name: 'Estado de sincronización',
 				desc: 'Estado: {{status}} · Última sincronización: {{lastSync}} · Progreso: {{progress}} · Conflictos: {{conflicts}}',
