@@ -1,13 +1,12 @@
 # Skill: Bug-Fix Postmortem (5 Whys + Hardening)
 
 > [!NOTE]
-> **Postmortems paused (2026-11-25).** The GitHub Actions workflows are disabled
-> because this repo retired Puppets, which analyzed tracking issues opened for
-> merged bug-fix PRs and prepared hardening PRs. Issue triage, fixes, and reviews
-> now run through Orca bots on the maintainer's machine. A Steward bot coordinates
-> separate builder and reviewer agents, and the maintainer approves every change.
-> Postmortems may return through Orca. Until then, the trigger stays off because
-> nothing processes new postmortem issues.
+> **Postmortems run through Steward.** After each bug-fix merge, the
+> maintainer's Orca bot, Steward, runs the postmortem using
+> `.github/skills/postmortem/SKILL.md`. Codex prepares a hardening PR when
+> warranted, Claude reviews it independently, and Steward posts the writeup on
+> the bug issue. The maintainer merges hardening PRs. The GitHub Actions
+> postmortem workflows remain disabled.
 
 ## Purpose
 
@@ -19,13 +18,8 @@ A fix removes one bug. A good postmortem removes the conditions that let it exis
 
 ## When this runs
 
-- **Automatically:** `.github/workflows/postmortem.yml` triggers on merge of a PR
-  that is a bug fix (has the `bug` label, or has `- [x] Bug fix` checked in the
-  PR's *Type of Change* section). It opens a tracking issue. After a trusted
-  maintainer applies `puppets:approved`, the repository's Puppets postmortem
-  profile assigns the Copilot coding agent to follow this skill.
-- **Manually:** Run the Copilot CLI in the repo and ask it to
-  "run the postmortem skill for PR #N". Provide the PR number.
+- **After a bug-fix merge:** Steward dispatches Codex to follow this skill.
+- **For a backfill or rerun:** Give Steward the original bug-fix PR number.
 
 ## Inputs you are given
 
@@ -85,13 +79,13 @@ Do **not** refactor unrelated code. Keep changes surgical and reviewable.
   Both must pass. Any added regression test must fail before your hardening change
   and pass after it.
 
-### 6. Output — hardening PR (the writeup is published for you)
+### 6. Output
 
-- **Open a hardening PR** (`postmortem/<pr-number>-<slug>` branch) whose description
-  links the tracking issue (`Closes #<issue>`) and summarizes the changes. Follow
-  the repo `pull_request_template.md` and check `Bug fix`.
-- Put the **full 5-Whys writeup** (the template below) into the PR body, wrapped
-  in these exact marker lines so automation can mirror it to the tracking issue:
+- Put the full 5-Whys writeup in the final report. When class-level hardening is
+  warranted, prepare a PR from a `postmortem/<pr-number>-<slug>` branch, reference
+  the original bug-fix PR and bug issue, and include the writeup in the PR body.
+  Use the repository's pull request template and check **Bug fix**.
+- Wrap the writeup in these exact marker lines.
 
   ```
   <!-- postmortem-writeup:start -->
@@ -99,11 +93,8 @@ Do **not** refactor unrelated code. Keep changes surgical and reviewable.
   <!-- postmortem-writeup:end -->
   ```
 
-  Do **not** comment on the tracking issue yourself — the coding agent cannot post
-  to a separate issue without manual approval. The `postmortem-publish.yml` workflow
-  reads the marked writeup from your PR body and posts/updates it as a comment on
-  the `Closes #<issue>` tracking issue automatically once the PR is opened.
-- Do **not** merge the PR — leave it for maintainer review.
+- Steward coordinates independent Claude review and posts the reviewed writeup
+  on the bug issue. Leave the hardening PR for the maintainer to merge.
 
 ## Postmortem comment template
 

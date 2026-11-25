@@ -11,13 +11,12 @@ Sync your Obsidian vault with **OneDrive**. Zero-config for personal Microsoft a
 📖 [How It Works](docs/HOW_IT_WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Advanced Usage](docs/ADVANCED.md) · [Development](docs/DEVELOPMENT.md) · [Postmortem Process](docs/POSTMORTEM.md)
 
 > [!NOTE]
-> **Postmortems paused (2026-11-25).** The GitHub Actions workflows are disabled
-> because this repo retired Puppets, which analyzed tracking issues opened for
-> merged bug-fix PRs and prepared hardening PRs. Issue triage, fixes, and reviews
-> now run through Orca bots on the maintainer's machine. A Steward bot coordinates
-> separate builder and reviewer agents, and the maintainer approves every change.
-> Postmortems may return through Orca. Until then, the trigger stays off because
-> nothing processes new postmortem issues.
+> **Postmortems run through Steward.** After each bug-fix merge, the
+> maintainer's Orca bot, Steward, runs the postmortem using
+> `.github/skills/postmortem/SKILL.md`. Codex prepares a hardening PR when
+> warranted, Claude reviews it independently, and Steward posts the writeup on
+> the bug issue. The maintainer merges hardening PRs. The GitHub Actions
+> postmortem workflows remain disabled.
 
 > [!TIP]
 > **🦞 OpenClaw Users** - This pairs well with the [🦞🐚📝 Carapace Obsidian](https://github.com/JeffSteinbok/carapace-obsidian) toolset when integrating these vaults with OpenClaw, so synced vault content can plug directly into your broader tool-driven workflow.
