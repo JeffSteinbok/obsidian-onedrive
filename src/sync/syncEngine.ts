@@ -526,7 +526,7 @@ export class SyncEngine {
 			}
 
 			// Phase 3: Diff local vs remote to produce upload/download/conflict ops
-			const operations = await this.planOperations(
+			const { operations, comparisonFailures } = await this.planOperations(
 				localChanges,
 				plannableRemoteChanges,
 				isFirstSync,
@@ -537,7 +537,7 @@ export class SyncEngine {
 			// On first sync the dirty queue is empty, so walk the vault and add
 			// uploads for any local-only files not already covered by the delta
 			if (isFirstSync) {
-				await this.addFirstSyncUploads(operations, ignoreMatchers);
+				await this.addFirstSyncUploads(operations, ignoreMatchers, comparisonFailures);
 			}
 
 			logger.info(`Sync plan: ${operations.length} operations`);
@@ -565,6 +565,12 @@ export class SyncEngine {
 				}
 			}
 
+			const completedScope = copySyncScope(this.currentSyncScope());
+			if (comparisonFailures.size > 0) {
+				// Leave config re-entry pending even when no operations were planned.
+				completedScope.config = this.stateManager.getDeviceSyncScope()?.config;
+			}
+
 			if (operations.length === 0) {
 				if (isFirstSync && localChanges.length === 0 && remoteChanges.length === 0) {
 					logger.info(
@@ -573,11 +579,11 @@ export class SyncEngine {
 					if (this.shouldNotifyInfo()) {
 						new Notice(t('notices.sync.noFilesToSync'));
 					}
-				} else if (folderChanges.length === 0 && deletedFolderPaths.length === 0) {
+				} else if (comparisonFailures.size === 0 && folderChanges.length === 0 && deletedFolderPaths.length === 0) {
 					logger.info('Everything up to date — no operations needed');
 				}
 				if (folderChanges.length === 0 && deletedFolderPaths.length === 0) {
-					this.stateManager.setDeviceSyncScope(copySyncScope(this.currentSyncScope()));
+					this.stateManager.setDeviceSyncScope(completedScope);
 					this.stateManager.setDeltaLink(deltaResponse.deltaLink, true);
 					if (obsidianDeltaResponse) {
 						this.stateManager.setObsidianDeltaLink(obsidianDeltaResponse.deltaLink);
@@ -606,7 +612,7 @@ export class SyncEngine {
 			// Prune remote config folders (.obsidian/plugins/*) left empty
 			// after local-driven file deletes. Config folders don't fire
 			// TFolder vault events, so processFolderChanges won't catch them.
-			await this.pruneEmptyRemoteConfigFolders(operations);
+			await this.pruneEmptyRemoteConfigFolders(operations, comparisonFailures);
 
 			// Phase 5: Finalize — store delta cursors so next sync starts where
 			// this one left off, clear the dirty queue, re-mark conflicts
@@ -614,7 +620,6 @@ export class SyncEngine {
 				this.eventManager.removeDirtyPaths(downloadedPaths);
 			}
 
-			const completedScope = copySyncScope(this.currentSyncScope());
 			if (failedPaths.length > 0 && reenteredFolders.length > 0) {
 				// Keep re-entry pending so a failed conflict is re-planned against a full listing.
 				completedScope.excludeFolders.push(...reenteredFolders);
@@ -1386,9 +1391,13 @@ export class SyncEngine {
 	 */
 	private async addFirstSyncUploads(
 		operations: SyncOperation[],
-		ignoreMatchers: RegExp[]
+		ignoreMatchers: RegExp[],
+		comparisonFailures: ReadonlySet<string>
 	): Promise<number> {
-		const remoteCoveredPaths = new Set<string>(operations.map((op) => op.path));
+		const remoteCoveredPaths = new Set(comparisonFailures);
+		for (const operation of operations) {
+			remoteCoveredPaths.add(operation.path);
+		}
 		for (const path of this.stateManager.getTrackedPaths()) {
 			remoteCoveredPaths.add(path);
 		}
@@ -1549,8 +1558,9 @@ export class SyncEngine {
 		isFirstSync: boolean,
 		reenteredFolders: readonly string[] = [],
 		configPathEntering?: (path: string) => boolean
-	): Promise<SyncOperation[]> {
+	) {
 		const operations: SyncOperation[] = [];
+		const comparisonFailures = new Set<string>();
 
 		// Build a map of remote changes by vault path
 		const remoteByPath = new Map<string, OneDriveItem>();
@@ -1574,19 +1584,29 @@ export class SyncEngine {
 				if (configEntering) comparedPaths.add(path);
 				continue;
 			}
-			const localContent = configEntering && (item.size === undefined || item.size === localStat.size)
-				? await this.app.vault.adapter.readBinary(path)
-				: undefined;
-			let matches = configEntering && !localContent
-				? false
-				: await this.localContentMatchesRemote(path, item, localContent);
-			if (localContent && matches === undefined) {
-				// Some OneDrive accounts omit SHA-1. Compare the actual bytes before
-				// treating an untracked config file as a conflict.
-				const remoteBytes = new Uint8Array(await this.fileOps.downloadFile(item.id));
-				const localBytes = new Uint8Array(localContent);
-				matches = localBytes.length === remoteBytes.length &&
-					localBytes.every((byte, index) => byte === remoteBytes[index]);
+			let localContent: ArrayBuffer | undefined;
+			let matches: boolean | undefined;
+			try {
+				localContent = configEntering && (item.size === undefined || item.size === localStat.size)
+					? await this.app.vault.adapter.readBinary(path)
+					: undefined;
+				matches = configEntering && !localContent
+					? false
+					: await this.localContentMatchesRemote(path, item, localContent);
+				if (localContent && matches === undefined) {
+					// Some OneDrive accounts omit SHA-1. Compare the actual bytes before
+					// treating an untracked config file as a conflict.
+					const remoteBytes = new Uint8Array(await this.fileOps.downloadFile(item.id));
+					const localBytes = new Uint8Array(localContent);
+					matches = localBytes.length === remoteBytes.length &&
+						localBytes.every((byte, index) => byte === remoteBytes[index]);
+				}
+			} catch (error) {
+				logger.warn(`Could not compare re-enabled config file ${path}; will retry next sync`, error);
+				comparisonFailures.add(path);
+				remoteByPath.delete(path);
+				comparedPaths.add(path);
+				continue;
 			}
 			if (matches === true) {
 				this.stateManager.setFileState(path, {
@@ -1603,7 +1623,10 @@ export class SyncEngine {
 		}
 
 		if (comparedPaths.size > 0) {
-			localChanges = localChanges.filter((change) => !comparedPaths.has(change.path));
+			localChanges = localChanges.filter((change) =>
+				!comparedPaths.has(change.path) &&
+				!(change.oldPath && comparisonFailures.has(change.oldPath))
+			);
 		}
 
 		// Build a set of locally changed paths. On first sync, ignore CREATE
@@ -1860,7 +1883,7 @@ export class SyncEngine {
 			});
 		}
 
-		return operations;
+		return { operations, comparisonFailures };
 	}
 
 	/**
@@ -2422,7 +2445,10 @@ export class SyncEngine {
 	 * file deletes. Config folders don't fire TFolder vault events, so
 	 * processFolderChanges won't catch them. Only applies to .obsidian/ paths.
 	 */
-	private async pruneEmptyRemoteConfigFolders(operations: SyncOperation[]): Promise<void> {
+	private async pruneEmptyRemoteConfigFolders(
+		operations: SyncOperation[],
+		comparisonFailures: ReadonlySet<string>
+	): Promise<void> {
 		const configPrefix = `${normalizePath(this.configDir).replace(/\/+$/g, '')}/`;
 		const candidateFolders = new Set<string>();
 		for (const op of operations) {
@@ -2445,8 +2471,10 @@ export class SyncEngine {
 		);
 
 		const adapter = this.app.vault.adapter;
+		const pendingPaths = [...comparisonFailures];
 		for (const folderPath of sorted) {
 			if (this.folderContainsExclusion(folderPath)) continue;
+			if (pendingPaths.some((path) => path.startsWith(`${folderPath}/`))) continue;
 			// The cloud folder may still contain plugin data this device opted out of.
 			if (this.shouldSyncPath(`${folderPath}/manifest.json`) &&
 				this.isOutsideConfigScope(`${folderPath}/data.json`)) continue;

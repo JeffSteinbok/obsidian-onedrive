@@ -931,6 +931,55 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 			}
 		});
 
+		it.each(['EPERM', '403'])('retries a config comparison after %s while syncing other files', async (error) => {
+			const live = toggles();
+			stateManager.setDeviceSyncScope({ config: { ...live } });
+			track(path, { localMtime: 5000, size: 3 });
+			setHiddenDisk({ [path]: { mtime: 5000, size: 3 } });
+			const engine = engineWithLiveToggles(live);
+			live.syncBookmarks = false;
+			await engine.performSync();
+
+			const note = makeRemoteFile('note.md');
+			const config = makeRemoteFile(path, { size: 3 });
+			let comparisonBlocked = true;
+			const configCursors: (string | undefined)[] = [];
+			mockClient.getDelta.mockImplementation(async (cursor, _root, subPath) => {
+				if (subPath) configCursors.push(cursor);
+				return {
+					items: subPath ? (cursor ? [] : [config]) : (cursor === 'vault-next' ? [] : [note]),
+					deltaLink: subPath ? 'config-next' : 'vault-next',
+				};
+			});
+			mockApp.vault.adapter.readBinary.mockImplementation(async (file: string) => {
+				if (file === path && comparisonBlocked && error === 'EPERM') throw new Error(error);
+				return new Uint8Array([1, 2, 3]).buffer;
+			});
+			mockFileOps.downloadFile.mockImplementation(async (id: string) => {
+				if (id === config.id && comparisonBlocked && error === '403') throw new Error(error);
+				return new Uint8Array([1, 2, 3]).buffer;
+			});
+			live.syncBookmarks = true;
+			await expect(engine.performSync()).resolves.toBeUndefined();
+			expect(writtenPaths()).toEqual(['note.md']);
+			expect(stateManager.getFileState(path)).toBeUndefined();
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+
+			// A second blocked run has no other operations. It must still leave
+			// the config cursor eligible for a full retry on the next run.
+			await expect(engine.performSync()).resolves.toBeUndefined();
+			expect(stateManager.getFileState(path)).toBeUndefined();
+			comparisonBlocked = false;
+			await engine.performSync();
+
+			expect(configCursors).toEqual([undefined, undefined, undefined]);
+			expect(writtenPaths()).toEqual(['note.md']);
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			expect(stateManager.getFileState(path)?.oneDriveId).toBe(config.id);
+		});
+
 		it('re-enumerates config when enabling bookmarks and snippets, checking local copies for conflicts', async () => {
 			const live = { ...toggles(), syncAppSettings: true, syncBookmarks: false };
 			setHiddenDisk({ [path]: { mtime: 5000, size: 3 } });
