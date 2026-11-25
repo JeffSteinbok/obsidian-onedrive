@@ -221,8 +221,10 @@ export interface SyncEngineOptions {
 	conflictQueue?: SyncEngineConflictQueue;
 	/**
 	 * Filter function to determine which paths should sync. The engine
-	 * passes the device filter to apply (the per-sync snapshot during a
-	 * sync); implementations must use it instead of reading live settings.
+	 * always passes the device filter to apply (the per-run snapshot during
+	 * performSync and the reconcile runs); implementations must use it
+	 * instead of reading live settings. When it is omitted (callers outside
+	 * the engine, such as the EventManager), use this device's live filter.
 	 */
 	shouldSyncPath?: (path: string, deviceFilter?: DeviceSyncFilter) => boolean;
 	/** Returns the threshold for large delete warnings (0 = disabled) */

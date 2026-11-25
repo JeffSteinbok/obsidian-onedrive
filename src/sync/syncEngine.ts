@@ -184,14 +184,24 @@ interface SyncOperationFailure {
 	deferrable: boolean;
 }
 
+/** A copy of a device filter that later settings edits cannot change. */
+function copyDeviceFilter(filter: DeviceSyncFilter): { includeHiddenFolders: string[]; excludeFolders: string[] } {
+	return {
+		includeHiddenFolders: [...(filter.includeHiddenFolders ?? [])],
+		excludeFolders: [...(filter.excludeFolders ?? [])],
+	};
+}
+
 /**
  * Main sync engine
  *
- * Device scope: performSync snapshots the device sync filter at Phase 0 and
- * that snapshot alone decides scope for the whole sync. reconcileFromCloud
- * and reconcileToCloud take no snapshot and do not record deviceSyncScope;
- * they use the live filter, and the next performSync's Phase 0 applies any
- * scope transition.
+ * Device scope: every entry point that touches the remote (performSync,
+ * reconcileFromCloud, reconcileToCloud) snapshots the device sync filter
+ * when it starts, and that snapshot alone decides scope for the whole run.
+ * A folder added or removed while a run is in progress takes effect in the
+ * next run. Only performSync records deviceSyncScope and applies scope
+ * transitions (prune / cursor reset); the reconcile runs rebuild tracked
+ * state from scratch, and the next performSync's Phase 0 handles the rest.
  */
 export class SyncEngine {
 	// Concurrent operations limit — overridable via experimental settings.
@@ -324,12 +334,25 @@ export class SyncEngine {
 			);
 			this.stateManager.resetDeltaLink();
 		}
-		const snapshot = {
-			includeHiddenFolders: [...(filter.includeHiddenFolders ?? [])],
-			excludeFolders: [...(filter.excludeFolders ?? [])],
-		};
+		const snapshot = copyDeviceFilter(filter);
 		this.stateManager.setDeviceSyncScope(snapshot);
 		this.scopeSnapshot = snapshot;
+	}
+
+	/**
+	 * Pin the device filter for a reconcile run, so its remote listing and
+	 * its local scan are decided by the same scope even if the user changes
+	 * the folder list while it runs. Reconcile rebuilds tracked state from
+	 * scratch (clearFileStates), so no prune or cursor reset is needed, and
+	 * deviceSyncScope is left for the next performSync's Phase 0.
+	 */
+	private async withReconcileScopeSnapshot(run: () => Promise<void>): Promise<void> {
+		this.scopeSnapshot = copyDeviceFilter(this.getDeviceSyncFilter());
+		try {
+			await run();
+		} finally {
+			this.scopeSnapshot = undefined;
+		}
 	}
 
 	private isObsidianPath(path: string): boolean {
@@ -2869,6 +2892,10 @@ export class SyncEngine {
 	 * modal used by normal sync.
 	 */
 	async reconcileFromCloud(): Promise<void> {
+		await this.withReconcileScopeSnapshot(() => this.runReconcileFromCloud());
+	}
+
+	private async runReconcileFromCloud(): Promise<void> {
 		logger.info('Starting reconcile-from-cloud operation');
 		const progress = (msg: string | undefined) => {
 			try {
@@ -3090,6 +3117,10 @@ export class SyncEngine {
 	 * large-delete confirmation modal used by normal sync.
 	 */
 	async reconcileToCloud(): Promise<void> {
+		await this.withReconcileScopeSnapshot(() => this.runReconcileToCloud());
+	}
+
+	private async runReconcileToCloud(): Promise<void> {
 		logger.info('Starting reconcile-to-cloud operation');
 		const progress = (msg: string | undefined) => {
 			try {

@@ -623,5 +623,57 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 			expect(uploadedPaths()).not.toContain('.claude/CLAUDE.md');
 			expect(hasConflictCopy()).toBe(true);
 		});
+
+		describe('reconcile runs use one scope snapshot too', () => {
+			/** Un-list `.claude` while the local hidden-folder scan is running. */
+			const unlistDuringLocalScan = (live: { folders: string[] }) => {
+				const list = mockApp.vault.adapter.list.getMockImplementation();
+				mockApp.vault.adapter.list.mockImplementation(async (dir: string) => {
+					live.folders = [];
+					return list ? list(dir) : { files: [], folders: [] };
+				});
+			};
+
+			it('reconcile to cloud: un-listing mid-run does not delete the folder from OneDrive', async () => {
+				const live = { folders: ['.claude'] };
+				track('.claude/CLAUDE.md');
+				setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 100 } });
+				mockClient.listAllItems.mockResolvedValue([makeRemoteFile('.claude/CLAUDE.md', { size: 50 })]);
+				unlistDuringLocalScan(live);
+
+				await createEngine(liveOptions(live)).reconcileToCloud();
+
+				expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+				// The run finishes with the scope it started with: local wins.
+				expect(uploadedPaths()).toContain('.claude/CLAUDE.md');
+			});
+
+			it('reconcile from cloud: un-listing mid-run does not re-download a file that is already in sync', async () => {
+				const live = { folders: ['.claude'] };
+				setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
+				mockClient.listAllItems.mockResolvedValue([makeRemoteFile('.claude/CLAUDE.md', { size: 3 })]);
+				unlistDuringLocalScan(live);
+
+				await createEngine(liveOptions(live)).reconcileFromCloud();
+
+				expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
+				expect(writtenPaths()).toEqual([]);
+			});
+
+			it('clears the reconcile snapshot so the next run sees the new list', async () => {
+				const live = { folders: ['.claude'] };
+				setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
+				mockClient.listAllItems.mockResolvedValue([]);
+				const engine = createEngine(liveOptions(live));
+
+				await engine.reconcileToCloud();
+				expect(uploadedPaths()).toContain('.claude/CLAUDE.md');
+
+				mockFileOps.uploadFile.mockClear();
+				live.folders = [];
+				await engine.reconcileToCloud();
+				expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			});
+		});
 	});
 });
