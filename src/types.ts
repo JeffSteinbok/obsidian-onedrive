@@ -160,6 +160,8 @@ export interface SyncOperation {
 	 * corrupts every id-keyed inference we make (issues #177, #178).
 	 */
 	isConflictCopy?: boolean;
+	/** Conflict copy that must be written before uploading an untracked local file. */
+	preserveRemoteCopyAt?: string;
 }
 
 export interface LargeDeleteWarningInfo {
@@ -359,6 +361,7 @@ export interface PluginSettings {
 	syncPluginData: boolean; // Opt-in sync for plugin data.json files (except this plugin's own data)
 	syncCssSnippets: boolean; // Opt-in sync for CSS snippets in .obsidian/snippets/
 	syncBookmarks: boolean; // Opt-in sync for Obsidian bookmarks (.obsidian/bookmarks.json)
+	excludedSyncFolders: string[]; // Vault-relative folders excluded on this device
 	additionalSyncFolders: string[]; // Extra hidden vault-relative folders to sync (e.g. .claude)
 	syncState?: {
 		lastSyncTime: number;
@@ -410,6 +413,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	syncCssSnippets: false,
 	syncBookmarks: false,
 	additionalSyncFolders: [],
+	excludedSyncFolders: [],
 	syncState: undefined,
 	conflictQueue: undefined,
 

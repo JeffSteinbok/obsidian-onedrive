@@ -322,6 +322,12 @@ export const ja = {
 				placeholder: '.claude',
 				rejected: 'Ignored {{folders}}: only hidden top-level folders (starting with ".") other than the config folder can be added here.',
 			},
+			excludedFolders: {
+				name: 'Excluded folders',
+				desc: 'This device only. Enter one vault-relative folder per line. Each entry excludes that folder and everything under it. Existing files stay on this device and in OneDrive.',
+				placeholder: 'Attachments/PDFs',
+				rejected: 'Ignored {{folders}}. Use vault-relative folder paths without "." or ".." segments.',
+			},
 			status: {
 				name: '同期状態',
 				desc: '状態: {{status}} · 最終同期: {{lastSync}} · 進捗: {{progress}} · 競合: {{conflicts}}',

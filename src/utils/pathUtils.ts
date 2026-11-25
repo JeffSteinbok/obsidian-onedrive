@@ -407,6 +407,26 @@ export function validateAdditionalSyncFolders(
 	return result;
 }
 
+/** Validate vault-relative folder prefixes before stripping trailing separators. */
+export function validateExcludedSyncFolders(folders: unknown): AdditionalSyncFolderValidation {
+	const result: AdditionalSyncFolderValidation = { folders: [], rejected: [] };
+	if (!Array.isArray(folders)) return result;
+	for (const raw of folders as unknown[]) {
+		if (typeof raw !== 'string') continue;
+		const trimmed = raw.trim();
+		if (!trimmed) continue;
+		const path = normalizePath(trimmed);
+		const segments = path.split('/').filter(Boolean);
+		if (/^(?:\/|[a-z]:)/i.test(path) || segments.some((segment) => segment === '.' || segment === '..')) {
+			result.rejected.push({ folder: trimmed, reason: 'invalid' });
+			continue;
+		}
+		const folder = segments.join('/');
+		if (!result.folders.includes(folder)) result.folders.push(folder);
+	}
+	return result;
+}
+
 /**
  * Normalize the stored list of additional sync folders, silently dropping
  * entries `validateAdditionalSyncFolders` would reject.

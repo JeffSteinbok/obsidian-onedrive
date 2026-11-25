@@ -133,3 +133,11 @@ Obsidian does not index hidden folders (such as `.claude`), so they are not sync
 - **Conflicts** in these folders follow your conflict strategy, just like notes. When a device adds a folder, its next sync re-checks the whole OneDrive copy once. If another device already synced that folder, differing files become conflicts instead of overwriting either side, and files that exist only on OneDrive are downloaded.
 - **Removing a folder** from the list only stops syncing it on this device. Nothing is deleted locally or on OneDrive, and adding it back later counts as a fresh opt-in.
 - **Keep them small.** Each file is checked on every sync, which is slow on mobile for big folders such as `.git`. Use `.syncIgnore` to skip parts of a folder.
+
+## Excluded folders
+
+Use **Settings → Sync → Excluded folders** to skip folders on this device. Enter one vault-relative folder per line, such as `Attachments/PDFs`. Each entry matches that folder and all its descendants. For example, `Attachments/PDFs` leaves `Attachments/PDFs-old` in scope. Exclusions take precedence over **Additional folders to sync** and apply to regular sync and both reconcile directions.
+
+The list is stored on this device. To keep PDFs off your phone, set the exclusion on the phone and leave the folder in scope on your other devices. Starting with the next sync, the plugin stops tracking excluded files. Existing copies stay on this device and in OneDrive. When you remove an exclusion, the next regular sync checks the folder again, downloads missing files, and checks existing copies for conflicts.
+
+Sync skips whole-folder moves and deletes when they would affect an excluded subfolder.

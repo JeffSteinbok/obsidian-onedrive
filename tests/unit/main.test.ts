@@ -292,6 +292,35 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.settings.conflictResolution).toBe(DEFAULT_SETTINGS.conflictResolution);
 	});
 
+	it('normalizes stored exclusions and uses them for this device’s sync scope', async () => {
+		vi.mocked(plugin.loadData).mockResolvedValue({
+			excludedSyncFolders: [' PDFs/ ', 'PDFs', '', 'Attachments\\Books', 'Attachments//Books/', '.', './PDFs',
+				'PDFs/../Notes', 'PDFs/./Notes', '/absolute', 'C:\\absolute', '\\\\server\\share', 42],
+		});
+		await plugin.loadSettings();
+
+		expect(plugin.getDeviceSyncFilter().excludeFolders).toEqual(['PDFs', 'Attachments/Books']);
+		expect(plugin.shouldSyncPath('PDFs/2026/a.pdf')).toBe(false);
+		expect(plugin.shouldSyncPath('PDFs-old/a.pdf')).toBe(true);
+	});
+
+	it('defaults malformed stored exclusions to an empty list', async () => {
+		vi.mocked(plugin.loadData).mockResolvedValue({ excludedSyncFolders: 'PDFs' });
+		await plugin.loadSettings();
+		expect(plugin.getDeviceSyncFilter().excludeFolders).toEqual([]);
+	});
+
+	it('saves normalized exclusions and returns rejected paths to the settings UI', async () => {
+		await plugin.onload();
+		vi.mocked(plugin.saveData).mockClear();
+		const validation = await plugin.onExcludedSyncFoldersChanged([' PDFs/ ', '/absolute', 'PDFs']);
+
+		expect(validation).toEqual({ folders: ['PDFs'], rejected: [{ folder: '/absolute', reason: 'invalid' }] });
+		expect(plugin.saveData).toHaveBeenCalledWith(expect.objectContaining({ excludedSyncFolders: ['PDFs'] }));
+		await plugin.onExcludedSyncFoldersChanged(['PDFs']);
+		expect(plugin.saveData).toHaveBeenCalledTimes(1);
+	});
+
 	it('loadSettings sets appFolderSubpathConfirmed for existing connected app-folder users', async () => {
 		(plugin as any).loadData = vi.fn().mockResolvedValue({
 			accessMode: OneDriveAccessMode.APP_FOLDER,

@@ -57,6 +57,7 @@ interface OneDrivePlugin extends Plugin {
 	onCssSnippetSyncChanged(enabled: boolean): Promise<void>;
 	onBookmarkSyncChanged(enabled: boolean): Promise<void>;
 	onAdditionalSyncFoldersChanged(folders: string[]): Promise<AdditionalSyncFolderValidation>;
+	onExcludedSyncFoldersChanged(folders: string[]): Promise<AdditionalSyncFolderValidation>;
 	resetSyncToken(): Promise<void>;
 	reconcileFromCloud(): Promise<void>;
 	reconcileToCloud(): Promise<void>;
@@ -309,7 +310,14 @@ export class OneDriveSettingTab extends PluginSettingTab {
 						name: t('settings.sync.additionalFolders.name'),
 						desc: t('settings.sync.additionalFolders.desc'),
 						render: (setting) => {
-							this.renderAdditionalFoldersSetting(setting);
+							this.renderFolderListSetting(setting, 'additionalFolders');
+						},
+					},
+					{
+						name: t('settings.sync.excludedFolders.name'),
+						desc: t('settings.sync.excludedFolders.desc'),
+						render: (setting) => {
+							this.renderFolderListSetting(setting, 'excludedFolders');
 						},
 					},
 				],
@@ -1356,47 +1364,58 @@ export class OneDriveSettingTab extends PluginSettingTab {
 				})
 			);
 
-		this.renderAdditionalFoldersSetting(
+		this.renderFolderListSetting(
 			new Setting(containerEl)
 				.setName(t('settings.sync.additionalFolders.name'))
-				.setDesc(t('settings.sync.additionalFolders.desc'))
+				.setDesc(t('settings.sync.additionalFolders.desc')),
+			'additionalFolders'
+		);
+		this.renderFolderListSetting(
+			new Setting(containerEl)
+				.setName(t('settings.sync.excludedFolders.name'))
+				.setDesc(t('settings.sync.excludedFolders.desc')),
+			'excludedFolders'
 		);
 	}
 
 	/** Saves the folder list if the textarea holds unsaved edits. */
-	private commitAdditionalFolders?: () => Promise<void>;
+	private readonly commitFolderLists: Partial<Record<'additionalFolders' | 'excludedFolders', () => Promise<void>>> = {};
 
 	override hide(): void {
 		// Closing the tab can remove the focused textarea without a blur.
-		void this.commitAdditionalFolders?.();
+		for (const commit of Object.values(this.commitFolderLists)) void commit();
 		super.hide();
 	}
 
-	private renderAdditionalFoldersSetting(setting: Setting): void {
+	private renderFolderListSetting(setting: Setting, kind: 'additionalFolders' | 'excludedFolders'): void {
+		const isExcluded = kind === 'excludedFolders';
 		setting.addTextArea((text) => {
-			const current = this.plugin.settings.additionalSyncFolders;
+			const current = isExcluded ? this.plugin.settings.excludedSyncFolders : this.plugin.settings.additionalSyncFolders;
 			text
-				.setPlaceholder(t('settings.sync.additionalFolders.placeholder'))
+				.setPlaceholder(t(`settings.sync.${kind}.placeholder`))
 				.setValue(Array.isArray(current) ? current.join('\n') : '');
 			let committed = text.getValue();
-			// Save on blur (and on hide), not per keystroke: a half-typed
-			// ".cl" would otherwise briefly become a live sync folder.
+			// Commit after editing so a partially typed path cannot affect a sync.
 			const commit = async () => {
 				const value = text.getValue();
 				if (value === committed) return;
 				committed = value;
-				const result = await this.plugin.onAdditionalSyncFoldersChanged(value.split(/\r?\n/));
+				const folders = value.split(/\r?\n/);
+				const result = isExcluded
+					? await this.plugin.onExcludedSyncFoldersChanged(folders)
+					: await this.plugin.onAdditionalSyncFoldersChanged(folders);
 				if (result.rejected.length > 0) {
 					new Notice(
-						t('settings.sync.additionalFolders.rejected', {
+						t(`settings.sync.${kind}.rejected`, {
 							folders: result.rejected.map((r) => r.folder).join(', '),
 						})
 					);
 				}
+				if (text.getValue() !== value) return;
 				committed = result.folders.join('\n');
 				text.setValue(committed);
 			};
-			this.commitAdditionalFolders = commit;
+			this.commitFolderLists[kind] = commit;
 			text.inputEl.addEventListener('blur', () => void commit());
 		});
 	}
