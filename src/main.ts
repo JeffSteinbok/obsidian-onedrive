@@ -19,6 +19,7 @@ import {
 	type DeviceSyncFilter,
 	shouldSyncVaultPath,
 	validateAdditionalSyncFolders,
+	validateExcludedSyncFolders,
 	type AdditionalSyncFolderValidation,
 } from './utils/pathUtils';
 import {
@@ -1237,6 +1238,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 			);
 		}
 		this.settings.additionalSyncFolders = folderValidation.folders;
+		this.settings.excludedSyncFolders = validateExcludedSyncFolders(this.settings.excludedSyncFolders).folders;
 
 		// Migrate legacy enableDebugLogging boolean → logLevel string
 		const raw = this.settings as unknown as Record<string, unknown>;
@@ -1375,7 +1377,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 	 * plugin's own data.json, which never syncs, so it is per-device.
 	 */
 	getDeviceSyncFilter(): DeviceSyncFilter {
-		return { includeHiddenFolders: this.settings.additionalSyncFolders };
+		return {
+			includeHiddenFolders: this.settings.additionalSyncFolders,
+			excludeFolders: this.settings.excludedSyncFolders,
+		};
 	}
 
 	/**
@@ -1404,6 +1409,20 @@ export default class OneDriveSyncPlugin extends Plugin {
 			return validation;
 		}
 		this.settings.additionalSyncFolders = normalized;
+		await this.saveSettings();
+		return validation;
+	}
+
+	async onExcludedSyncFoldersChanged(folders: string[]): Promise<AdditionalSyncFolderValidation> {
+		const validation = validateExcludedSyncFolders(folders);
+		const current = this.settings.excludedSyncFolders;
+		if (
+			validation.folders.length === current.length &&
+			validation.folders.every((folder, index) => folder === current[index])
+		) {
+			return validation;
+		}
+		this.settings.excludedSyncFolders = validation.folders;
 		await this.saveSettings();
 		return validation;
 	}

@@ -199,9 +199,8 @@ function copyDeviceFilter(filter: DeviceSyncFilter): { includeHiddenFolders: str
  * reconcileFromCloud, reconcileToCloud) snapshots the device sync filter
  * when it starts, and that snapshot alone decides scope for the whole run.
  * A folder added or removed while a run is in progress takes effect in the
- * next run. Only performSync records deviceSyncScope and applies scope
- * transitions (prune / cursor reset); the reconcile runs rebuild tracked
- * state from scratch, and the next performSync's Phase 0 handles the rest.
+ * next run. Regular sync applies scope transitions and records the completed
+ * scope. Reconcile remembers exclusions when it rebuilds tracked state.
  */
 export class SyncEngine {
 	// Concurrent operations limit — overridable via experimental settings.
@@ -291,6 +290,14 @@ export class SyncEngine {
 		return [...(this.currentDeviceFilter().includeHiddenFolders ?? [])];
 	}
 
+	/** Bulk folder mutations must preserve excluded descendants too. */
+	private folderContainsExclusion(path: string): boolean {
+		const folder = normalizePath(path).replace(/\/+$/, '');
+		return this.currentDeviceFilter().excludeFolders?.some(
+			(excluded) => excluded === folder || excluded.startsWith(`${folder}/`)
+		) ?? false;
+	}
+
 	/**
 	 * Apply changes to this device's include/exclude filter since the last
 	 * sync. Runs once at the start of every sync, so it also covers settings
@@ -306,7 +313,7 @@ export class SyncEngine {
 	 *   the conflict path (or download), instead of being blindly replaced by
 	 *   an upload of the untracked local file.
 	 */
-	private applyDeviceScopeChanges(): void {
+	private applyDeviceScopeChanges(): readonly string[] {
 		const filter = this.getDeviceSyncFilter();
 		const previous = this.stateManager.getDeviceSyncScope();
 
@@ -317,26 +324,45 @@ export class SyncEngine {
 				pruned++;
 			}
 		}
-		for (const [, folderPath] of [...this.stateManager.getAllFolderStates()]) {
-			if (isOutOfDeviceScope(folderPath, this.configDir, filter, true)) {
-				this.stateManager.removeFolderStateByPath(folderPath);
-				pruned++;
-			}
-		}
+		pruned += this.pruneOutOfScopeFolderStates(filter);
 		if (pruned > 0) {
 			logger.info(`Stopped tracking ${pruned} path(s) now outside this device's sync scope (no remote changes)`);
 		}
 
 		const entering = getFoldersEnteringScope(previous, filter);
-		if (entering.length > 0 && this.stateManager.getDeltaLink()) {
+		const nextExclusions = new Set(filter.excludeFolders);
+		if (entering.length > 0) {
 			logger.info(
 				`Sync scope gained ${entering.join(', ')} — re-enumerating the remote this sync`
 			);
 			this.stateManager.resetDeltaLink();
+			if (entering.some((folder) => this.isObsidianPath(`${folder}/_`))) {
+				this.stateManager.setObsidianDeltaLink(undefined);
+			}
 		}
-		const snapshot = copyDeviceFilter(filter);
-		this.stateManager.setDeviceSyncScope(snapshot);
-		this.scopeSnapshot = snapshot;
+		this.scopeSnapshot = copyDeviceFilter(filter);
+		return (previous?.excludeFolders ?? []).filter((folder) => !nextExclusions.has(folder));
+	}
+
+	private pruneOutOfScopeFolderStates(filter: DeviceSyncFilter): number {
+		let pruned = 0;
+		for (const [, path] of this.stateManager.getAllFolderStates()) {
+			if (isOutOfDeviceScope(path, this.configDir, filter, true)) {
+				this.stateManager.removeFolderStateByPath(path);
+				pruned++;
+			}
+		}
+		return pruned;
+	}
+
+	/** Keep exclusions pending for regular sync after reconcile drops their state. */
+	private rememberReconcileExclusions(): void {
+		const filter = this.currentDeviceFilter();
+		this.pruneOutOfScopeFolderStates(filter);
+		if (!filter.excludeFolders?.length) return;
+		const previous = copyDeviceFilter(this.stateManager.getDeviceSyncScope() ?? {});
+		previous.excludeFolders = [...new Set([...previous.excludeFolders, ...filter.excludeFolders])];
+		this.stateManager.setDeviceSyncScope(previous);
 	}
 
 	/**
@@ -401,7 +427,7 @@ export class SyncEngine {
 
 			// Phase 0: Apply per-device scope changes, then log inventory drift
 			// (tracked state vs actual vault files)
-			this.applyDeviceScopeChanges();
+			const reenteredFolders = this.applyDeviceScopeChanges();
 			this.logInventoryDrift();
 
 			// Phase 1: Collect local dirty files, filtering out .syncIgnore matches
@@ -446,7 +472,8 @@ export class SyncEngine {
 			const operations = await this.planOperations(
 				localChanges,
 				plannableRemoteChanges,
-				isFirstSync
+				isFirstSync,
+				reenteredFolders
 			);
 
 			// On first sync the dirty queue is empty, so walk the vault and add
@@ -492,6 +519,7 @@ export class SyncEngine {
 					logger.info('Everything up to date — no operations needed');
 				}
 				if (folderChanges.length === 0 && deletedFolderPaths.length === 0) {
+					this.stateManager.setDeviceSyncScope(copyDeviceFilter(this.currentDeviceFilter()));
 					this.stateManager.setDeltaLink(deltaResponse.deltaLink, true);
 					if (obsidianDeltaResponse) {
 						this.stateManager.setObsidianDeltaLink(obsidianDeltaResponse.deltaLink);
@@ -528,6 +556,12 @@ export class SyncEngine {
 				this.eventManager.removeDirtyPaths(downloadedPaths);
 			}
 
+			const completedScope = copyDeviceFilter(this.currentDeviceFilter());
+			if (failedPaths.length > 0 && reenteredFolders.length > 0) {
+				// Keep re-entry pending so a failed conflict is re-planned against a full listing.
+				completedScope.excludeFolders.push(...reenteredFolders);
+			}
+			this.stateManager.setDeviceSyncScope(completedScope);
 			this.stateManager.setDeltaLink(deltaResponse.deltaLink, true);
 			if (obsidianDeltaResponse) {
 				this.stateManager.setObsidianDeltaLink(obsidianDeltaResponse.deltaLink);
@@ -1223,7 +1257,10 @@ export class SyncEngine {
 				this.stateManager.removeFolderState(item.id);
 			} else {
 				const folderPath = this.remotePathToVaultPath(item);
-				if (item.id && folderPath) {
+				if (
+					item.id && folderPath &&
+					!isOutOfDeviceScope(folderPath, this.configDir, this.currentDeviceFilter(), true)
+				) {
 					const previousPath = this.stateManager.getFolderPathById(item.id);
 					if (previousPath && previousPath !== folderPath) {
 						logger.info(`Folder move detected: ${previousPath} → ${folderPath} (id=${item.id})`);
@@ -1448,7 +1485,8 @@ export class SyncEngine {
 	private async planOperations(
 		localChanges: LocalChange[],
 		remoteChanges: OneDriveItem[],
-		isFirstSync: boolean
+		isFirstSync: boolean,
+		reenteredFolders: readonly string[] = []
 	): Promise<SyncOperation[]> {
 		const operations: SyncOperation[] = [];
 
@@ -1457,6 +1495,30 @@ export class SyncEngine {
 		for (const item of remoteChanges) {
 			const vaultPath = this.remotePathToVaultPath(item);
 			remoteByPath.set(vaultPath, item);
+		}
+
+		// Paths returning to scope have no shared base. Compare any surviving
+		// local file with the current remote item before processing dirty events.
+		const comparedPaths = new Set<string>();
+		for (const [path, item] of reenteredFolders.length > 0 ? remoteByPath : []) {
+			if (!item.file || item.deleted || this.stateManager.getFileState(path)) continue;
+			if (!reenteredFolders.some((folder) => path === folder || path.startsWith(`${folder}/`))) continue;
+			if (this.conflictQueue?.hasConflict(path)) continue;
+			const localStat = await this.getLocalFileStat(path, this.app.vault.getAbstractFileByPath(path));
+			if (!localStat) continue;
+			const matches = await this.localContentMatchesRemote(path, item);
+			if (matches === true) {
+				this.stateManager.setFileState(path, { ...this.itemToFileState(item), localMtime: localStat.mtime });
+				this.eventManager.removeDirtyPaths([path]);
+			} else {
+				this.pushConflictResolution(operations, path, localStat, item, undefined, true);
+			}
+			remoteByPath.delete(path);
+			comparedPaths.add(path);
+		}
+
+		if (comparedPaths.size > 0) {
+			localChanges = localChanges.filter((change) => !comparedPaths.has(change.path));
 		}
 
 		// Build a set of locally changed paths. On first sync, ignore CREATE
@@ -1726,7 +1788,8 @@ export class SyncEngine {
 		path: string,
 		localStat: { mtime: number; size: number },
 		remoteItem: OneDriveItem,
-		knownState: FileState | undefined
+		knownState: FileState | undefined,
+		preserveBeforeUpload = false
 	): void {
 		const conflictInfo: ConflictInfo = {
 			path,
@@ -1737,8 +1800,25 @@ export class SyncEngine {
 		};
 		const resolution = this.conflictResolver.resolveConflict(conflictInfo);
 		const remoteState = this.itemToFileState(remoteItem);
+		const localState = knownState ?? {
+			path,
+			localMtime: localStat.mtime,
+			size: localStat.size,
+			remoteHash: '',
+			remoteModifiedTime: 0,
+		};
 		switch (resolution.kind) {
 			case 'duplicate':
+				if (preserveBeforeUpload && !this.isPullOnlyMode()) {
+					operations.push({
+						path,
+						direction: SyncDirection.UPLOAD,
+						localState,
+						remoteState,
+						preserveRemoteCopyAt: resolution.duplicatePath,
+					});
+					break;
+				}
 				// CREATE_DUPLICATE: preserve the remote version under a
 				// new dated name, then converge the base path by
 				// uploading the local version. Without this converging
@@ -1755,18 +1835,16 @@ export class SyncEngine {
 					// base item's id (#177, #178).
 					isConflictCopy: true,
 				});
-				operations.push({
-					path,
-					direction: SyncDirection.UPLOAD,
-					localState: knownState,
-					remoteState,
-				});
+				if (knownState && !this.isPullOnlyMode()) {
+					operations.push({ path, direction: SyncDirection.UPLOAD, localState, remoteState });
+				}
 				break;
 			case 'converge':
+				if (this.isPullOnlyMode() && resolution.direction === SyncDirection.UPLOAD) break;
 				operations.push({
 					path,
 					direction: resolution.direction,
-					localState: knownState,
+					localState,
 					remoteState,
 				});
 				break;
@@ -1852,6 +1930,14 @@ export class SyncEngine {
 					this.stateManager.removeFileState(operation.path);
 					logger.debug(`Deleted remote ${operation.path}`);
 				} else {
+					if (operation.preserveRemoteCopyAt) {
+						await this.downloadFile({
+							path: operation.preserveRemoteCopyAt,
+							direction: SyncDirection.DOWNLOAD,
+							remoteState: operation.remoteState,
+							isConflictCopy: true,
+						});
+					}
 					await this.uploadFile(operation);
 				}
 			} else if (operation.direction === SyncDirection.DOWNLOAD) {
@@ -2209,6 +2295,7 @@ export class SyncEngine {
 		const sorted = Array.from(candidates).sort((a, b) => b.split('/').length - a.split('/').length);
 
 		for (const path of sorted) {
+			if (this.folderContainsExclusion(path)) continue;
 			const folder = this.app.vault.getAbstractFileByPath(path);
 			if (folder && folder instanceof TFolder) {
 				if (folder.children.length > 0) {
@@ -2274,6 +2361,7 @@ export class SyncEngine {
 
 		const adapter = this.app.vault.adapter;
 		for (const folderPath of sorted) {
+			if (this.folderContainsExclusion(folderPath)) continue;
 			try {
 				const stat = await adapter.stat(folderPath);
 				if (stat) continue;
@@ -2326,6 +2414,7 @@ export class SyncEngine {
 		// Process folder renames first — they might affect child file paths
 		for (const change of renames) {
 			const oldPath = change.oldPath!;
+			if (this.folderContainsExclusion(oldPath) || this.folderContainsExclusion(change.path)) continue;
 			const folderId = this.stateManager.getFolderIdByPath(oldPath);
 			if (folderId) {
 				try {
@@ -2382,6 +2471,7 @@ export class SyncEngine {
 		}
 
 		for (const change of deletes) {
+			if (this.folderContainsExclusion(change.path)) continue;
 			const folderId = this.stateManager.getFolderIdByPath(change.path);
 			if (folderId) {
 				try {
@@ -2429,7 +2519,9 @@ export class SyncEngine {
 			const filter = this.currentDeviceFilter();
 			if (
 				isOutOfDeviceScope(oldPath, this.configDir, filter, true) ||
-				isOutOfDeviceScope(newPath, this.configDir, filter, true)
+				isOutOfDeviceScope(newPath, this.configDir, filter, true) ||
+				this.folderContainsExclusion(oldPath) ||
+				this.folderContainsExclusion(newPath)
 			) {
 				logger.debug(`Remote folder move ${oldPath} → ${newPath}: outside this device's sync scope`);
 				continue;
@@ -2962,6 +3054,7 @@ export class SyncEngine {
 			//    files don't survive the reconcile. Fresh state is rebuilt
 			//    below from the cloud listing + operation execution.
 			this.stateManager.clearFileStates();
+			this.rememberReconcileExclusions();
 
 			// 5. Plan operations.
 			const operations: SyncOperation[] = [];
@@ -3187,6 +3280,7 @@ export class SyncEngine {
 			//    files don't survive the reconcile. Fresh state is rebuilt
 			//    below from the local listing + operation execution.
 			this.stateManager.clearFileStates();
+			this.rememberReconcileExclusions();
 
 			// 5. Plan operations.
 			const operations: SyncOperation[] = [];

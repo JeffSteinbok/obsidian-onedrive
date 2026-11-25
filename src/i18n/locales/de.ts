@@ -323,6 +323,12 @@ export const de = {
 				placeholder: '.claude',
 				rejected: 'Ignored {{folders}}: only hidden top-level folders (starting with ".") other than the config folder can be added here.',
 			},
+			excludedFolders: {
+				name: 'Excluded folders',
+				desc: 'This device only. Enter one vault-relative folder per line. Each entry excludes that folder and everything under it. Existing files stay on this device and in OneDrive.',
+				placeholder: 'Attachments/PDFs',
+				rejected: 'Ignored {{folders}}. Use vault-relative folder paths without "." or ".." segments.',
+			},
 			status: {
 				name: 'Synchronisierungsstatus',
 				desc: 'Status: {{status}} · Letzte Sync: {{lastSync}} · Fortschritt: {{progress}} · Konflikte: {{conflicts}}',

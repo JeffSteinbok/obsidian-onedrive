@@ -517,6 +517,132 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 		});
 	});
 
+	describe('excluded folders', () => {
+		const exclusionOptions = (device: { excluded: string[] }): Partial<SyncEngineOptions> => {
+			const getDeviceSyncFilter = () => ({ excludeFolders: device.excluded });
+			return {
+				getDeviceSyncFilter,
+				shouldSyncPath: (path, filter = getDeviceSyncFilter()) =>
+					shouldSyncVaultPath(path, false, false, '.obsidian', false, false, false, filter),
+			};
+		};
+
+		it.each(['performSync', 'reconcileFromCloud', 'reconcileToCloud'] as const)(
+			'%s leaves excluded local and remote files alone',
+			async (run) => {
+				const local = makeTFile('Attachments/PDFs/local.pdf', 10, 5000);
+				mockApp.vault.getFiles.mockReturnValue([local]);
+				mockApp.vault.getAbstractFileByPath.mockImplementation((path) => path === local.path ? local : null);
+				track(local.path);
+				track('Attachments/PDFs/deleted-local.pdf');
+				const remote = makeRemoteFile('Attachments/PDFs/remote.pdf');
+				mockClient.listAllItems.mockResolvedValue([remote]);
+				mockClient.getDelta.mockResolvedValue({
+					items: [remote, makeRemoteDelete(local.path)],
+					deltaLink: 'next',
+				});
+				mockEventManager.getDirtyFiles.mockReturnValue([
+					{ path: local.path, type: LocalChangeType.MODIFY },
+					{ path: 'Attachments/PDFs/deleted-local.pdf', type: LocalChangeType.DELETE },
+				]);
+
+				await createEngine(exclusionOptions({ excluded: ['Attachments/PDFs'] }))[run]();
+
+				expect(stateManager.getFileState(local.path)).toBeUndefined();
+				expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+				expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
+				expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+				expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
+				expect(mockApp.vault.adapter.remove).not.toHaveBeenCalled();
+			}
+		);
+
+		it('keeps excluded descendants when a parent folder is deleted locally', async () => {
+			stateManager.setFolderState('attachments-id', 'Attachments');
+			mockEventManager.getDirtyFiles.mockReturnValue([
+				{ path: 'Attachments', type: LocalChangeType.FOLDER_DELETE },
+			]);
+
+			await createEngine(exclusionOptions({ excluded: ['Attachments/PDFs'] })).performSync();
+
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+		});
+
+		it.each(['performSync', 'reconcileFromCloud', 'reconcileToCloud'] as const)(
+			're-enumerates missing remote files and checks conflicts after un-excluding following %s',
+			async (run) => {
+				const local = makeTFile('PDFs/conflict.pdf', 3, 5000);
+				mockApp.vault.getFiles.mockReturnValue([local]);
+				mockApp.vault.getAbstractFileByPath.mockImplementation((path) => path === local.path ? local : null);
+				mockApp.vault.readBinary.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+				track(local.path);
+				stateManager.setDeltaLink('cursor-0');
+				const device = { excluded: ['PDFs'] };
+				mockClient.getDelta.mockImplementation(async (cursor?: string) => ({
+					items: cursor ? [] : [makeRemoteFile(local.path), makeRemoteFile('PDFs/missing.pdf')],
+					deltaLink: 'cursor-next',
+				}));
+				mockClient.listAllItems.mockResolvedValue([makeRemoteFile(local.path), makeRemoteFile('PDFs/missing.pdf')]);
+				const engine = createEngine(exclusionOptions(device));
+
+				await engine[run]();
+				expect(stateManager.getFileState(local.path)).toBeUndefined();
+				device.excluded = [];
+				await engine.performSync();
+
+				expect(writtenPaths()).toContain('PDFs/missing.pdf');
+				expect(writtenPaths()).toEqual(expect.arrayContaining([expect.stringMatching(/conflict \(conflict .*\)\.pdf$/)]));
+				expect(writtenPaths()).not.toContain(local.path);
+				expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+				expect(uploadedPaths()).toContain(local.path);
+			}
+		);
+
+		it('does not overwrite the remote file when its conflict copy fails', async () => {
+			const local = makeTFile('PDFs/conflict.pdf', 3, 5000);
+			mockApp.vault.getFiles.mockReturnValue([local]);
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path) => path === local.path ? local : null);
+			mockClient.getDelta.mockImplementation(async (cursor?: string) => ({
+				items: cursor ? [] : [makeRemoteFile(local.path)],
+				deltaLink: 'next',
+			}));
+			stateManager.setDeviceSyncScope({ excludeFolders: ['PDFs'] });
+			stateManager.setDeltaLink('old');
+			const engine = createEngine(exclusionOptions({ excluded: [] }));
+			mockFileOps.downloadFile.mockRejectedValueOnce(new Error('download failed'));
+
+			await engine.performSync();
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+
+			await engine.performSync();
+			expect(writtenPaths()).toEqual([expect.stringMatching(/conflict \(conflict .*\)\.pdf$/)]);
+			expect(uploadedPaths()).toContain(local.path);
+		});
+
+		it('applies an exclusion added mid-sync starting with the next run', async () => {
+			const device = { excluded: [] as string[] };
+			mockClient.getDelta.mockImplementationOnce(async () => {
+				device.excluded = ['PDFs'];
+				return { items: [makeRemoteFile('PDFs/first.pdf')], deltaLink: 'next' };
+			});
+			mockClient.getDelta.mockResolvedValue({
+				items: [makeRemoteFile('PDFs/second.pdf')],
+				deltaLink: 'last',
+			});
+			const engine = createEngine(exclusionOptions(device));
+
+			await engine.performSync();
+			expect(writtenPaths()).toContain('PDFs/first.pdf');
+			expect(stateManager.getFileState('PDFs/first.pdf')).toBeDefined();
+			await engine.performSync();
+
+			expect(stateManager.getFileState('PDFs/first.pdf')).toBeUndefined();
+			expect(writtenPaths()).not.toContain('PDFs/second.pdf');
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+		});
+	});
+
 	describe('settings changed during a running sync (production-like live shouldSyncPath)', () => {
 		/**
 		 * Mirrors main.ts: the engine's shouldSyncPath option and device

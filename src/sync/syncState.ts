@@ -253,7 +253,7 @@ export class SyncStateManager {
 	/**
 	 * Set .obsidian delta link after sync
 	 */
-	setObsidianDeltaLink(deltaLink: string): void {
+	setObsidianDeltaLink(deltaLink: string | undefined): void {
 		this.state.obsidianDeltaLink = deltaLink;
 	}
 
