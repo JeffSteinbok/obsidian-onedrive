@@ -205,6 +205,8 @@ function copySyncScope(scope: SyncScope) {
 	};
 }
 
+type ReconcileResult = 'completed' | 'cancelled';
+
 /**
  * Main sync engine
  *
@@ -423,10 +425,10 @@ export class SyncEngine {
 	 * its local scan use the same settings throughout the run. Rebuilding file state also records the
 	 * active exclusions so regular sync can re-enumerate them on re-entry.
 	 */
-	private async withReconcileScopeSnapshot(run: () => Promise<void>): Promise<void> {
+	private async withReconcileScopeSnapshot<T>(run: () => Promise<T>): Promise<T> {
 		this.scopeSnapshot = copySyncScope(this.readSyncScope());
 		try {
-			await run();
+			return await run();
 		} finally {
 			this.scopeSnapshot = undefined;
 		}
@@ -3099,11 +3101,11 @@ export class SyncEngine {
 	 * Destructive deletes are gated by the same large-delete confirmation
 	 * modal used by normal sync.
 	 */
-	async reconcileFromCloud(): Promise<void> {
-		await this.withReconcileScopeSnapshot(() => this.runReconcileFromCloud());
+	async reconcileFromCloud(): Promise<ReconcileResult> {
+		return this.withReconcileScopeSnapshot(() => this.runReconcileFromCloud());
 	}
 
-	private async runReconcileFromCloud(): Promise<void> {
+	private async runReconcileFromCloud(): Promise<ReconcileResult> {
 		logger.info('Starting reconcile-from-cloud operation');
 		const progress = (msg: string | undefined) => {
 			try {
@@ -3166,13 +3168,8 @@ export class SyncEngine {
 				}
 			}
 
-			// 4. Wipe tracked file states so ghosts from previously-deleted
-			//    files don't survive the reconcile. Fresh state is rebuilt
-			//    below from the cloud listing + operation execution.
-			this.stateManager.clearFileStates();
-			this.rememberReconcileExclusions();
-
-			// 5. Plan operations.
+			// 4. Plan operations and tracked-state updates.
+			const matchingFileStates = new Map<string, FileState>();
 			const operations: SyncOperation[] = [];
 			const localOnly: string[] = [];
 			const remoteOnly: string[] = [];
@@ -3215,8 +3212,8 @@ export class SyncEngine {
 							remoteState: this.itemToFileState(item),
 						});
 					} else {
-						// Content matches (or no hash to compare) — refresh tracked state.
-						this.stateManager.setFileState(path, this.itemToFileState(item));
+						// Stage the state refresh for files that match or lack a comparable hash.
+						matchingFileStates.set(path, this.itemToFileState(item));
 					}
 				}
 			}
@@ -3242,14 +3239,21 @@ export class SyncEngine {
 				if (decision !== 'proceed') {
 					logger.info(`Reconcile cancelled by user (${operations.length} ops aborted)`);
 					new Notice(t('notices.reconcile.cancelled'));
-					return;
+					return 'cancelled';
 				}
+			}
+
+			// Rebuild tracked state after approval, dropping ghost entries.
+			this.stateManager.clearFileStates();
+			this.rememberReconcileExclusions();
+			for (const [path, state] of matchingFileStates) {
+				this.stateManager.setFileState(path, state);
 			}
 
 			if (operations.length === 0) {
 				logger.info('Reconcile: nothing to do — local already matches cloud');
 				new Notice(t('notices.reconcile.alreadyInSync'));
-				return;
+				return 'completed';
 			}
 
 			// 6. Execute.
@@ -3304,6 +3308,7 @@ export class SyncEngine {
 					refreshed: sizeMismatch.length,
 				})
 			);
+			return 'completed';
 		} catch (error) {
 			logger.error('Reconcile from cloud failed:', error);
 			new Notice(t('notices.reconcile.failed', { message: String(error) }));
@@ -3323,11 +3328,11 @@ export class SyncEngine {
 	 * Destructive deletes (on the cloud side) are gated by the same
 	 * large-delete confirmation modal used by normal sync.
 	 */
-	async reconcileToCloud(): Promise<void> {
-		await this.withReconcileScopeSnapshot(() => this.runReconcileToCloud());
+	async reconcileToCloud(): Promise<ReconcileResult> {
+		return this.withReconcileScopeSnapshot(() => this.runReconcileToCloud());
 	}
 
-	private async runReconcileToCloud(): Promise<void> {
+	private async runReconcileToCloud(): Promise<ReconcileResult> {
 		logger.info('Starting reconcile-to-cloud operation');
 		const progress = (msg: string | undefined) => {
 			try {
@@ -3390,13 +3395,8 @@ export class SyncEngine {
 				}
 			}
 
-			// 4. Wipe tracked file states so ghosts from previously-deleted
-			//    files don't survive the reconcile. Fresh state is rebuilt
-			//    below from the local listing + operation execution.
-			this.stateManager.clearFileStates();
-			this.rememberReconcileExclusions();
-
-			// 5. Plan operations.
+			// 4. Plan operations and tracked-state updates.
+			const matchingFileStates = new Map<string, FileState>();
 			const operations: SyncOperation[] = [];
 			const localOnly: string[] = [];
 			const remoteOnly: string[] = [];
@@ -3438,8 +3438,8 @@ export class SyncEngine {
 							direction: SyncDirection.UPLOAD,
 						});
 					} else {
-						// Content matches (or no hash to compare) — refresh tracked state.
-						this.stateManager.setFileState(path, this.itemToFileState(item));
+						// Stage the state refresh for files that match or lack a comparable hash.
+						matchingFileStates.set(path, this.itemToFileState(item));
 					}
 				}
 			}
@@ -3465,14 +3465,21 @@ export class SyncEngine {
 				if (decision !== 'proceed') {
 					logger.info(`Reconcile-to-cloud cancelled by user (${operations.length} ops aborted)`);
 					new Notice(t('notices.reconcileToCloud.cancelled'));
-					return;
+					return 'cancelled';
 				}
+			}
+
+			// Rebuild tracked state after approval, dropping ghost entries.
+			this.stateManager.clearFileStates();
+			this.rememberReconcileExclusions();
+			for (const [path, state] of matchingFileStates) {
+				this.stateManager.setFileState(path, state);
 			}
 
 			if (operations.length === 0) {
 				logger.info('Reconcile-to-cloud: nothing to do — cloud already matches local');
 				new Notice(t('notices.reconcileToCloud.alreadyInSync'));
-				return;
+				return 'completed';
 			}
 
 			// 6. Execute.
@@ -3527,6 +3534,7 @@ export class SyncEngine {
 					refreshed: sizeMismatch.length,
 				})
 			);
+			return 'completed';
 		} catch (error) {
 			logger.error('Reconcile to cloud failed:', error);
 			new Notice(t('notices.reconcileToCloud.failed', { message: String(error) }));

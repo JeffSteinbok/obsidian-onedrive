@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => {
 	};
 
 	const syncEngine = {
+		reconcileFromCloud: vi.fn(),
+		reconcileToCloud: vi.fn(),
 		performSync: vi.fn().mockResolvedValue(undefined),
 	};
 
@@ -412,6 +414,32 @@ describe('OneDriveSyncPlugin', () => {
 		// No auth provider built against a fallback authority
 		expect(mocks.OneDriveAuthProvider).not.toHaveBeenCalled();
 	});
+
+	it.each(['reconcileFromCloud', 'reconcileToCloud'] as const)(
+		'%s skips persistence on cancel and saves after completion',
+		async (reconcile) => {
+			mocks.tokenStorage.hasTokens.mockReturnValue(true);
+			(plugin as any).loadData.mockResolvedValue({
+				accessMode: OneDriveAccessMode.FULL_ACCESS,
+				remotePath: '/Vault',
+			});
+			await plugin.onload();
+			const saveSettings = vi.spyOn(plugin, 'saveSettings');
+			const before = structuredClone(plugin.settings);
+
+			mocks.syncEngine[reconcile].mockResolvedValueOnce('cancelled');
+			await plugin[reconcile]();
+
+			expect(mocks.syncEngine[reconcile]).toHaveBeenCalledTimes(1);
+			expect(saveSettings).not.toHaveBeenCalled();
+			expect(plugin.settings).toEqual(before);
+
+			mocks.syncEngine[reconcile].mockResolvedValueOnce('completed');
+			await plugin[reconcile]();
+
+			expect(saveSettings).toHaveBeenCalledTimes(1);
+		}
+	);
 
 	it('saveSettings persists sync state data (tokens stored in SecretStorage)', async () => {
 		const savedState = { lastSyncTime: 123, fileStates: [['note.md', { path: 'note.md' }]] };

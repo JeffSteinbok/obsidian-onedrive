@@ -1465,8 +1465,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.isSyncing = true;
 		try {
 			this.setSyncStatus(SyncStatus.SYNCING);
-			await this.syncEngine.reconcileFromCloud();
-			await this.saveSettings();
+			const result = await this.syncEngine.reconcileFromCloud();
+			if (result === 'completed') {
+				await this.saveSettings();
+			}
 			this.setSyncStatus(SyncStatus.IDLE);
 		} catch (error) {
 			this.setSyncStatus(SyncStatus.ERROR);
@@ -1502,8 +1504,10 @@ export default class OneDriveSyncPlugin extends Plugin {
 		this.isSyncing = true;
 		try {
 			this.setSyncStatus(SyncStatus.SYNCING);
-			await this.syncEngine.reconcileToCloud();
-			await this.saveSettings();
+			const result = await this.syncEngine.reconcileToCloud();
+			if (result === 'completed') {
+				await this.saveSettings();
+			}
 			this.setSyncStatus(SyncStatus.IDLE);
 		} catch (error) {
 			this.setSyncStatus(SyncStatus.ERROR);
