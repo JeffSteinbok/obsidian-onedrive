@@ -323,14 +323,10 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.saveData).toHaveBeenCalledTimes(1);
 	});
 
-	it('loadSettings sets appFolderSubpathConfirmed for existing connected app-folder users', async () => {
-		(plugin as any).loadData = vi.fn().mockResolvedValue({
+	it('loadSettings preserves a saved App Folder subpath through the confirmation migration', async () => {
+		vi.mocked(plugin.loadData).mockResolvedValue({
 			accessMode: OneDriveAccessMode.APP_FOLDER,
-			connectedUser: {
-				id: '1',
-				displayName: 'Test User',
-				userPrincipalName: 'test@test.com',
-			},
+			appFolderSubpath: 'Vault',
 		});
 
 		await plugin.loadSettings();
@@ -858,6 +854,18 @@ describe('OneDriveSyncPlugin', () => {
 		expect(plugin.isConnected()).toBe(false);
 	});
 
+	it('onload keeps the legacy App Folder root confirmed for users with tokens and a cached profile', async () => {
+		mocks.tokenStorage.hasTokens.mockReturnValue(true);
+		vi.mocked(plugin.loadData).mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			connectedUser: { id: '1', displayName: 'Test User', userPrincipalName: 'test@test.com' },
+		});
+
+		await plugin.onload();
+
+		expect(plugin.settings.appFolderSubpathConfirmed).toBe(true);
+	});
+
 	it('onload confirms the App Folder target for upgraded users who have tokens but no cached user', async () => {
 		mocks.tokenStorage.hasTokens.mockReturnValue(true);
 		mocks.oneDriveClient.getUserInfo.mockRejectedValue(new Error('502'));
@@ -878,6 +886,24 @@ describe('OneDriveSyncPlugin', () => {
 		await plugin.onload();
 
 		expect(plugin.settings.appFolderSubpathConfirmed).toBe(false);
+	});
+
+	it('keeps the legacy App Folder target unconfirmed after sign-in when only a cached profile existed', async () => {
+		vi.mocked(plugin.loadData).mockResolvedValue({
+			accessMode: OneDriveAccessMode.APP_FOLDER,
+			connectedUser: { id: 'old', displayName: 'Old User', userPrincipalName: 'old@test.com' },
+		});
+		await plugin.onload();
+
+		mocks.deviceCodeClient.authenticate.mockResolvedValue({
+			access_token: 'at',
+			refresh_token: 'rt',
+			expires_in: 3600,
+		});
+		await plugin.authenticate();
+
+		expect(plugin.settings.appFolderSubpathConfirmed).toBe(false);
+		expect(mocks.eventManager.startListening).not.toHaveBeenCalled();
 	});
 
 	it('onload keeps an explicit unconfirmed App Folder target even with tokens', async () => {

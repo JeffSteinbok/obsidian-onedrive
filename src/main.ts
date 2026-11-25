@@ -161,7 +161,7 @@ export default class OneDriveSyncPlugin extends Plugin {
 		}
 		this.syncStateManager.loadState(this.settings.syncState);
 
-		if (this.appFolderConfirmMigrationPending && this.tokenStorage.hasTokens()) {
+		if (this.appFolderConfirmMigrationPending && this.isConnected()) {
 			this.settings.appFolderSubpathConfirmed = true;
 		}
 		this.appFolderConfirmMigrationPending = false;
@@ -1252,18 +1252,16 @@ export default class OneDriveSyncPlugin extends Plugin {
 			delete raw['enableDebugLogging'];
 		}
 
-		// Migration: existing connected users in App Folder mode should keep syncing
-		// without requiring a one-time re-selection after upgrade.
+		// Carry forward a saved legacy subpath. For the implicit root, finish
+		// migration after credentials load. Cached GET /me data from pre-#75
+		// settings may travel without credentials. Settings synced from post-#75
+		// devices carry an explicit confirmation value, which takes precedence.
+		this.appFolderConfirmMigrationPending = false;
 		if (this.settings.accessMode === OneDriveAccessMode.APP_FOLDER) {
 			if (typeof loaded.appFolderSubpathConfirmed === 'boolean') {
 				this.settings.appFolderSubpathConfirmed = loaded.appFolderSubpathConfirmed;
 			} else {
-				this.settings.appFolderSubpathConfirmed = !!(
-					this.settings.connectedUser || this.settings.appFolderSubpath
-				);
-				// Stored tokens also mean "connected" — even when GET /me never
-				// filled in connectedUser (#208). They load after settings, so
-				// onload() finishes this migration once they are available.
+				this.settings.appFolderSubpathConfirmed = Boolean(this.settings.appFolderSubpath);
 				this.appFolderConfirmMigrationPending = !this.settings.appFolderSubpathConfirmed;
 			}
 		}
