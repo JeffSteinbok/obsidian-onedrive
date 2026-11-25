@@ -395,9 +395,10 @@ describe('SyncEngine', () => {
 	});
 
 	it.each([
-		'/Aplikacje/ObsidianOneDrive',
-		'/ObsidianOneDrive-backup/ObsidianOneDrive',
-	])('realigns app-folder delta paths under %s to the vault root', async (driveRoot) => {
+		['/Aplikacje/ObsidianOneDrive', ''],
+		['/ObsidianOneDrive-backup/ObsidianOneDrive', ''],
+		['/Apps/ObsidianOneDrive-old/ObsidianOneDrive', '/Apps/ObsidianOneDrive-old/ObsidianOneDrive/'],
+	])('resolves app-folder delta paths under %s', async (driveRoot, expectedPrefix) => {
 		stateManager.setLastSyncTime(Date.now());
 		syncEngine = new SyncEngine(
 			mockApp as any,
@@ -425,13 +426,13 @@ describe('SyncEngine', () => {
 
 		await syncEngine.performSync();
 
-		expect(mockApp.vault.adapter.mkdir).toHaveBeenCalledWith('Development/Remotething');
+		expect(mockApp.vault.adapter.mkdir).toHaveBeenCalledWith(`${expectedPrefix}Development/Remotething`);
 		expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(
-			'Development/Remotething/Remotething ideas.md',
+			`${expectedPrefix}Development/Remotething/Remotething ideas.md`,
 			expect.any(ArrayBuffer)
 		);
-		expect(stateManager.getFileState('Development/Remotething/Remotething ideas.md')).toMatchObject({
-			path: 'Development/Remotething/Remotething ideas.md',
+		expect(stateManager.getFileState(`${expectedPrefix}Development/Remotething/Remotething ideas.md`)).toMatchObject({
+			path: `${expectedPrefix}Development/Remotething/Remotething ideas.md`,
 			oneDriveId: 'remote-idea-id',
 		});
 	});

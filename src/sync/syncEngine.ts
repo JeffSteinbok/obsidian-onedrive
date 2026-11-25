@@ -3013,8 +3013,14 @@ export class SyncEngine {
 
 	private realignRemoteRoot(fullPath: string): string {
 		const normalizedPath = normalizePath(fullPath);
-		const normalizedRoot = normalizePath(this.remoteRootOnDrive);
+		const normalizedRoot = normalizePath(this.remoteRootOnDrive).replace(/\/+$/, '');
 		if (isPathWithinRoot(normalizedPath, normalizedRoot)) {
+			return normalizedPath;
+		}
+
+		// A sibling sharing the configured prefix is outside the root and
+		// cannot supply a replacement root, even if it contains a matching segment.
+		if (normalizedPath.startsWith(normalizedRoot)) {
 			return normalizedPath;
 		}
 
