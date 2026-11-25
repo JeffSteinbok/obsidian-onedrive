@@ -86,6 +86,7 @@ import {
 	stripGraphPrefix,
 	shouldSyncVaultPath,
 	getAllSyncableConfigPaths,
+	isConflictCopyPath,
 	isInAdditionalSyncFolder,
 	isOutOfDeviceScope,
 	getFoldersEnteringScope,
@@ -1060,12 +1061,13 @@ export class SyncEngine {
 			}
 		}
 
-		// Check tracked plugin paths whose folders were deleted — these
-		// won't appear in allConfigPaths because getInstalledPluginSyncPaths
-		// only lists currently-existing folders.
-		const pluginPrefix = `${this.configDir}/plugins/`;
+		// Directory listings omit deleted plugin folders and conflict copies,
+		// so check their tracked paths directly.
+		const configPrefix = `${this.configDir}/`;
+		const pluginPrefix = `${configPrefix}plugins/`;
 		for (const path of this.stateManager.getTrackedPaths()) {
-			if (!path.startsWith(pluginPrefix)) continue;
+			if (!path.startsWith(configPrefix)) continue;
+			if (!path.startsWith(pluginPrefix) && !isConflictCopyPath(path)) continue;
 			if (checkedPaths.has(path)) continue;
 			if (!this.shouldSyncPath(path)) continue;
 			if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
@@ -1074,7 +1076,7 @@ export class SyncEngine {
 			try {
 				const stat = await adapter.stat(path);
 				if (!stat || stat.type !== 'file') {
-					logger.info(`Tracked plugin file no longer exists: ${path}`);
+					logger.info(`Tracked config file no longer exists: ${path}`);
 					changes.push({ path, type: LocalChangeType.DELETE });
 				}
 			} catch (error) {

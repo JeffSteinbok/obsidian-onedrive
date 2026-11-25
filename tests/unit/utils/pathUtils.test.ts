@@ -19,6 +19,7 @@ import {
 	getFileNameWithoutExtension,
 	sanitizeFileName,
 	createConflictFileName,
+	isConflictCopyPath,
 	toOneDrivePath,
 	toVaultPath,
 	encodePathForGraph,
@@ -122,6 +123,17 @@ describe('pathUtils', () => {
 		it('should work with files without extension', () => {
 			const result = createConflictFileName('README');
 			expect(result).toMatch(/^README \(conflict \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\)$/);
+		});
+
+		it.each([
+			['notes/archive/report.v2.md', /^notes\/archive\/report\.v2 \(conflict .*\)\.md$/],
+			['.claude/CLAUDE.md', /^\.claude\/CLAUDE \(conflict .*\)\.md$/],
+			['docs.v2/README', /^docs\.v2\/README \(conflict .*\)$/],
+			['.claude/.env', /^\.claude\/\.env \(conflict .*\)$/],
+		])('keeps the parent and basename of %s', (path, expected) => {
+			const copy = createConflictFileName(path);
+			expect(copy).toMatch(expected);
+			expect(isConflictCopyPath(copy)).toBe(true);
 		});
 	});
 
@@ -273,6 +285,17 @@ describe('pathUtils', () => {
 	});
 
 	describe('shouldSyncVaultPath', () => {
+		it('applies exact config file settings to their dated conflict copies', () => {
+			const appCopy = createConflictFileName('.obsidian/app.json');
+			const pluginCopy = createConflictFileName('.obsidian/plugins/calendar/data.json');
+			const ownCopy = createConflictFileName('.obsidian/plugins/onedrive-sync/data.json');
+			expect(shouldSyncVaultPath(appCopy, false, true, '.obsidian')).toBe(true);
+			expect(shouldSyncVaultPath(appCopy, false, false, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath(pluginCopy, true, false, '.obsidian', false, false, true)).toBe(true);
+			expect(shouldSyncVaultPath(pluginCopy, true, false, '.obsidian')).toBe(false);
+			expect(shouldSyncVaultPath(ownCopy, true, true, '.obsidian', true, true, true)).toBe(false);
+		});
+
 		it('should sync non-.obsidian files by default', () => {
 			expect(shouldSyncVaultPath('notes/file.md', false, false, '.obsidian')).toBe(true);
 		});

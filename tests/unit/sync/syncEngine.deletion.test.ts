@@ -18,6 +18,7 @@ import { mockApp, makeTFile } from '../../setup';
 import { SyncEngine } from '../../../src/sync/syncEngine';
 import { SyncStateManager } from '../../../src/sync/syncState';
 import { ConflictResolver } from '../../../src/sync/conflictResolver';
+import { shouldSyncVaultPath } from '../../../src/utils/pathUtils';
 import {
 	ConflictResolutionStrategy,
 	LocalChangeType,
@@ -232,6 +233,38 @@ describe('SyncEngine deletion permutations', () => {
 			addDirtyFile: vi.fn(),
 		};
 	});
+
+	it.each([
+		{ syncAppSettings: true, expectedDeletes: ['config-conflict-id'] },
+		{ syncAppSettings: false, expectedDeletes: [] },
+	])('handles a locally deleted config conflict copy with app settings sync set to $syncAppSettings',
+		async ({ syncAppSettings, expectedDeletes }) => {
+			const path = '.obsidian/app (conflict 2026-05-25 12-30-45).json';
+			stateManager.setLastSyncTime(Date.now());
+			stateManager.setDeltaLink('previous-delta');
+			stateManager.setFileState(path, {
+				path,
+				localMtime: 1,
+				remoteHash: 'conflict-hash',
+				size: 10,
+				remoteModifiedTime: 2,
+				oneDriveId: 'config-conflict-id',
+			});
+
+			await createEngine((candidate) =>
+				shouldSyncVaultPath(candidate, false, syncAppSettings, '.obsidian')
+			).performSync();
+
+			expect(mockFileOps.deleteFile.mock.calls).toEqual(expectedDeletes.map((id) => [id]));
+			if (syncAppSettings) {
+				expect(mockApp.vault.adapter.stat).toHaveBeenCalledWith(path);
+				expect(stateManager.getFileState(path)).toBeUndefined();
+			} else {
+				expect(mockApp.vault.adapter.stat).not.toHaveBeenCalledWith(path);
+				expect(stateManager.getFileState(path)?.oneDriveId).toBe('config-conflict-id');
+			}
+		}
+	);
 
 	it('deletes a single tracked file remotely when it is deleted locally', async () => {
 		stateManager.setLastSyncTime(Date.now());

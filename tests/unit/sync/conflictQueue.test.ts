@@ -148,7 +148,7 @@ describe('ConflictQueue', () => {
 
 			mockApp.vault.adapter.readBinary.mockResolvedValue(remoteContent);
 
-			const entry = await queue.add('test.md', localContent, remoteContent, 0, 0, 'id', 'hash');
+			const entry = await queue.add('notes/test.md', localContent, remoteContent, 0, 0, 'id', 'hash');
 
 			const addDirtySpy = vi.spyOn(eventManager, 'addDirtyFile');
 			const markOwnSpy = vi.spyOn(eventManager, 'markOwnWrites');
@@ -157,11 +157,13 @@ describe('ConflictQueue', () => {
 
 			expect(queue.count).toBe(0);
 			// Should write conflict copy
-			expect(markOwnSpy).toHaveBeenCalled();
+			const copy = expect.stringMatching(/^notes\/test \(conflict .*\)\.md$/);
+			expect(markOwnSpy).toHaveBeenCalledWith([copy]);
+			expect(mockApp.vault.adapter.writeBinary).toHaveBeenCalledWith(copy, remoteContent);
 			// Should mark both original and conflict copy dirty
-			expect(addDirtySpy).toHaveBeenCalledWith('test.md', 'modify');
+			expect(addDirtySpy).toHaveBeenCalledWith('notes/test.md', 'modify');
 			expect(addDirtySpy).toHaveBeenCalledWith(
-				expect.stringContaining('(conflict'),
+				copy,
 				'create'
 			);
 		});
