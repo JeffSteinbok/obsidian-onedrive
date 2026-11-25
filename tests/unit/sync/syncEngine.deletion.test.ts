@@ -667,6 +667,85 @@ describe('SyncEngine deletion permutations', () => {
 		]);
 	});
 
+	it.each(['reconcileFromCloud', 'reconcileToCloud'] as const)(
+		'%s leaves tracked state and both sides untouched on cancel',
+		async (reconcile) => {
+			const fromCloud = reconcile === 'reconcileFromCloud';
+			for (const path of ['notes/keep.md', 'stale.md']) {
+				stateManager.setFileState(path, {
+					path,
+					localMtime: 1,
+					remoteHash: 'old-hash',
+					size: 10,
+					remoteModifiedTime: 2,
+					oneDriveId: 'old-' + path,
+				});
+			}
+			stateManager.setFolderState('notes-id', 'notes');
+			stateManager.setDeltaLink('previous-delta', true);
+			stateManager.setObsidianDeltaLink('previous-config-delta');
+			stateManager.setLastSyncTime(123);
+			const before = structuredClone(stateManager.prepareForSave());
+
+			const localFiles = [makeTFile('notes/keep.md', 10), makeTFile('local-only.md', 10)];
+			mockApp.vault.getFiles.mockReturnValue(localFiles);
+			mockApp.vault.getAbstractFileByPath.mockImplementation(
+				(path: string) => localFiles.find((file) => file.path === path) ?? null
+			);
+			mockClient.listAllItems.mockResolvedValue([
+				makeRemoteFile('notes/keep.md', { size: 10 }),
+				makeRemoteFile('remote-only.md'),
+			]);
+			const handler = vi.fn().mockResolvedValue('cancel');
+			const engine = new SyncEngine(
+				mockApp as any,
+				mockFileOps as any,
+				mockClient as any,
+				stateManager,
+				conflictResolver,
+				mockEventManager as any,
+				'.obsidian',
+				{
+					remoteRoot: '/remote/root',
+					getLargeDeleteThreshold: () => 1,
+					largeDeleteWarningHandler: handler,
+					getDeviceSyncFilter: () => ({ excludeFolders: ['excluded'] }),
+				}
+			);
+
+			await expect(engine[reconcile]()).resolves.toBe('cancelled');
+
+			expect(handler).toHaveBeenCalledWith(
+				expect.objectContaining({
+					localDeleteCount: fromCloud ? 1 : 0,
+					remoteDeleteCount: fromCloud ? 0 : 1,
+				})
+			);
+			expect(stateManager.prepareForSave()).toEqual(before);
+			expect(mockClient.getDelta).not.toHaveBeenCalled();
+			expect(mockEventManager.clearDirtyFiles).not.toHaveBeenCalled();
+			for (const operation of Object.values(mockFileOps)) {
+				expect(operation).not.toHaveBeenCalled();
+			}
+			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
+			expect(mockApp.vault.adapter.writeBinary).not.toHaveBeenCalled();
+
+			handler.mockResolvedValue('proceed');
+			await expect(engine[reconcile]()).resolves.toBe('completed');
+
+			expect(stateManager.getFileState('stale.md')).toBeUndefined();
+			expect(stateManager.getFileState('notes/keep.md')?.oneDriveId).toBe('notes/keep.md-id');
+			expect(stateManager.getDeltaLink()).toBe('delta-link-next');
+			if (fromCloud) {
+				expect(mockApp.fileManager.trashFile).toHaveBeenCalledWith(localFiles[1]);
+				expect(mockFileOps.downloadFile).toHaveBeenCalled();
+			} else {
+				expect(mockFileOps.deleteFile).toHaveBeenCalledWith('remote-only.md-id');
+				expect(mockFileOps.uploadFile).toHaveBeenCalled();
+			}
+		}
+	);
+
 	it('clears ghost tracked state before reconcile and drops entries not present in the cloud', async () => {
 		const clearFileStatesSpy = vi.spyOn(stateManager, 'clearFileStates');
 		stateManager.setFileState('ghost.md', {
