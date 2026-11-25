@@ -426,7 +426,7 @@ describe('SyncEngine deletion permutations', () => {
 		expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
 	});
 
-	it('converts a config upload into a remote delete when the file vanishes before execution', async () => {
+	it('keeps tracked state when a config file vanishes before upload', async () => {
 		const configPath = '.obsidian/app.json';
 		stateManager.setLastSyncTime(Date.now());
 		stateManager.setFileState(configPath, {
@@ -444,9 +444,10 @@ describe('SyncEngine deletion permutations', () => {
 
 		await createEngine((path) => path === configPath).performSync();
 
-		expect(mockFileOps.deleteFile).toHaveBeenCalledWith('config-id');
+		expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
 		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
-		expect(stateManager.getFileState(configPath)).toBeUndefined();
+		expect(stateManager.getFileState(configPath)?.oneDriveId).toBe('config-id');
+		expect(mockEventManager.removeDirtyPaths).toHaveBeenCalledWith([configPath]);
 	});
 
 	it('deletes a local file when the cloud delta reports a single file delete', async () => {
@@ -602,6 +603,31 @@ describe('SyncEngine deletion permutations', () => {
 			'plugin-a-folder-id',
 		]);
 		expect(stateManager.getFolderPathById('plugin-a-folder-id')).toBeUndefined();
+	});
+
+	it('keeps the remote config folder when its local stat fails', async () => {
+		const folder = '.obsidian/plugins/plugin-a';
+		const path = `${folder}/main.js`;
+		stateManager.setLastSyncTime(Date.now());
+		stateManager.setFileState(path, {
+			path,
+			localMtime: 1,
+			remoteHash: 'main-hash',
+			size: 10,
+			remoteModifiedTime: 2,
+			oneDriveId: 'plugin-a-main-id',
+		});
+		stateManager.setFolderState('plugin-a-folder-id', folder);
+		mockEventManager.getDirtyFiles.mockReturnValue([{ path, type: LocalChangeType.DELETE }]);
+		mockApp.vault.adapter.stat.mockImplementation(async (candidate: string) => {
+			if (candidate === folder) throw new Error('EPERM');
+			return null;
+		});
+
+		await createEngine().performSync();
+
+		expect(mockFileOps.deleteFile.mock.calls.map((call) => call[0])).toEqual(['plugin-a-main-id']);
+		expect(stateManager.getFolderPathById('plugin-a-folder-id')).toBe(folder);
 	});
 
 	it('does not prune a remote folder when the local folder still exists', async () => {

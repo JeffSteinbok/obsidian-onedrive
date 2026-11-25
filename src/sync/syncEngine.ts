@@ -179,7 +179,10 @@ interface SyncExecutionResult {
 	conflictedPaths: string[];
 	failedPaths: string[];
 	deferredPaths: string[];
+	missingUploadPaths: Set<string>;
 }
+
+class UploadSourceMissingError extends Error {}
 
 interface SyncOperationFailure {
 	operation: SyncOperation;
@@ -597,10 +600,9 @@ export class SyncEngine {
 			}
 
 			// Phase 4: Execute all planned sync operations with progress tracking
-			const { completed, downloadedPaths, conflictedPaths, failedPaths, deferredPaths } = await this.executeSyncOperations(
-				operations,
-				progress
-			);
+			const {
+				completed, downloadedPaths, conflictedPaths, failedPaths, deferredPaths, missingUploadPaths,
+			} = await this.executeSyncOperations(operations, progress);
 
 			// Clean up empty folders left behind by folder-delete expansion
 			if (deletedFolderPaths.length > 0) {
@@ -649,12 +651,13 @@ export class SyncEngine {
 				const cleanPaths = Array.from(new Set([
 					...successfulOperationPaths,
 					...completedFolderPaths,
+					...missingUploadPaths,
 				]));
 				if (cleanPaths.length > 0) {
 					this.eventManager.removeDirtyPaths(cleanPaths);
 				}
 				for (const path of failedPaths) {
-					this.eventManager.addDirtyFile(path, 'modify');
+					if (!missingUploadPaths.has(path)) this.eventManager.addDirtyFile(path, 'modify');
 				}
 				for (const path of conflictedPaths) {
 					this.eventManager.addDirtyFile(path, 'modify');
@@ -1491,6 +1494,11 @@ export class SyncEngine {
 			downloadedPaths,
 			conflictedPaths,
 			failedPaths: failures.map((failure) => failure.operation.path),
+			missingUploadPaths: new Set(
+				failures
+					.filter((failure) => failure.error instanceof UploadSourceMissingError)
+					.map((failure) => failure.operation.path)
+			),
 			deferredPaths: failures
 				.filter((failure) => failure.deferrable)
 				.map((failure) => failure.operation.path),
@@ -1781,8 +1789,11 @@ export class SyncEngine {
 					// hidden folders) have no TFile; read their stat through
 					// the adapter so they get the same conflict handling.
 					const localStat = await this.getLocalFileStat(change.path, file);
-					let isConflict = !!(localStat && knownState);
-					if (localStat && !knownState && !(file instanceof TFile)) {
+					if (!localStat) {
+						throw new Error(`Cannot compare local file with a changed remote copy: ${change.path}`);
+					}
+					let isConflict = !!knownState;
+					if (!knownState && !(file instanceof TFile)) {
 						// No shared base (e.g. two devices that both had the
 						// folder before opting in). Identical content needs no
 						// work; anything else must not blindly overwrite remote.
@@ -1798,7 +1809,7 @@ export class SyncEngine {
 						}
 						isConflict = true;
 					}
-					if (isConflict && localStat) {
+					if (isConflict) {
 						this.pushConflictResolution(operations, change.path, localStat, remoteItem, knownState);
 					} else {
 						// No known state, upload local
@@ -1977,12 +1988,10 @@ export class SyncEngine {
 	): Promise<{ mtime: number; size: number } | null> {
 		if (file instanceof TFile) return file.stat;
 		if (file) return null; // a folder
-		try {
-			const stat = await this.app.vault.adapter.stat(path);
-			return stat && stat.type === 'file' ? { mtime: stat.mtime, size: stat.size } : null;
-		} catch {
-			return null;
-		}
+		// Callers use null as evidence of absence when making conflict
+		// decisions. Let stat errors abort planning and retain the delta cursor.
+		const stat = await this.app.vault.adapter.stat(path);
+		return stat?.type === 'file' ? stat : null;
 	}
 
 	/**
@@ -2207,24 +2216,9 @@ export class SyncEngine {
 			// Config files aren't TFile — read via adapter
 			const adapter = this.app.vault.adapter;
 			if (!(await adapter.exists(operation.path))) {
-				// File was deleted between planning and execution — treat as
-				// a local delete: remove the remote copy if we have an ID,
-				// then clean up tracked state.
-				logger.warn(`File vanished before upload: ${operation.path} — converting to remote delete`);
-				const knownState = this.stateManager.getFileState(operation.path);
-				if (knownState?.oneDriveId) {
-					try {
-						await this.fileOps.deleteFile(knownState.oneDriveId);
-						logger.debug(`Deleted remote ${operation.path} (vanished locally)`);
-					} catch (deleteError) {
-						logger.warn(
-							`Could not delete remote ${operation.path} after local vanish:`,
-							deleteError
-						);
-					}
-				}
-				this.stateManager.removeFileState(operation.path);
-				return;
+				// Only the planner may turn confirmed absence into a delete.
+				// Leave the tracked base intact and let the next scan re-observe it.
+				throw new UploadSourceMissingError(`File vanished before upload: ${operation.path}`);
 			}
 			content = await adapter.readBinary(operation.path);
 			const stat = await adapter.stat(operation.path);
@@ -2483,8 +2477,9 @@ export class SyncEngine {
 			try {
 				const stat = await adapter.stat(folderPath);
 				if (stat) continue;
-			} catch {
-				// stat threw — folder is gone
+			} catch (error) {
+				logger.warn(`Could not stat ${folderPath}; skipping remote folder pruning`, error);
+				continue;
 			}
 
 			const folderId = this.stateManager.getFolderIdByPath(folderPath);
@@ -3091,6 +3086,38 @@ export class SyncEngine {
 	}
 
 	/**
+	 * Reconcile can overwrite or delete either side. Verify paths omitted from
+	 * the local inventory before treating them as absent, and abort planning
+	 * if the adapter cannot distinguish an unreadable path from a missing one.
+	 */
+	private async gatherReconcileLocalFiles(
+		remotePaths: Iterable<string>,
+		ignoreMatchers: RegExp[]
+	): Promise<Map<string, { size: number }>> {
+		const inScope = (path: string) =>
+			this.shouldSyncPath(path) && !this.shouldIgnorePath(path, ignoreMatchers);
+		const localByPath = new Map<string, { size: number }>(
+			this.app.vault
+				.getFiles()
+				.filter((file) => inScope(file.path))
+				.map((file) => [file.path, { size: file.stat.size }])
+		);
+		const adapter = this.app.vault.adapter;
+		const configPaths = await getAllSyncableConfigPaths(
+			this.configDir,
+			adapter,
+			(path) => this.shouldSyncPath(path),
+			this.getAdditionalSyncFolders()
+		);
+		for (const path of new Set([...configPaths.filter(inScope), ...remotePaths])) {
+			if (localByPath.has(path)) continue;
+			const stat = await adapter.stat(path);
+			if (stat?.type === 'file') localByPath.set(path, { size: stat.size });
+		}
+		return localByPath;
+	}
+
+	/**
 	 * Reconcile the local vault from a full cloud listing. Treats cloud as
 	 * authoritative: any local file not present in cloud is deleted; any
 	 * cloud file not present locally is downloaded; size mismatches are
@@ -3137,36 +3164,7 @@ export class SyncEngine {
 				remoteFiles.set(vaultPath, item);
 			}
 
-			// 3. Snapshot local files we'd sync.
-			const localFiles = this.app.vault
-				.getFiles()
-				.filter((f) => this.shouldSyncPath(f.path))
-				.filter((f) => !this.shouldIgnorePath(f.path, ignoreMatchers));
-			const localByPath = new Map<string, { path: string; size: number }>(
-				localFiles.map((f) => [f.path, { path: f.path, size: f.stat.size }])
-			);
-
-			// Config files aren't in vault.getFiles() — add them via adapter
-			const adapter = this.app.vault.adapter;
-			const configPaths = await getAllSyncableConfigPaths(
-				this.configDir,
-				adapter,
-				(path) => this.shouldSyncPath(path),
-				this.getAdditionalSyncFolders()
-			);
-			for (const path of configPaths) {
-				if (localByPath.has(path)) continue;
-				if (!this.shouldSyncPath(path)) continue;
-				if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
-				try {
-					const stat = await adapter.stat(path);
-					if (stat && stat.type === 'file') {
-						localByPath.set(path, { path, size: stat.size });
-					}
-				} catch {
-					// file doesn't exist, skip
-				}
-			}
+			const localByPath = await this.gatherReconcileLocalFiles(remoteFiles.keys(), ignoreMatchers);
 
 			// 4. Plan operations and tracked-state updates.
 			const matchingFileStates = new Map<string, FileState>();
@@ -3364,36 +3362,7 @@ export class SyncEngine {
 				remoteFiles.set(vaultPath, item);
 			}
 
-			// 3. Snapshot local files we'd sync.
-			const localFiles = this.app.vault
-				.getFiles()
-				.filter((f) => this.shouldSyncPath(f.path))
-				.filter((f) => !this.shouldIgnorePath(f.path, ignoreMatchers));
-			const localByPath = new Map<string, { path: string; size: number }>(
-				localFiles.map((f) => [f.path, { path: f.path, size: f.stat.size }])
-			);
-
-			// Config files aren't in vault.getFiles() — add them via adapter
-			const adapter = this.app.vault.adapter;
-			const configPaths = await getAllSyncableConfigPaths(
-				this.configDir,
-				adapter,
-				(path) => this.shouldSyncPath(path),
-				this.getAdditionalSyncFolders()
-			);
-			for (const path of configPaths) {
-				if (localByPath.has(path)) continue;
-				if (!this.shouldSyncPath(path)) continue;
-				if (this.shouldIgnorePath(path, ignoreMatchers)) continue;
-				try {
-					const stat = await adapter.stat(path);
-					if (stat && stat.type === 'file') {
-						localByPath.set(path, { path, size: stat.size });
-					}
-				} catch {
-					// file doesn't exist, skip
-				}
-			}
+			const localByPath = await this.gatherReconcileLocalFiles(remoteFiles.keys(), ignoreMatchers);
 
 			// 4. Plan operations and tracked-state updates.
 			const matchingFileStates = new Map<string, FileState>();

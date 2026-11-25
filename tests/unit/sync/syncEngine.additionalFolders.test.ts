@@ -529,6 +529,63 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 		});
 	});
 
+	it('preserves both copies when an adapter-only conflict cannot be classified', async () => {
+		const path = '.claude/CLAUDE.md';
+		track(path);
+		setHiddenDisk({ [path]: { mtime: 2, size: 3 } });
+		mockApp.vault.adapter.stat.mockRejectedValue(new Error('EPERM'));
+		mockEventManager.getDirtyFiles.mockReturnValue([{ path, type: LocalChangeType.MODIFY }]);
+		stateManager.setDeltaLink('delta-link-current', true);
+		stateManager.setDeviceSyncScope({ includeHiddenFolders: ['.claude'], excludeFolders: [] });
+		mockClient.getDelta.mockResolvedValue({ items: [makeRemoteFile(path)], deltaLink: 'delta-link-next' });
+
+		await expect(createEngine({
+			getDeviceSyncFilter: () => ({ includeHiddenFolders: ['.claude'], excludeFolders: [] }),
+		}).performSync()).rejects.toThrow('EPERM');
+
+		expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+		expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
+		expect(stateManager.getDeltaLink()).toBe('delta-link-current');
+	});
+
+	describe.each(['reconcileFromCloud', 'reconcileToCloud'] as const)('%s local inventory', (reconcile) => {
+		it.each([true, false])('aborts on unreadable local files (listed: %s)', async (listed) => {
+			const path = '.claude/CLAUDE.md';
+			track(path);
+			setHiddenDisk(listed ? { [path]: { mtime: 1, size: 10 } } : {});
+			mockApp.vault.adapter.stat.mockRejectedValue(new Error('EPERM'));
+			mockClient.listAllItems.mockResolvedValue([makeRemoteFile(path)]);
+			const engine = createEngine({
+				getDeviceSyncFilter: () => ({ includeHiddenFolders: ['.claude'], excludeFolders: [] }),
+			});
+
+			await expect(engine[reconcile]()).rejects.toThrow('EPERM');
+
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
+			expect(stateManager.getFileState(path)?.remoteHash).toBe(`${path}-old-hash`);
+			expect(mockClient.getDelta).not.toHaveBeenCalled();
+		});
+
+		it('checks a cloud path omitted from the local listing before treating it as missing', async () => {
+			const path = '.claude/CLAUDE.md';
+			setHiddenDisk({});
+			mockApp.vault.adapter.stat.mockResolvedValue({ type: 'file', size: 3, mtime: 1, ctime: 0 });
+			mockClient.listAllItems.mockResolvedValue([makeRemoteFile(path, { size: 3 })]);
+			const engine = createEngine({
+				getDeviceSyncFilter: () => ({ includeHiddenFolders: ['.claude'], excludeFolders: [] }),
+			});
+
+			await engine[reconcile]();
+
+			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			expect(mockFileOps.uploadFile).not.toHaveBeenCalled();
+			expect(mockFileOps.downloadFile).not.toHaveBeenCalled();
+			expect(stateManager.getFileState(path)?.oneDriveId).toBe(`${path}-id`);
+		});
+	});
+
 	it.each(['reconcileFromCloud', 'reconcileToCloud'] as const)(
 		'%s includes conflict copies of synced settings',
 		async (reconcile) => {
