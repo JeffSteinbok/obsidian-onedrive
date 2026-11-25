@@ -31,4 +31,4 @@ Instead of polling OneDrive every few minutes (battery-draining), this plugin us
 
 **Manual**:
 - Shows a modal asking which version to keep
-- You decide for each conflict. **Accept Both** saves the incoming version beside the original.
+- You decide for each conflict. **Accept Both Changes** saves the incoming version beside the original.
