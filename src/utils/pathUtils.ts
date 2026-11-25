@@ -292,7 +292,24 @@ export async function getAllSyncableConfigPaths(
 		(p) => shouldSyncPath(p)
 	);
 
-	return [...fixedPaths, ...pluginPaths, ...snippetPaths, ...additionalPaths];
+	const namedPaths = [...fixedPaths, ...pluginPaths];
+	const namedPathSet = new Set(namedPaths);
+	const conflictPaths: string[] = [];
+	// Config files are adapter-only. Look beside the opted-in exact names so
+	// both regular sync and reconcile discover their conflict copies.
+	for (const parent of new Set(namedPaths.map(getParentPath))) {
+		const listing = await adapter.list(parent).catch(() => undefined);
+		if (!listing) continue;
+		for (const file of listing.files) {
+			const path = normalizePath(file);
+			const original = stripConflictTimestamps(path);
+			if (original !== path && namedPathSet.has(original) && shouldSyncPath(path)) {
+				conflictPaths.push(path);
+			}
+		}
+	}
+
+	return [...namedPaths, ...snippetPaths, ...conflictPaths, ...additionalPaths];
 }
 
 function isInstalledPluginManifestPath(path: string, configDir: string): boolean {
@@ -593,11 +610,13 @@ export function shouldSyncVaultPath(
 		return true;
 	}
 
-	if (syncAppSettings && syncableObsidianAppSettings.has(normalized)) {
+	const configPath = stripConflictTimestamps(normalized);
+
+	if (syncAppSettings && syncableObsidianAppSettings.has(configPath)) {
 		return true;
 	}
 
-	if (syncBookmarks && syncableObsidianBookmarks.has(normalized)) {
+	if (syncBookmarks && syncableObsidianBookmarks.has(configPath)) {
 		return true;
 	}
 
@@ -609,14 +628,14 @@ export function shouldSyncVaultPath(
 		return false;
 	}
 
-	if (syncPluginData && isInstalledPluginDataPath(normalized, normalizedConfigDir)) {
+	if (syncPluginData && isInstalledPluginDataPath(configPath, normalizedConfigDir)) {
 		return true;
 	}
 
 	return (
-		syncableObsidianPluginManifests.has(normalized) ||
-		isInstalledPluginManifestPath(normalized, normalizedConfigDir) ||
-		isInstalledPluginBinaryPath(normalized, normalizedConfigDir)
+		syncableObsidianPluginManifests.has(configPath) ||
+		isInstalledPluginManifestPath(configPath, normalizedConfigDir) ||
+		isInstalledPluginBinaryPath(configPath, normalizedConfigDir)
 	);
 }
 
@@ -630,16 +649,22 @@ export function isPathWithinRoot(path: string, root: string): boolean {
 }
 
 /**
- * Create conflict filename with timestamp
- * Example: "note.md" -> "note (conflict 2026-05-25 12-30-45).md"
+ * Create a dated conflict path beside the original file.
  */
 export function createConflictFileName(originalPath: string): string {
-	const nameWithoutExt = getFileNameWithoutExtension(originalPath);
-	const ext = getFileExtension(originalPath);
+	const name = getFileName(originalPath);
+	const lastDot = name.lastIndexOf('.');
+	const extensionStart = lastDot > 0 ? lastDot : name.length;
+	const nameWithoutExt = name.slice(0, extensionStart);
+	const ext = name.slice(extensionStart);
 	const now = new Date();
 	const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
 
-	return `${nameWithoutExt} (conflict ${timestamp})${ext}`;
+	return joinPath(getParentPath(originalPath), `${nameWithoutExt} (conflict ${timestamp})${ext}`);
+}
+
+function stripConflictTimestamps(path: string): string {
+	return path.replace(/(?: \(conflict \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\))+(?=(?:\.[^./]*)?$)/, '');
 }
 
 /**
@@ -651,7 +676,7 @@ export function createConflictFileName(originalPath: string): string {
  * exist in long-lived vaults.
  */
 export function isConflictCopyPath(path: string): boolean {
-	return / \(conflict [^)]*\)$/.test(getFileNameWithoutExtension(path));
+	return / \(conflict [^)]*\)(?:\.[^.]*)?$/.test(getFileName(path));
 }
 
 /**

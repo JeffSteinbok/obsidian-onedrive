@@ -7,7 +7,7 @@
 import { App, TFile } from 'obsidian';
 import { ConflictEntry, ConflictResolution, PersistedConflictQueue } from '../types';
 import { logger } from '../utils/logger';
-import { createConflictFileName, isTextExtension, normalizePath } from '../utils/pathUtils';
+import { createConflictFileName, getParentPath, isTextExtension, normalizePath } from '../utils/pathUtils';
 import { EventManager } from './eventManager';
 import { SyncStateManager } from './syncState';
 
@@ -217,8 +217,18 @@ export class ConflictQueue {
 		const conflictPath = createConflictFileName(entry.path);
 		const adapter = this.app.vault.adapter;
 
+		const parent = getParentPath(conflictPath);
+		if (parent && !(await adapter.exists(parent))) {
+			await adapter.mkdir(parent);
+		}
+
 		this.eventManager.markOwnWrites([conflictPath]);
-		await adapter.writeBinary(conflictPath, content);
+		try {
+			await adapter.writeBinary(conflictPath, content);
+		} catch (error) {
+			this.eventManager.removeOwnWrite(conflictPath);
+			throw error;
+		}
 
 		// Mark local file dirty for upload
 		this.eventManager.addDirtyFile(entry.path, 'modify');

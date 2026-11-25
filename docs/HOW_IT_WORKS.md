@@ -25,10 +25,10 @@ Instead of polling OneDrive every few minutes (battery-draining), this plugin us
 - Simple and automatic
 
 **Create Duplicate**:
-- Downloads remote file with conflict marker: `note (conflict 2026-05-25 12-30-45).md`
+- Saves the remote version beside the original, for example `notes/note (conflict 2026-05-25 12-30-45).md`
 - Keeps both versions
 - You manually merge later
 
 **Manual**:
 - Shows a modal asking which version to keep
-- You decide for each conflict
+- You decide for each conflict. **Accept Both** saves the incoming version beside the original.

@@ -200,18 +200,22 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 		};
 	});
 
-	// Note: createConflictFileName currently drops the parent folder for every
-	// path (pre-existing), so the copy is matched by file name only.
 	const writtenPaths = () => mockApp.vault.adapter.writeBinary.mock.calls.map((call) => call[0] as string);
 	// uploadFile receives the remote path; map it back to the vault path.
 	const uploadedPaths = () =>
 		mockFileOps.uploadFile.mock.calls.map((call) => (call[0] as string).replace(/^\/remote\/root\//, ''));
 
 	describe('conflicts in an additional folder (#1)', () => {
-		it('runs the conflict resolver instead of overwriting the remote edit', async () => {
+		it('uploads the remote edit as a sibling conflict copy on the next sync', async () => {
 			track('.claude/CLAUDE.md');
-			setHiddenDisk({ '.claude/CLAUDE.md': { mtime: 5_000, size: 3 } });
-			mockClient.getDelta.mockResolvedValue({
+			const files: Record<string, { mtime: number; size: number }> = {
+				'.claude/CLAUDE.md': { mtime: 5_000, size: 3 },
+			};
+			setHiddenDisk(files);
+			mockApp.vault.adapter.writeBinary.mockImplementation(async (path: string, content: ArrayBuffer) => {
+				files[path] = { mtime: 6_000, size: content.byteLength };
+			});
+			mockClient.getDelta.mockResolvedValueOnce({
 				items: [
 					makeRemoteFile('.claude/CLAUDE.md', {
 						file: { mimeType: 'text/markdown', hashes: { quickXorHash: 'remote-new-hash' } },
@@ -220,12 +224,18 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 				deltaLink: 'next',
 			});
 
-			await createEngine({ getAdditionalSyncFolders: () => ['.claude'] }).performSync();
+			const engine = createEngine({ getAdditionalSyncFolders: () => ['.claude'] });
+			await engine.performSync();
 
-			// CREATE_DUPLICATE keeps the other device's edit as a conflict copy.
-			const copy = writtenPaths().find((p) => /(^|\/)CLAUDE \(conflict .*\)\.md$/.test(p));
-			expect(copy).toBeDefined();
+			expect(writtenPaths()).toEqual([expect.stringMatching(/^\.claude\/CLAUDE \(conflict .*\)\.md$/)]);
+			const [copy] = writtenPaths();
+			expect(stateManager.getFileState(copy)?.oneDriveId).toBeUndefined();
 			expect(mockFileOps.downloadFile).toHaveBeenCalledWith('.claude/CLAUDE.md-id');
+
+			await engine.performSync();
+
+			expect(uploadedPaths()).toContain(copy);
+			expect(stateManager.getFileState(copy)?.oneDriveId).toBeDefined();
 		});
 
 		it('queues a manual conflict when the strategy is manual', async () => {
@@ -273,7 +283,7 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 
 			await createEngine({ getAdditionalSyncFolders: () => ['.claude'] }).performSync();
 
-			const copy = writtenPaths().find((p) => /(^|\/)CLAUDE \(conflict .*\)\.md$/.test(p));
+			const copy = writtenPaths().find((p) => /^\.claude\/CLAUDE \(conflict .*\)\.md$/.test(p));
 			expect(copy).toBeDefined();
 		});
 
@@ -434,7 +444,7 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 
 			// Device A's version is kept (conflict copy), and the file that
 			// only exists remotely arrives here.
-			expect(writtenPaths().some((p) => /(^|\/)CLAUDE \(conflict .*\)\.md$/.test(p))).toBe(true);
+			expect(writtenPaths().some((p) => /^\.claude\/CLAUDE \(conflict .*\)\.md$/.test(p))).toBe(true);
 			expect(writtenPaths()).toContain('.claude/agents/a.md');
 		});
 
@@ -458,7 +468,7 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 			expect(writtenPaths()).toEqual([]);
 
 			await engine.performSync(); // the change is applied now
-			expect(writtenPaths().some((p) => /(^|\/)CLAUDE \(conflict .*\)\.md$/.test(p))).toBe(true);
+			expect(writtenPaths().some((p) => /^\.claude\/CLAUDE \(conflict .*\)\.md$/.test(p))).toBe(true);
 		});
 
 		// Pins only the gatherLocalChanges snapshot filter: the event is for a
@@ -518,6 +528,24 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 		});
 	});
 
+	it.each(['reconcileFromCloud', 'reconcileToCloud'] as const)(
+		'%s includes conflict copies of synced settings',
+		async (reconcile) => {
+			const copy = '.obsidian/app (conflict 2026-05-25 12-30-45).json';
+			const fromCloud = reconcile === 'reconcileFromCloud';
+			setHiddenDisk(fromCloud ? {} : { [copy]: { mtime: 5_000, size: 3 } });
+			mockClient.listAllItems.mockResolvedValue(fromCloud ? [makeRemoteFile(copy)] : []);
+			const engine = createEngine({
+				shouldSyncPath: (path) => shouldSyncVaultPath(path, false, true, '.obsidian'),
+			});
+
+			await engine[reconcile]();
+
+			expect(writtenPaths()).toEqual(fromCloud ? [copy] : []);
+			expect(uploadedPaths()).toEqual(fromCloud ? [] : [copy]);
+		}
+	);
+
 	it('converges a hidden-folder conflict without shared state before the next remote edit', async () => {
 		const path = '.claude/CLAUDE.md';
 		const firstEdit = makeRemoteFile(path);
@@ -535,7 +563,7 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 
 		await engine.performSync();
 
-		expect(writtenPaths()).toEqual([expect.stringMatching(/CLAUDE \(conflict .*\)\.md$/)]);
+		expect(writtenPaths()).toEqual([expect.stringMatching(/^\.claude\/CLAUDE \(conflict .*\)\.md$/)]);
 		expect(uploadedPaths()).toEqual([path]);
 		expect(mockApp.vault.adapter.writeBinary.mock.invocationCallOrder[0])
 			.toBeLessThan(mockFileOps.uploadFile.mock.invocationCallOrder[0]);
@@ -544,7 +572,7 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 
 		await engine.performSync();
 
-		expect(writtenPaths()).toEqual([expect.stringMatching(/CLAUDE \(conflict .*\)\.md$/), path]);
+		expect(writtenPaths()).toEqual([expect.stringMatching(/^\.claude\/CLAUDE \(conflict .*\)\.md$/), path]);
 		expect(uploadedPaths()).toEqual([path]);
 		expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
 	});
@@ -683,7 +711,7 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 			{ strategy: ConflictResolutionStrategy.LAST_WRITE_WINS, pullOnly: true, remoteTime: 1000, writes: [], uploads: false },
 			{ strategy: ConflictResolutionStrategy.LAST_WRITE_WINS, pullOnly: true, remoteTime: 9000, writes: ['PDFs/local.pdf'], uploads: false },
 			{ strategy: ConflictResolutionStrategy.CREATE_DUPLICATE, pullOnly: true, remoteTime: 1000,
-				writes: [expect.stringMatching(/local \(conflict .*\)\.pdf$/)], uploads: false },
+				writes: [expect.stringMatching(/^PDFs\/local \(conflict .*\)\.pdf$/)], uploads: false },
 		])(
 			'handles a re-entry conflict with $strategy, pull-only $pullOnly, and remote mtime $remoteTime',
 			async ({ strategy, pullOnly, remoteTime, writes, uploads }) => {
@@ -804,7 +832,7 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 			],
 			deltaLink: 'next',
 		});
-		const hasConflictCopy = () => writtenPaths().some((p) => /(^|\/)CLAUDE \(conflict .*\)\.md$/.test(p));
+		const hasConflictCopy = () => writtenPaths().some((p) => /^\.claude\/CLAUDE \(conflict .*\)\.md$/.test(p));
 
 		it('un-listing while local changes are gathered does not blind-PUT over the other device\'s edit', async () => {
 			const live = { folders: ['.claude'] };
