@@ -14,7 +14,7 @@ vi.mock('../../../src/utils/logger', () => ({
 
 import { TFolder } from 'obsidian';
 import '../../setup';
-import { mockApp, makeTFile } from '../../setup';
+import { mockApp, makeTFile, makeTFolder } from '../../setup';
 import { SyncEngine } from '../../../src/sync/syncEngine';
 import { SyncStateManager } from '../../../src/sync/syncState';
 import { ConflictResolver } from '../../../src/sync/conflictResolver';
@@ -166,6 +166,7 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 		mockApp.vault.adapter.writeBinary.mockReset().mockResolvedValue(undefined);
 		mockApp.vault.adapter.readBinary.mockReset().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
 		mockApp.vault.adapter.remove.mockReset().mockResolvedValue(undefined);
+		mockApp.vault.rename.mockReset().mockResolvedValue(undefined);
 		mockApp.vault.adapter.stat.mockReset().mockResolvedValue(null);
 		mockApp.vault.adapter.list.mockReset().mockResolvedValue({ files: [], folders: [] });
 
@@ -517,6 +518,37 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 		});
 	});
 
+	it('converges a hidden-folder conflict without shared state before the next remote edit', async () => {
+		const path = '.claude/CLAUDE.md';
+		const firstEdit = makeRemoteFile(path);
+		mockFileOps.uploadFile.mockResolvedValue(firstEdit);
+		const secondEdit = makeRemoteFile(path, {
+			size: 3,
+			file: { mimeType: 'text/markdown', hashes: { quickXorHash: 'second-remote-edit' } },
+		});
+		setHiddenDisk({ [path]: { mtime: 5000, size: 3 } });
+		mockEventManager.getDirtyFiles.mockReturnValue([{ path, type: LocalChangeType.MODIFY }]);
+		mockClient.getDelta
+			.mockResolvedValueOnce({ items: [firstEdit], deltaLink: 'first' })
+			.mockResolvedValueOnce({ items: [secondEdit], deltaLink: 'second' });
+		const engine = createEngine({ getAdditionalSyncFolders: () => ['.claude'] });
+
+		await engine.performSync();
+
+		expect(writtenPaths()).toEqual([expect.stringMatching(/CLAUDE \(conflict .*\)\.md$/)]);
+		expect(uploadedPaths()).toEqual([path]);
+		expect(mockApp.vault.adapter.writeBinary.mock.invocationCallOrder[0])
+			.toBeLessThan(mockFileOps.uploadFile.mock.invocationCallOrder[0]);
+		expect(stateManager.getFileState(path)?.oneDriveId).toBe(firstEdit.id);
+		mockEventManager.getDirtyFiles.mockReturnValue([]);
+
+		await engine.performSync();
+
+		expect(writtenPaths()).toEqual([expect.stringMatching(/CLAUDE \(conflict .*\)\.md$/), path]);
+		expect(uploadedPaths()).toEqual([path]);
+		expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+	});
+
 	describe('excluded folders', () => {
 		const exclusionOptions = (device: { excluded: string[] }): Partial<SyncEngineOptions> => {
 			const getDeviceSyncFilter = () => ({ excludeFolders: device.excluded });
@@ -567,6 +599,115 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 
 			expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
 		});
+
+		it.each(['Attachments/PDFs', 'Archive/PDFs'])(
+			'skips a local parent-folder rename with exclusion %s',
+			async (excluded) => {
+				stateManager.setFolderState('attachments-id', 'Attachments');
+				mockEventManager.getDirtyFiles.mockReturnValue([
+					{ path: 'Archive', oldPath: 'Attachments', type: LocalChangeType.FOLDER_RENAME },
+				]);
+
+				await createEngine(exclusionOptions({ excluded: [excluded] })).performSync();
+
+				expect(mockFileOps.moveFile).not.toHaveBeenCalled();
+				expect(stateManager.getFolderPathById('attachments-id')).toBe('Attachments');
+			}
+		);
+
+		it.each(['Attachments/PDFs', 'Archive/PDFs'])(
+			'skips a remote parent-folder move with exclusion %s',
+			async (excluded) => {
+				const folder = makeTFolder('Attachments');
+				mockApp.vault.getAbstractFileByPath.mockImplementation((path) => path === folder.path ? folder : null);
+				stateManager.setFolderState('attachments-id', folder.path);
+				mockClient.getDelta.mockResolvedValue({
+					items: [makeRemoteFolder('Archive', { id: 'attachments-id' })],
+					deltaLink: 'next',
+				});
+
+				await createEngine(exclusionOptions({ excluded: [excluded] })).performSync();
+
+				expect(mockApp.vault.rename).not.toHaveBeenCalled();
+			}
+		);
+
+		it('keeps a cloud-deleted parent folder that appears empty in the vault index', async () => {
+			const folder = makeTFolder('Attachments');
+			mockApp.vault.getAbstractFileByPath.mockImplementation((path) => path === folder.path ? folder : null);
+			stateManager.setFolderState('attachments-id', folder.path);
+			mockClient.getDelta.mockResolvedValue({
+				items: [makeRemoteFolder(folder.path, { id: 'attachments-id', deleted: { state: 'deleted' } })],
+				deltaLink: 'next',
+			});
+
+			await createEngine(exclusionOptions({ excluded: ['Attachments/.pdfs'] })).performSync();
+
+			expect(mockApp.fileManager.trashFile).not.toHaveBeenCalled();
+		});
+
+		it('keeps a remote config parent during empty-folder cleanup after a local file delete', async () => {
+			const folder = '.obsidian/snippets';
+			const path = `${folder}/style.css`;
+			track(path);
+			stateManager.setFolderState('snippets-id', folder);
+			mockEventManager.getDirtyFiles.mockReturnValue([{ path, type: LocalChangeType.DELETE }]);
+			const engine = createEngine({
+				...exclusionOptions({ excluded: [`${folder}/PDFs`] }),
+				shouldSyncPath: (path, filter) =>
+					shouldSyncVaultPath(path, false, false, '.obsidian', true, false, false, filter),
+			});
+
+			await engine.performSync();
+
+			expect(mockFileOps.deleteFile.mock.calls).toEqual([[`${path}-id`]]);
+			expect(stateManager.getFolderPathById('snippets-id')).toBe(folder);
+		});
+
+		it('does not re-track excluded folders when they appear in delta', async () => {
+			const folder = makeRemoteFolder('Attachments/PDFs');
+			const child = makeRemoteFolder('Attachments/PDFs/2026');
+			const sibling = makeRemoteFolder('Attachments/PDFs-old');
+			stateManager.setFolderState(folder.id, 'Attachments/PDFs');
+			mockClient.getDelta.mockResolvedValue({ items: [folder, child, sibling], deltaLink: 'next' });
+
+			await createEngine(exclusionOptions({ excluded: ['Attachments/PDFs'] })).performSync();
+
+			expect(stateManager.getFolderPathById(folder.id)).toBeUndefined();
+			expect(stateManager.getFolderPathById(child.id)).toBeUndefined();
+			expect(stateManager.getFolderPathById(sibling.id)).toBe('Attachments/PDFs-old');
+		});
+
+		it.each([
+			{ strategy: ConflictResolutionStrategy.LAST_WRITE_WINS, pullOnly: false, remoteTime: 1000, writes: [], uploads: true },
+			{ strategy: ConflictResolutionStrategy.LAST_WRITE_WINS, pullOnly: true, remoteTime: 1000, writes: [], uploads: false },
+			{ strategy: ConflictResolutionStrategy.LAST_WRITE_WINS, pullOnly: true, remoteTime: 9000, writes: ['PDFs/local.pdf'], uploads: false },
+			{ strategy: ConflictResolutionStrategy.CREATE_DUPLICATE, pullOnly: true, remoteTime: 1000,
+				writes: [expect.stringMatching(/local \(conflict .*\)\.pdf$/)], uploads: false },
+		])(
+			'handles a re-entry conflict with $strategy, pull-only $pullOnly, and remote mtime $remoteTime',
+			async ({ strategy, pullOnly, remoteTime, writes, uploads }) => {
+				const local = makeTFile('PDFs/local.pdf', 3, 5000);
+				mockApp.vault.getFiles.mockReturnValue([local]);
+				mockApp.vault.getAbstractFileByPath.mockImplementation((path) => path === local.path ? local : null);
+				stateManager.setDeviceSyncScope({ excludeFolders: ['PDFs'] });
+				mockClient.getDelta.mockResolvedValue({
+					items: [makeRemoteFile(local.path, { lastModifiedDateTime: new Date(remoteTime).toISOString() })],
+					deltaLink: 'next',
+				});
+				conflictResolver.setStrategy(strategy);
+				const engine = createEngine({
+					...exclusionOptions({ excluded: [] }),
+					isPullOnlyMode: () => pullOnly,
+				});
+
+				await engine.performSync();
+
+				expect(uploadedPaths()).toEqual(uploads ? [local.path] : []);
+				expect(writtenPaths()).toEqual(writes);
+				expect(mockFileOps.deleteFile).not.toHaveBeenCalled();
+			}
+		);
 
 		it.each(['performSync', 'reconcileFromCloud', 'reconcileToCloud'] as const)(
 			're-enumerates missing remote files and checks conflicts after un-excluding following %s',
@@ -746,7 +887,7 @@ describe('SyncEngine additional (hidden) sync folders', () => {
 
 			mockEventManager.getDirtyFiles.mockReturnValue([]);
 			await engine.performSync();
-			expect(uploadedPaths()).not.toContain('.claude/CLAUDE.md');
+			expect(uploadedPaths()).toContain('.claude/CLAUDE.md');
 			expect(hasConflictCopy()).toBe(true);
 		});
 

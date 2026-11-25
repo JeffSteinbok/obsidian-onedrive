@@ -368,9 +368,8 @@ export class SyncEngine {
 	/**
 	 * Pin the device filter for a reconcile run, so its remote listing and
 	 * its local scan are decided by the same scope even if the user changes
-	 * the folder list while it runs. Reconcile rebuilds tracked state from
-	 * scratch (clearFileStates), so no prune or cursor reset is needed, and
-	 * deviceSyncScope is left for the next performSync's Phase 0.
+	 * the folder list while it runs. Rebuilding file state also records the
+	 * active exclusions so regular sync can re-enumerate them on re-entry.
 	 */
 	private async withReconcileScopeSnapshot(run: () => Promise<void>): Promise<void> {
 		this.scopeSnapshot = copyDeviceFilter(this.getDeviceSyncFilter());
@@ -1279,8 +1278,8 @@ export class SyncEngine {
 	 *
 	 * Splits general files and .obsidian-scope files by their independent
 	 * delta streams, applying both the built-in shouldSyncPath check and
-	 * user-defined .syncIgnore patterns. Folder items (non-deleted) are
-	 * excluded — only files and deleted items pass through.
+	 * user-defined .syncIgnore patterns. Explicit folder items are handled
+	 * separately, including the synthetic file deletes they may produce.
 	 */
 	private filterDeltaItems(
 		items: OneDriveItem[],
@@ -1290,7 +1289,7 @@ export class SyncEngine {
 	): OneDriveItem[] {
 		return [
 			...items.filter((item) => {
-				if (item.folder && !item.deleted) return false;
+				if (item.folder) return false;
 				const vaultPath = this.remotePathToVaultPath(item);
 				return (
 					!this.isObsidianPath(vaultPath) &&
@@ -1299,7 +1298,7 @@ export class SyncEngine {
 				);
 			}),
 			...obsidianItems.filter((item) => {
-				if (item.folder && !item.deleted) return false;
+				if (item.folder) return false;
 				const vaultPath = this.remotePathToVaultPath(item);
 				return (
 					this.isObsidianPath(vaultPath) &&
@@ -1511,7 +1510,7 @@ export class SyncEngine {
 				this.stateManager.setFileState(path, { ...this.itemToFileState(item), localMtime: localStat.mtime });
 				this.eventManager.removeDirtyPaths([path]);
 			} else {
-				this.pushConflictResolution(operations, path, localStat, item, undefined, true);
+				this.pushConflictResolution(operations, path, localStat, item, undefined);
 			}
 			remoteByPath.delete(path);
 			comparedPaths.add(path);
@@ -1788,8 +1787,7 @@ export class SyncEngine {
 		path: string,
 		localStat: { mtime: number; size: number },
 		remoteItem: OneDriveItem,
-		knownState: FileState | undefined,
-		preserveBeforeUpload = false
+		knownState: FileState | undefined
 	): void {
 		const conflictInfo: ConflictInfo = {
 			path,
@@ -1809,7 +1807,7 @@ export class SyncEngine {
 		};
 		switch (resolution.kind) {
 			case 'duplicate':
-				if (preserveBeforeUpload && !this.isPullOnlyMode()) {
+				if (!knownState && !this.isPullOnlyMode()) {
 					operations.push({
 						path,
 						direction: SyncDirection.UPLOAD,
@@ -1835,7 +1833,7 @@ export class SyncEngine {
 					// base item's id (#177, #178).
 					isConflictCopy: true,
 				});
-				if (knownState && !this.isPullOnlyMode()) {
+				if (!this.isPullOnlyMode()) {
 					operations.push({ path, direction: SyncDirection.UPLOAD, localState, remoteState });
 				}
 				break;
